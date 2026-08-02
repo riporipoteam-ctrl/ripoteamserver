@@ -1,4 +1,4 @@
-name: Configure Hugging Face ZeroGPU server
+name: Refactor Hugging Face backend to Gradio Server
 
 on:
   push:
@@ -11,65 +11,95 @@ permissions:
   contents: write
 
 jobs:
-  fix:
+  refactor:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Register the ZeroGPU function as a Gradio event
+      - name: Convert mounted Blocks app to Gradio Server mode
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
-          path = Path("hf-space/app.py")
-          text = path.read_text(encoding="utf-8")
+          app_path = Path("hf-space/app.py")
+          text = app_path.read_text(encoding="utf-8")
 
-          if "import spaces\n" not in text:
-              text = text.replace("import psutil\n", "import psutil\nimport spaces\n", 1)
-
-          marker = '''\n\n@spaces.GPU(duration=1)\ndef zero_gpu_runtime_probe() -> str:\n    \"\"\"Minimal registered function required by ZeroGPU hosting.\"\"\"\n    return \"ZeroGPU runtime available\"\n'''
-          anchor = 'HERMES_INSTALL_STATE: dict[str, Any] = {'
-          if "def zero_gpu_runtime_probe" not in text:
-              position = text.index(anchor)
-              text = text[:position] + marker + "\n\n" + text[position:]
-
-          component_anchor = '    token = gr.Textbox(label="ADMIN_TOKEN", type="password")\n'
-          components = (
-              '    token = gr.Textbox(label="ADMIN_TOKEN", type="password")\n'
-              '    zero_gpu_button = gr.Button("ZeroGPU runtime probe", visible=False)\n'
-              '    zero_gpu_output = gr.Textbox(label="ZeroGPU status", visible=False)\n'
+          # ZeroGPU's runtime scanner is most reliable when spaces is imported
+          # immediately after the mandatory future import.
+          text = text.replace(
+              "from __future__ import annotations\n\n",
+              "from __future__ import annotations\n\nimport spaces\n",
+              1,
           )
-          if "zero_gpu_button = gr.Button" not in text:
-              text = text.replace(component_anchor, components, 1)
+          # Remove any later duplicate import left by prior iterations.
+          head, separator, tail = text.partition("import asyncio\n")
+          if separator:
+              tail = tail.replace("import spaces\n", "")
+              text = head + separator + tail
 
-          event_anchor = '    refresh.click(gradio_status, outputs=[status_output, logs_output])\n'
-          event = (
-              '    zero_gpu_button.click(zero_gpu_runtime_probe, outputs=zero_gpu_output)\n'
-              '    refresh.click(gradio_status, outputs=[status_output, logs_output])\n'
+          text = text.replace("import gradio as gr\n", "from gradio import Server\n", 1)
+          text = text.replace(
+              "from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect\n",
+              "from fastapi import Header, HTTPException, WebSocket, WebSocketDisconnect\n",
+              1,
           )
-          if "zero_gpu_button.click" not in text:
-              text = text.replace(event_anchor, event, 1)
+
+          # Remove the previous standalone/hidden Blocks GPU probe. Server mode
+          # registers the probe directly through app.api below.
+          text = re.sub(
+              r"\n\n@spaces\.GPU\(duration=1\)\ndef zero_gpu_runtime_probe\(\) -> str:\n"
+              r"(?:    .*\n)+?\n(?=HERMES_INSTALL_STATE)",
+              "\n\n",
+              text,
+              count=1,
+          )
+
+          text = text.replace('api = FastAPI(title="Ripo Team Cloud PC")', 'app = Server()', 1)
+          text = text.replace("api.", "app.")
+
+          endpoint = '''app = Server()\n\n\n@app.api(name="zero_gpu_runtime_probe")\n@spaces.GPU(duration=1)\ndef zero_gpu_runtime_probe() -> str:\n    \"\"\"Minimal registered endpoint required by ZeroGPU hosting.\"\"\"\n    return \"ZeroGPU runtime available\"\n'''
+          text = text.replace("app = Server()", endpoint, 1)
 
           text = text.replace(
-              'app = gr.mount_gradio_app(api, demo, path="/control")',
-              'app = gr.mount_gradio_app(api, demo, path="/control", ssr_mode=False)',
+              '<a class="secondary" href="/control">Control panel</a>',
+              '<a class="secondary" href="/gradio_api/info">API info</a>',
           )
 
-          launch = '''\n\nif __name__ == "__main__":\n    import uvicorn\n\n    uvicorn.run(app, host="0.0.0.0", port=7860, log_level="info")\n'''
-          if 'if __name__ == "__main__":' not in text:
-              text = text.rstrip() + launch
+          # The GitHub Pages frontend is the control UI. Remove the old Blocks
+          # control panel and launch the Server app directly.
+          control_marker = "\ndef token_valid(token: str) -> bool:\n"
+          if control_marker not in text:
+              raise SystemExit("Could not locate the old Blocks control section")
+          text = text.split(control_marker, 1)[0].rstrip()
+          text += "\n\n\napp.launch(show_error=True)\n"
 
-          path.write_text(text, encoding="utf-8")
-          print("Registered @spaces.GPU as a hidden Gradio event.")
+          app_path.write_text(text, encoding="utf-8")
+
+          requirements = Path("hf-space/requirements.txt")
+          req_text = requirements.read_text(encoding="utf-8")
+          req_text = re.sub(r"^gradio.*$", "gradio>=6.20,<7", req_text, flags=re.MULTILINE)
+          requirements.write_text(req_text, encoding="utf-8")
+
+          print("Converted app.py to Gradio Server mode.")
           PY
 
-      - name: Validate Python syntax
-        run: python -m py_compile hf-space/app.py
+      - name: Validate transformed source
+        run: |
+          python -m py_compile hf-space/app.py
+          grep -F 'app = Server()' hf-space/app.py
+          grep -F '@app.api(name="zero_gpu_runtime_probe")' hf-space/app.py
+          grep -F '@spaces.GPU(duration=1)' hf-space/app.py
+          grep -F 'app.launch(show_error=True)' hf-space/app.py
+          if grep -F 'with gr.Blocks' hf-space/app.py; then
+            echo "Old Blocks application is still present." >&2
+            exit 1
+          fi
 
-      - name: Commit fix
+      - name: Commit Server mode refactor
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add hf-space/app.py
-          git commit -m "Register ZeroGPU function in Gradio" || true
+          git add hf-space/app.py hf-space/requirements.txt
+          git commit -m "Use Gradio Server mode for ZeroGPU" || true
           git push
