@@ -1,0 +1,4 @@
+url=https://riporipoteam-ctrl.github.io/ripoteamserver/
+http_status=200
+contains_ripo_team=true
+checked_at=2026-08-02T23:20:51Z
