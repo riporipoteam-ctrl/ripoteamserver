@@ -1,0 +1,4 @@
+Hugging Face deployment: failure
+Source commit: 3d98fa3d78e95a295fd618a641f855c363978843
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30770137892
+Recorded at: 2026-08-02T22:27:39Z
