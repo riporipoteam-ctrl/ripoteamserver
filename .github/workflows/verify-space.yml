@@ -1,0 +1,32 @@
+name: Verify Hugging Face Space
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Create or update Hugging Face Space"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for Space health endpoint
+        env:
+          SPACE_URL: https://echoxr-ripoteam-cloud-pc.hf.space
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error --max-time 15 "$SPACE_URL/api/health" | tee /tmp/health.json; then
+              python -m json.tool /tmp/health.json
+              exit 0
+            fi
+            echo "Space is still building or waking (attempt $attempt/60)."
+            sleep 10
+          done
+          echo "Space did not become healthy in time." >&2
+          exit 1
