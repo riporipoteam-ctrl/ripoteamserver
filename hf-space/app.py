@@ -312,12 +312,6 @@ app.add_middleware(
 )
 
 
-@app.on_event("startup")
-async def startup() -> None:
-    if os.environ.get("RIPO_SKIP_DESKTOP") != "1":
-        start_desktop()
-
-
 @app.get("/api/health")
 async def health() -> JSONResponse:
     return JSONResponse(status())
@@ -431,5 +425,8 @@ ROOT_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta 
 async def root() -> str:
     return ROOT_HTML
 
+
+if os.environ.get("RIPO_SKIP_DESKTOP") != "1":
+    start_desktop()
 
 app.launch(show_error=True)
