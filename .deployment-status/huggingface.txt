@@ -1,9 +1,9 @@
 Hugging Face deployment: success
 Hugging Face runtime wait: failure
 Hugging Face Space health: skipped
-Source commit: ba836289647969e2b596b4b0b5c5f91ee36f2e56
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30771153353
-Recorded at: 2026-08-02T22:57:09Z
+Source commit: 71b4a6e5183f7238a3cb2deccd5f61e22e5b7a6f
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30771278918
+Recorded at: 2026-08-02T23:01:08Z
 
 ===== space-info.txt =====
 {
@@ -14,7 +14,7 @@ Recorded at: 2026-08-02T22:57:09Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-02T22:55:42+00:00",
+  "last_modified": "2026-08-02T22:59:25+00:00",
   "likes": 0,
   "private": false,
   "runtime": {
@@ -28,7 +28,7 @@ Recorded at: 2026-08-02T22:57:09Z
         "requested": "zero-a10g"
       },
       "gcTimeout": 172800,
-      "errorMessage": "Exit code: 0. Reason: ",
+      "errorMessage": "No @spaces.GPU function detected during startup",
       "replicas": {
         "requested": 1
       },
@@ -42,7 +42,7 @@ Recorded at: 2026-08-02T22:57:09Z
     }
   },
   "sdk": "gradio",
-  "sha": "753433552e85c67c491031329d2123ddeefe4762",
+  "sha": "22394766f7da88d35e967c125f3b48942a991683",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
