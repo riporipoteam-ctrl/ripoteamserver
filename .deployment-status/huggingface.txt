@@ -1,9 +1,9 @@
 Hugging Face deployment: success
 Hugging Face runtime wait: failure
 Hugging Face Space health: skipped
-Source commit: 1a2c37ac8078741b2abe0fe6296906f05bf65600
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30771422228
-Recorded at: 2026-08-02T23:04:58Z
+Source commit: af0d80fa2f017fa3d32edf0924e0a689f315fc68
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30771584373
+Recorded at: 2026-08-02T23:08:57Z
 
 ===== space-info.txt =====
 {
@@ -14,7 +14,7 @@ Recorded at: 2026-08-02T23:04:58Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-02T23:03:16+00:00",
+  "last_modified": "2026-08-02T23:07:29+00:00",
   "likes": 0,
   "private": false,
   "runtime": {
@@ -42,7 +42,7 @@ Recorded at: 2026-08-02T23:04:58Z
     }
   },
   "sdk": "gradio",
-  "sha": "2d09f3440eda7bac5c6dc04ccd88ece634715d7c",
+  "sha": "842dca72f58a90c3b9b930b6f3a4236d8a42ccfd",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
