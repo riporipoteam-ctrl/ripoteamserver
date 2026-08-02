@@ -12,10 +12,14 @@ permissions:
   contents: write
   id-token: write
 
+concurrency:
+  group: huggingface-space-deployment
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 13
     steps:
       - uses: actions/checkout@v4
 
@@ -45,15 +49,20 @@ jobs:
         run: |
           set -u
           : > /tmp/last-health.txt
+          : > /tmp/curl-error.txt
           for attempt in $(seq 1 60); do
-            if curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/health" -o /tmp/last-health.txt; then
+            if curl --fail --silent --show-error --max-time 5 \
+              "$SPACE_URL/api/health" \
+              -o /tmp/last-health.txt \
+              2>/tmp/curl-error.txt; then
               python -m json.tool /tmp/last-health.txt
               exit 0
             fi
             echo "Space is still building or waking (attempt $attempt/60)."
-            sleep 10
+            sleep 5
           done
           echo "Space did not become healthy in time." >&2
+          cat /tmp/curl-error.txt >&2 || true
           exit 1
 
       - name: Record deployment result
@@ -76,6 +85,10 @@ jobs:
             if [ -s /tmp/last-health.txt ]; then
               echo "Health response:"
               cat /tmp/last-health.txt
+            fi
+            if [ -s /tmp/curl-error.txt ]; then
+              echo "Last health error:"
+              cat /tmp/curl-error.txt
             fi
           } > .deployment-status/huggingface.txt
           git add .deployment-status/huggingface.txt
