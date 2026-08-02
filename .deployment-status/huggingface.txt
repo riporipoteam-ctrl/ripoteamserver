@@ -1,7 +1,84 @@
 Hugging Face deployment: success
-Hugging Face Space health: cancelled
-Source commit: 2df8779fa9fe6014774e6f9a5b5a8172bc5b6a0b
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30770807866
-Recorded at: 2026-08-02T22:48:26Z
-Last health error:
-curl: (22) The requested URL returned error: 503
+Hugging Face runtime wait: failure
+Hugging Face Space health: skipped
+Source commit: e4cd4ea2b8a510c60018e860ec85b3c0672e5b98
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30770903535
+Recorded at: 2026-08-02T22:48:51Z
+
+===== space-info.txt =====
+{
+  "id": "Echoxr/ripoteam-cloud-pc",
+  "author": "Echoxr",
+  "card_data": {},
+  "created_at": "2026-08-02T20:55:52+00:00",
+  "disabled": false,
+  "gated": false,
+  "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
+  "last_modified": "2026-08-02T22:31:24+00:00",
+  "likes": 0,
+  "private": false,
+  "runtime": {
+    "stage": "RUNTIME_ERROR",
+    "requested_hardware": "zero-a10g",
+    "sleep_time": 172800,
+    "dev_mode": false,
+    "raw": {
+      "stage": "RUNTIME_ERROR",
+      "hardware": {
+        "requested": "zero-a10g"
+      },
+      "gcTimeout": 172800,
+      "errorMessage": "Exit code: 3. Reason: \n[notice] A new release of pip is available: 26.1.2 -> 26.2\n[notice] To update, run: pip install --upgrade pip\n/home/user/app/app.py:304: DeprecationWarning: \n        on_event is deprecated, use lifespan event handlers instead.\n\n        Read more about it in the\n        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).\n        \n  @api.on_event(\"startup\")\nINFO:     Started server process [1]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nERROR:    [Errno 98] error while attempting to bind on address ('0.0.0.0', 7860): address already in use\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\n",
+      "replicas": {
+        "requested": 1
+      },
+      "devMode": false,
+      "domains": [
+        {
+          "domain": "echoxr-ripoteam-cloud-pc.hf.space",
+          "stage": "READY"
+        }
+      ]
+    }
+  },
+  "sdk": "gradio",
+  "sha": "972ce7dd6f11b6be73662f4a5fb122b8dc395c5f",
+  "siblings": [
+    {
+      "rfilename": ".deploy-trigger"
+    },
+    {
+      "rfilename": ".gitattributes"
+    },
+    {
+      "rfilename": "README.md"
+    },
+    {
+      "rfilename": "app.py"
+    },
+    {
+      "rfilename": "packages.txt"
+    },
+    {
+      "rfilename": "requirements.txt"
+    }
+  ],
+  "subdomain": "echoxr-ripoteam-cloud-pc",
+  "tags": [
+    "gradio",
+    "region:us"
+  ],
+  "used_storage": 0
+}
+
+===== build-logs.txt =====
+[1m[31mError: Space 'Echoxr/ripoteam-cloud-pc' not found.
+If the repo is private, make sure you are authenticated and your token has the required permissions.
+If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-cloud-pc --type space[0m
+[90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
+
+===== runtime-logs.txt =====
+[1m[31mError: Space 'Echoxr/ripoteam-cloud-pc' not found.
+If the repo is private, make sure you are authenticated and your token has the required permissions.
+If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-cloud-pc --type space[0m
+[90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
