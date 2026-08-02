@@ -9,7 +9,7 @@ on:
       - ".github/workflows/sync-huggingface.yml"
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
@@ -24,6 +24,8 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Upload Space through trusted publishing
+        id: upload
+        continue-on-error: true
         env:
           HF_OIDC_RESOURCE: spaces/Echoxr/ripoteam-cloud-pc
         run: |
@@ -32,3 +34,26 @@ jobs:
             --repo-type space \
             --delete "*" \
             --commit-message "Deploy Ripo Team Cloud PC from ${GITHUB_SHA::7}"
+
+      - name: Record deployment result
+        if: always()
+        env:
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p .deployment-status
+          {
+            echo "Hugging Face deployment: ${UPLOAD_OUTCOME}"
+            echo "Source commit: ${GITHUB_SHA}"
+            echo "Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "Recorded at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > .deployment-status/huggingface.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .deployment-status/huggingface.txt
+          git commit -m "Record Hugging Face deployment ${UPLOAD_OUTCOME}" || true
+          git push
+
+      - name: Fail if upload failed
+        if: steps.upload.outcome != 'success'
+        run: exit 1
