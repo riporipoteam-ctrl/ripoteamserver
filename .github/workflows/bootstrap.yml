@@ -1,0 +1,42 @@
+name: Bootstrap Ripo Team Cloud PC
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ripoteam-hf-cloud-pc.zip"
+      - ".github/workflows/bootstrap.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack project into repository
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ripoteam-cloud-pc
+          mkdir -p /tmp/ripoteam-cloud-pc
+          unzip -q ripoteam-hf-cloud-pc.zip -d /tmp/ripoteam-cloud-pc
+          rsync -a --delete --exclude='.git/' /tmp/ripoteam-cloud-pc/ripoteam-hf-cloud-pc/ ./
+          rm -f ripoteam-hf-cloud-pc.zip .github/workflows/bootstrap.yml
+
+      - name: Commit unpacked project
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Deploy Ripo Team Cloud PC source"
+          git push
+
+      - name: Start GitHub Pages deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml || true
