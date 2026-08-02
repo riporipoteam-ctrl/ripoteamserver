@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#060812">
+  <meta name="description" content="Ripo Team Cloud PC control centre">
+  <title>Ripo Team Cloud PC</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div id="boot" class="boot">
+    <div class="logo">R</div>
+    <h1>Ripo Team Cloud PC</h1>
+    <p>Loading command centre…</p>
+    <div class="boot-line"><span></span></div>
+  </div>
+
+  <main id="app" class="app hidden">
+    <header class="topbar">
+      <div class="brand"><span class="mini-logo">R</span><strong>Ripo Team OS</strong></div>
+      <div class="top-status"><i id="status-dot" class="dot checking"></i><span id="status-text">Checking</span><time id="clock"></time></div>
+    </header>
+
+    <section class="workspace">
+      <nav class="dock" aria-label="Cloud PC applications">
+        <button class="active" data-window="desktop" title="Linux desktop">🖥️</button>
+        <button data-window="server" title="Server">📡</button>
+        <button data-window="hermes" title="Hermes">🧠</button>
+        <button data-window="logs" title="Logs">📜</button>
+        <button data-window="settings" title="Settings">⚙️</button>
+      </nav>
+
+      <section id="desktop" class="window desktop-window">
+        <div class="window-bar">
+          <div><strong>Linux Computer</strong><span id="desktop-subtitle">Connecting…</span></div>
+          <div class="window-buttons"><button id="reconnect" title="Reconnect">↻</button><button id="fullscreen" title="Fullscreen">⛶</button></div>
+        </div>
+        <div id="connect-panel" class="connect-panel">
+          <div class="orb"><span></span></div>
+          <h2 id="connect-title">Waking Hugging Face Space</h2>
+          <p id="connect-message">The first start or a wake from sleep can take several minutes.</p>
+          <div class="progress"><span id="progress"></span></div>
+          <button id="connect-button" class="primary">Try now</button>
+        </div>
+        <iframe id="desktop-frame" class="desktop-frame hidden" allow="clipboard-read; clipboard-write; fullscreen" title="Ripo Team Linux desktop"></iframe>
+      </section>
+
+      <section id="server" class="window floating hidden">
+        <div class="window-bar"><strong>Server status</strong><button data-close="server">×</button></div>
+        <div class="content metrics">
+          <article><span>State</span><strong id="metric-state">Checking</strong></article>
+          <article><span>Architecture</span><strong id="metric-arch">—</strong></article>
+          <article><span>CPU</span><strong id="metric-cpu">—</strong></article>
+          <article><span>Memory</span><strong id="metric-memory">—</strong></article>
+          <article><span>Disk</span><strong id="metric-disk">—</strong></article>
+          <article><span>Hermes</span><strong id="metric-hermes">—</strong></article>
+          <pre id="health-json"></pre>
+        </div>
+      </section>
+
+      <section id="hermes" class="window floating hidden">
+        <div class="window-bar"><strong>Hermes Agent</strong><button data-close="hermes">×</button></div>
+        <div class="content">
+          <p class="muted">Install Hermes, complete its setup in the Linux terminal, then run its gateway for Telegram, Discord or API access.</p>
+          <div class="button-grid">
+            <button id="install-hermes" class="primary">Install Hermes</button>
+            <button id="start-hermes">Start gateway</button>
+            <button id="stop-hermes">Stop gateway</button>
+            <button id="refresh-hermes">Refresh status</button>
+          </div>
+          <div id="hermes-result" class="result">No action yet.</div>
+        </div>
+      </section>
+
+      <section id="logs" class="window floating hidden">
+        <div class="window-bar"><strong>System logs</strong><button data-close="logs">×</button></div>
+        <div class="content">
+          <div class="log-tabs">
+            <button data-log="x11vnc">VNC</button>
+            <button data-log="openbox">Desktop</button>
+            <button data-log="hermes-install">Hermes install</button>
+            <button data-log="hermes-gateway">Hermes gateway</button>
+          </div>
+          <pre id="log-output">Choose a log.</pre>
+        </div>
+      </section>
+
+      <section id="settings" class="window floating hidden">
+        <div class="window-bar"><strong>Settings</strong><button data-close="settings">×</button></div>
+        <div class="content form">
+          <label>Hugging Face Space URL<input id="space-url" type="url" placeholder="https://username-space.hf.space"></label>
+          <label>Cloudflare proxy URL, optional<input id="proxy-url" type="url" placeholder="https://your-worker.workers.dev"></label>
+          <label>ADMIN_TOKEN<input id="admin-token" type="password" placeholder="Stored only on this device"></label>
+          <button id="save-settings" class="primary">Save settings</button>
+          <p class="muted">The VNC password is entered inside noVNC. Never put passwords directly in the public GitHub repository.</p>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="./config.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
