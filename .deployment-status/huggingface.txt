@@ -1,9 +1,9 @@
 Hugging Face deployment: success
 Hugging Face runtime wait: failure
 Hugging Face Space health: skipped
-Source commit: e4cd4ea2b8a510c60018e860ec85b3c0672e5b98
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30770903535
-Recorded at: 2026-08-02T22:48:51Z
+Source commit: ba836289647969e2b596b4b0b5c5f91ee36f2e56
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30771153353
+Recorded at: 2026-08-02T22:57:09Z
 
 ===== space-info.txt =====
 {
@@ -14,7 +14,7 @@ Recorded at: 2026-08-02T22:48:51Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-02T22:31:24+00:00",
+  "last_modified": "2026-08-02T22:55:42+00:00",
   "likes": 0,
   "private": false,
   "runtime": {
@@ -28,7 +28,7 @@ Recorded at: 2026-08-02T22:48:51Z
         "requested": "zero-a10g"
       },
       "gcTimeout": 172800,
-      "errorMessage": "Exit code: 3. Reason: \n[notice] A new release of pip is available: 26.1.2 -> 26.2\n[notice] To update, run: pip install --upgrade pip\n/home/user/app/app.py:304: DeprecationWarning: \n        on_event is deprecated, use lifespan event handlers instead.\n\n        Read more about it in the\n        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).\n        \n  @api.on_event(\"startup\")\nINFO:     Started server process [1]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nERROR:    [Errno 98] error while attempting to bind on address ('0.0.0.0', 7860): address already in use\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\n",
+      "errorMessage": "Exit code: 0. Reason: ",
       "replicas": {
         "requested": 1
       },
@@ -42,7 +42,7 @@ Recorded at: 2026-08-02T22:48:51Z
     }
   },
   "sdk": "gradio",
-  "sha": "972ce7dd6f11b6be73662f4a5fb122b8dc395c5f",
+  "sha": "753433552e85c67c491031329d2123ddeefe4762",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
