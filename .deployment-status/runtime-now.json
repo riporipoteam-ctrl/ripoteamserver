@@ -1,0 +1,33 @@
+{
+  "sha": "972ce7dd6f11b6be73662f4a5fb122b8dc395c5f",
+  "last_modified": "2026-08-02 22:31:24+00:00",
+  "runtime": {
+    "stage": "RUNTIME_ERROR",
+    "hardware": null,
+    "requested_hardware": "zero-a10g",
+    "sleep_time": 172800,
+    "storage": null,
+    "dev_mode": false,
+    "hot_reloading": null,
+    "volumes": null,
+    "raw": {
+      "stage": "RUNTIME_ERROR",
+      "hardware": {
+        "current": null,
+        "requested": "zero-a10g"
+      },
+      "gcTimeout": 172800,
+      "errorMessage": "Exit code: 3. Reason: \n[notice] A new release of pip is available: 26.1.2 -> 26.2\n[notice] To update, run: pip install --upgrade pip\n/home/user/app/app.py:304: DeprecationWarning: \n        on_event is deprecated, use lifespan event handlers instead.\n\n        Read more about it in the\n        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).\n        \n  @api.on_event(\"startup\")\nINFO:     Started server process [1]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nERROR:    [Errno 98] error while attempting to bind on address ('0.0.0.0', 7860): address already in use\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\n",
+      "replicas": {
+        "requested": 1
+      },
+      "devMode": false,
+      "domains": [
+        {
+          "domain": "echoxr-ripoteam-cloud-pc.hf.space",
+          "stage": "READY"
+        }
+      ]
+    }
+  }
+}
