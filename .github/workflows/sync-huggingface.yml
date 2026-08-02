@@ -15,6 +15,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -35,25 +36,52 @@ jobs:
             --delete "*" \
             --commit-message "Deploy Ripo Team Cloud PC from ${GITHUB_SHA::7}"
 
+      - name: Wait for live Space health
+        id: health
+        if: steps.upload.outcome == 'success'
+        continue-on-error: true
+        env:
+          SPACE_URL: https://echoxr-ripoteam-cloud-pc.hf.space
+        run: |
+          set -u
+          : > /tmp/last-health.txt
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/health" -o /tmp/last-health.txt; then
+              python -m json.tool /tmp/last-health.txt
+              exit 0
+            fi
+            echo "Space is still building or waking (attempt $attempt/60)."
+            sleep 10
+          done
+          echo "Space did not become healthy in time." >&2
+          exit 1
+
       - name: Record deployment result
         if: always()
         env:
           UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+          HEALTH_OUTCOME: ${{ steps.health.outcome }}
         run: |
           set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
           mkdir -p .deployment-status
           {
             echo "Hugging Face deployment: ${UPLOAD_OUTCOME}"
+            echo "Hugging Face Space health: ${HEALTH_OUTCOME}"
             echo "Source commit: ${GITHUB_SHA}"
             echo "Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "Recorded at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            if [ -s /tmp/last-health.txt ]; then
+              echo "Health response:"
+              cat /tmp/last-health.txt
+            fi
           } > .deployment-status/huggingface.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .deployment-status/huggingface.txt
-          git commit -m "Record Hugging Face deployment ${UPLOAD_OUTCOME}" || true
+          git commit -m "Record Hugging Face deployment ${UPLOAD_OUTCOME}, health ${HEALTH_OUTCOME}" || true
           git push
 
-      - name: Fail if upload failed
-        if: steps.upload.outcome != 'success'
+      - name: Fail if deployment is not healthy
+        if: steps.upload.outcome != 'success' || steps.health.outcome != 'success'
         run: exit 1
