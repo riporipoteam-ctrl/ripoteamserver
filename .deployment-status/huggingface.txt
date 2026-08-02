@@ -1,9 +1,9 @@
 Hugging Face deployment: success
-Hugging Face runtime wait: failure
-Hugging Face Space health: skipped
-Source commit: af0d80fa2f017fa3d32edf0924e0a689f315fc68
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30771584373
-Recorded at: 2026-08-02T23:08:57Z
+Hugging Face runtime wait: success
+Hugging Face Space health: success
+Source commit: 944a024722d25bae86fbab47041d549b0bd75d48
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30771818247
+Recorded at: 2026-08-02T23:16:36Z
 
 ===== space-info.txt =====
 {
@@ -14,22 +14,24 @@ Recorded at: 2026-08-02T23:08:57Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-02T23:07:29+00:00",
+  "last_modified": "2026-08-02T23:14:15+00:00",
   "likes": 0,
   "private": false,
   "runtime": {
-    "stage": "RUNTIME_ERROR",
+    "stage": "RUNNING",
+    "hardware": "zero-a10g",
     "requested_hardware": "zero-a10g",
     "sleep_time": 172800,
     "dev_mode": false,
     "raw": {
-      "stage": "RUNTIME_ERROR",
+      "stage": "RUNNING",
       "hardware": {
+        "current": "zero-a10g",
         "requested": "zero-a10g"
       },
       "gcTimeout": 172800,
-      "errorMessage": "No @spaces.GPU function detected during startup",
       "replicas": {
+        "current": 1,
         "requested": 1
       },
       "devMode": false,
@@ -38,11 +40,13 @@ Recorded at: 2026-08-02T23:08:57Z
           "domain": "echoxr-ripoteam-cloud-pc.hf.space",
           "stage": "READY"
         }
-      ]
+      ],
+      "sha": "7c20f4e1b57345c98825ae20a8f6adf7c619b4bf",
+      "pySpacesVersion": "0.51.1"
     }
   },
   "sdk": "gradio",
-  "sha": "842dca72f58a90c3b9b930b6f3a4236d8a42ccfd",
+  "sha": "7c20f4e1b57345c98825ae20a8f6adf7c619b4bf",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
@@ -82,3 +86,6 @@ If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-clou
 If the repo is private, make sure you are authenticated and your token has the required permissions.
 If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-cloud-pc --type space[0m
 [90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
+
+===== last-health.txt =====
+{"ok":true,"name":"Ripo Team Cloud PC","platform":"Hugging Face Gradio Space","architecture":"x86_64","cpu_count":192,"memory_total":2147443810304,"memory_available":926023135232,"disk_total":8589854879744,"disk_free":2199196160000,"desktop":{},"security":{"custom_vnc_password":true,"admin_token_configured":true},"hermes":{"installed":false,"running":false,"install":{"running":false,"last_result":null,"started_at":null,"finished_at":null}},"timestamp":1785712596.3306522}
