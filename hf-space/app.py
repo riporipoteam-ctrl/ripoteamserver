@@ -16,9 +16,9 @@ from typing import Any
 from gradio import Server
 import psutil
 from fastapi import Header, HTTPException, WebSocket, WebSocketDisconnect
-from fastapp.middleware.cors import CORSMiddleware
-from fastapp.responses import HTMLResponse, JSONResponse
-from fastapp.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 DISPLAY = os.environ.get("DISPLAY", ":99")
 HOME = Path.home()
@@ -34,12 +34,6 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 PROCESSES: dict[str, subprocess.Popen[Any]] = {}
 HERMES_PROCESS: subprocess.Popen[Any] | None = None
 HERMES_INSTALL_THREAD: threading.Thread | None = None
-
-
-@spaces.GPU(duration=1)
-def zero_gpu_runtime_probe() -> str:
-    """Minimal GPU-decorated function required by ZeroGPU hosting."""
-    return "ZeroGPU runtime available"
 
 
 HERMES_INSTALL_STATE: dict[str, Any] = {
