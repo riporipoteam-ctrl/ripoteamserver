@@ -8,7 +8,7 @@ app_file: app.py
 python_version: 3.12
 fullWidth: true
 header: mini
-suggested_hardware: zerogpu
+suggested_hardware: zero-a10g
 pinned: false
 ---
 
