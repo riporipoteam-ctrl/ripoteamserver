@@ -16,10 +16,15 @@ concurrency:
   group: huggingface-space-deployment
   cancel-in-progress: true
 
+env:
+  HF_SPACE_ID: Echoxr/ripoteam-cloud-pc
+  HF_OIDC_RESOURCE: spaces/Echoxr/ripoteam-cloud-pc
+  SPACE_URL: https://echoxr-ripoteam-cloud-pc.hf.space
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 13
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -31,44 +36,52 @@ jobs:
       - name: Upload Space through trusted publishing
         id: upload
         continue-on-error: true
-        env:
-          HF_OIDC_RESOURCE: spaces/Echoxr/ripoteam-cloud-pc
         run: |
           set -euo pipefail
-          hf upload Echoxr/ripoteam-cloud-pc hf-space . \
+          hf upload "$HF_SPACE_ID" hf-space . \
             --repo-type space \
             --delete "*" \
             --commit-message "Deploy Ripo Team Cloud PC from ${GITHUB_SHA::7}"
 
-      - name: Wait for live Space health
-        id: health
+      - name: Inspect Space immediately after upload
         if: steps.upload.outcome == 'success'
         continue-on-error: true
-        env:
-          SPACE_URL: https://echoxr-ripoteam-cloud-pc.hf.space
+        run: hf spaces info "$HF_SPACE_ID"
+
+      - name: Wait for Hugging Face runtime
+        id: runtime
+        if: steps.upload.outcome == 'success'
+        continue-on-error: true
         run: |
-          set -u
-          : > /tmp/last-health.txt
-          : > /tmp/curl-error.txt
-          for attempt in $(seq 1 60); do
-            if curl --fail --silent --show-error --max-time 5 \
-              "$SPACE_URL/api/health" \
-              -o /tmp/last-health.txt \
-              2>/tmp/curl-error.txt; then
-              python -m json.tool /tmp/last-health.txt
-              exit 0
-            fi
-            echo "Space is still building or waking (attempt $attempt/60)."
-            sleep 5
-          done
-          echo "Space did not become healthy in time." >&2
-          cat /tmp/curl-error.txt >&2 || true
-          exit 1
+          set -euo pipefail
+          hf spaces wait "$HF_SPACE_ID" --timeout 8m
+
+      - name: Capture Space runtime information
+        if: always()
+        continue-on-error: true
+        run: |
+          set +e
+          hf spaces info "$HF_SPACE_ID" 2>&1 | tee /tmp/space-info.txt
+          hf spaces logs "$HF_SPACE_ID" --build -n 250 2>&1 | tee /tmp/build-logs.txt
+          hf spaces logs "$HF_SPACE_ID" -n 250 2>&1 | tee /tmp/runtime-logs.txt
+          exit 0
+
+      - name: Test live health endpoint
+        id: health
+        if: steps.upload.outcome == 'success' && steps.runtime.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 30 \
+            "$SPACE_URL/api/health" \
+            -o /tmp/last-health.txt
+          python -m json.tool /tmp/last-health.txt
 
       - name: Record deployment result
         if: always()
         env:
           UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+          RUNTIME_OUTCOME: ${{ steps.runtime.outcome }}
           HEALTH_OUTCOME: ${{ steps.health.outcome }}
         run: |
           set -euo pipefail
@@ -78,23 +91,23 @@ jobs:
           mkdir -p .deployment-status
           {
             echo "Hugging Face deployment: ${UPLOAD_OUTCOME}"
+            echo "Hugging Face runtime wait: ${RUNTIME_OUTCOME}"
             echo "Hugging Face Space health: ${HEALTH_OUTCOME}"
             echo "Source commit: ${GITHUB_SHA}"
             echo "Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "Recorded at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            if [ -s /tmp/last-health.txt ]; then
-              echo "Health response:"
-              cat /tmp/last-health.txt
-            fi
-            if [ -s /tmp/curl-error.txt ]; then
-              echo "Last health error:"
-              cat /tmp/curl-error.txt
-            fi
+            for file in /tmp/space-info.txt /tmp/build-logs.txt /tmp/runtime-logs.txt /tmp/last-health.txt; do
+              if [ -s "$file" ]; then
+                echo
+                echo "===== $(basename "$file") ====="
+                tail -n 250 "$file"
+              fi
+            done
           } > .deployment-status/huggingface.txt
           git add .deployment-status/huggingface.txt
-          git commit -m "Record Hugging Face deployment ${UPLOAD_OUTCOME}, health ${HEALTH_OUTCOME}" || true
+          git commit -m "Record Hugging Face runtime diagnostics" || true
           git push
 
       - name: Fail if deployment is not healthy
-        if: steps.upload.outcome != 'success' || steps.health.outcome != 'success'
+        if: steps.upload.outcome != 'success' || steps.runtime.outcome != 'success' || steps.health.outcome != 'success'
         run: exit 1
