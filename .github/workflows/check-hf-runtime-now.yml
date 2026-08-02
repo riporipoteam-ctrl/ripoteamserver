@@ -16,9 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Query public Space runtime
+      - name: Query public Space runtime and routes
         run: |
-          echo "Runtime probe revision 6"
+          echo "Runtime probe revision 7"
           python -m pip install --quiet --upgrade huggingface_hub
           python - <<'PY' > /tmp/runtime.txt
           import json
@@ -37,7 +37,17 @@ jobs:
               "runtime": runtime,
           }, indent=2, default=str))
           PY
+
+          BASE="https://echoxr-ripoteam-cloud-pc.hf.space"
+          {
+            echo "root_status=$(curl -L -sS -o /tmp/root.html -w '%{http_code}' --max-time 30 "$BASE/")"
+            echo "health_status=$(curl -L -sS -o /tmp/health.json -w '%{http_code}' --max-time 30 "$BASE/api/health")"
+            echo "novnc_status=$(curl -L -sS -o /tmp/vnc.html -w '%{http_code}' --max-time 30 "$BASE/novnc/vnc.html")"
+          } > /tmp/routes.txt
+
           cat /tmp/runtime.txt
+          cat /tmp/routes.txt
+          cat /tmp/health.json || true
 
       - name: Save runtime result
         run: |
@@ -45,7 +55,15 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
           mkdir -p .deployment-status
-          cp /tmp/runtime.txt .deployment-status/runtime-now.json
+          {
+            cat /tmp/runtime.txt
+            echo
+            echo "PUBLIC ROUTES"
+            cat /tmp/routes.txt
+            echo
+            echo "HEALTH RESPONSE"
+            cat /tmp/health.json || true
+          } > .deployment-status/runtime-now.json
           git add .deployment-status/runtime-now.json
-          git commit -m "Record current Hugging Face runtime" || true
+          git commit -m "Record current Hugging Face runtime and routes" || true
           git push
