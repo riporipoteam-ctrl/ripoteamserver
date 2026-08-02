@@ -18,7 +18,7 @@ jobs:
 
       - name: Query public Space runtime
         run: |
-          echo "Runtime probe revision 2"
+          echo "Runtime probe revision 3"
           python -m pip install --quiet --upgrade huggingface_hub
           python - <<'PY' > /tmp/runtime.txt
           import json
