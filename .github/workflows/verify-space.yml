@@ -7,7 +7,7 @@ on:
     types: [completed]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -15,14 +15,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
+      - uses: actions/checkout@v4
+
       - name: Wait for Space health endpoint
+        id: health
+        continue-on-error: true
         env:
           SPACE_URL: https://echoxr-ripoteam-cloud-pc.hf.space
         run: |
-          set -euo pipefail
+          set -u
+          : > /tmp/last-health.txt
           for attempt in $(seq 1 60); do
-            if curl --fail --silent --show-error --max-time 15 "$SPACE_URL/api/health" | tee /tmp/health.json; then
-              python -m json.tool /tmp/health.json
+            if curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/health" -o /tmp/last-health.txt; then
+              python -m json.tool /tmp/last-health.txt
               exit 0
             fi
             echo "Space is still building or waking (attempt $attempt/60)."
@@ -30,3 +35,31 @@ jobs:
           done
           echo "Space did not become healthy in time." >&2
           exit 1
+
+      - name: Record health result
+        if: always()
+        env:
+          HEALTH_OUTCOME: ${{ steps.health.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p .deployment-status
+          {
+            echo "Hugging Face Space health: ${HEALTH_OUTCOME}"
+            echo "Space URL: https://echoxr-ripoteam-cloud-pc.hf.space"
+            echo "Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "Recorded at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            if [ -s /tmp/last-health.txt ]; then
+              echo "Response:"
+              cat /tmp/last-health.txt
+            fi
+          } > .deployment-status/space-health.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
+          git add .deployment-status/space-health.txt
+          git commit -m "Record Hugging Face Space health ${HEALTH_OUTCOME}" || true
+          git push
+
+      - name: Fail if Space is unhealthy
+        if: steps.health.outcome != 'success'
+        run: exit 1
