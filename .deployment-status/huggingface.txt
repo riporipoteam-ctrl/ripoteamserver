@@ -1,9 +1,9 @@
 Hugging Face deployment: success
 Hugging Face runtime wait: success
 Hugging Face Space health: success
-Source commit: 944a024722d25bae86fbab47041d549b0bd75d48
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30771818247
-Recorded at: 2026-08-02T23:16:36Z
+Source commit: 1a58bee3e8e853919a8c2c1acf3e24b723728997
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30771969128
+Recorded at: 2026-08-02T23:19:43Z
 
 ===== space-info.txt =====
 {
@@ -14,7 +14,7 @@ Recorded at: 2026-08-02T23:16:36Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-02T23:14:15+00:00",
+  "last_modified": "2026-08-02T23:18:24+00:00",
   "likes": 0,
   "private": false,
   "runtime": {
@@ -41,12 +41,12 @@ Recorded at: 2026-08-02T23:16:36Z
           "stage": "READY"
         }
       ],
-      "sha": "7c20f4e1b57345c98825ae20a8f6adf7c619b4bf",
+      "sha": "51e08a0d416b6cee4f11ca3926da99b949aae964",
       "pySpacesVersion": "0.51.1"
     }
   },
   "sdk": "gradio",
-  "sha": "7c20f4e1b57345c98825ae20a8f6adf7c619b4bf",
+  "sha": "51e08a0d416b6cee4f11ca3926da99b949aae964",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
@@ -88,4 +88,4 @@ If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-clou
 [90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
 
 ===== last-health.txt =====
-{"ok":true,"name":"Ripo Team Cloud PC","platform":"Hugging Face Gradio Space","architecture":"x86_64","cpu_count":192,"memory_total":2147443810304,"memory_available":926023135232,"disk_total":8589854879744,"disk_free":2199196160000,"desktop":{},"security":{"custom_vnc_password":true,"admin_token_configured":true},"hermes":{"installed":false,"running":false,"install":{"running":false,"last_result":null,"started_at":null,"finished_at":null}},"timestamp":1785712596.3306522}
+{"ok":true,"name":"Ripo Team Cloud PC","platform":"Hugging Face Gradio Space","architecture":"x86_64","cpu_count":192,"memory_total":2147443806208,"memory_available":907354415104,"disk_total":8589854879744,"disk_free":2188367986688,"desktop":{"xvfb":{"pid":221,"running":true,"returncode":null},"openbox":{"pid":224,"running":true,"returncode":null},"pcmanfm":{"pid":225,"running":true,"returncode":null},"lxpanel":{"pid":226,"running":true,"returncode":null},"xterm":{"pid":230,"running":true,"returncode":null},"x11vnc":{"pid":231,"running":true,"returncode":null}},"security":{"custom_vnc_password":true,"admin_token_configured":true},"hermes":{"installed":false,"running":false,"install":{"running":false,"last_result":null,"started_at":null,"finished_at":null}},"timestamp":1785712783.5905273}
