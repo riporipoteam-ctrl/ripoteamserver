@@ -1,4 +1,4 @@
-name: Fix Hugging Face duplicate server start
+name: Configure Hugging Face ZeroGPU server
 
 on:
   push:
@@ -16,19 +16,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Remove duplicate Uvicorn launch
+      - name: Disable Gradio SSR and restore Uvicorn launch
         run: |
           python - <<'PY'
           from pathlib import Path
 
           path = Path("hf-space/app.py")
           text = path.read_text(encoding="utf-8")
-          block = '''\n\nif __name__ == "__main__":\n    import uvicorn\n\n    uvicorn.run(app, host="0.0.0.0", port=7860, log_level="info")\n'''
-          if block in text:
-              path.write_text(text.replace(block, "\n"), encoding="utf-8")
-              print("Removed duplicate Uvicorn launch.")
-          else:
-              print("Duplicate Uvicorn block was already absent.")
+
+          text = text.replace(
+              'app = gr.mount_gradio_app(api, demo, path="/control")',
+              'app = gr.mount_gradio_app(api, demo, path="/control", ssr_mode=False)',
+          )
+
+          launch = '''\n\nif __name__ == "__main__":\n    import uvicorn\n\n    uvicorn.run(app, host="0.0.0.0", port=7860, log_level="info")\n'''
+          if 'if __name__ == "__main__":' not in text:
+              text = text.rstrip() + launch
+
+          path.write_text(text, encoding="utf-8")
+          print("Configured ssr_mode=False and restored Uvicorn launch.")
           PY
 
       - name: Commit fix
@@ -36,5 +42,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add hf-space/app.py
-          git commit -m "Fix Hugging Face duplicate port binding" || true
+          git commit -m "Configure Gradio SSR for ZeroGPU" || true
           git push
