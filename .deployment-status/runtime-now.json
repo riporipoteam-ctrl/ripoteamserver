@@ -1,8 +1,8 @@
 {
-  "sha": "842dca72f58a90c3b9b930b6f3a4236d8a42ccfd",
-  "last_modified": "2026-08-02 23:07:29+00:00",
+  "sha": "7c20f4e1b57345c98825ae20a8f6adf7c619b4bf",
+  "last_modified": "2026-08-02 23:14:15+00:00",
   "runtime": {
-    "stage": "APP_STARTING",
+    "stage": "BUILDING",
     "hardware": null,
     "requested_hardware": "zero-a10g",
     "sleep_time": 172800,
@@ -11,7 +11,7 @@
     "hot_reloading": null,
     "volumes": null,
     "raw": {
-      "stage": "APP_STARTING",
+      "stage": "BUILDING",
       "hardware": {
         "current": null,
         "requested": "zero-a10g"
