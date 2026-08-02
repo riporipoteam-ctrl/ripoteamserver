@@ -472,6 +472,8 @@ Set `VNC_PASSWORD` and `ADMIN_TOKEN` as Space secrets. Install Hermes here, then
 """
     )
     token = gr.Textbox(label="ADMIN_TOKEN", type="password")
+    zero_gpu_button = gr.Button("ZeroGPU runtime probe", visible=False)
+    zero_gpu_output = gr.Textbox(label="ZeroGPU status", visible=False)
     with gr.Row():
         refresh = gr.Button("Refresh status", variant="primary")
         install = gr.Button("Install Hermes")
@@ -481,6 +483,7 @@ Set `VNC_PASSWORD` and `ADMIN_TOKEN` as Space secrets. Install Hermes here, then
     status_output = gr.Code(label="Server status", language="json")
     logs_output = gr.Code(label="Recent logs", language="shell")
 
+    zero_gpu_button.click(zero_gpu_runtime_probe, outputs=zero_gpu_output)
     refresh.click(gradio_status, outputs=[status_output, logs_output])
     install.click(lambda value: gradio_action(value, "install"), inputs=token, outputs=action_output)
     start.click(lambda value: gradio_action(value, "start"), inputs=token, outputs=action_output)
