@@ -479,8 +479,3 @@ Set `VNC_PASSWORD` and `ADMIN_TOKEN` as Space secrets. Install Hermes here, then
     demo.load(gradio_status, outputs=[status_output, logs_output])
 
 app = gr.mount_gradio_app(api, demo, path="/control")
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=7860, log_level="info")
