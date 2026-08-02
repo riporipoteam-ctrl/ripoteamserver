@@ -16,13 +16,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Disable Gradio SSR and restore Uvicorn launch
+      - name: Add ZeroGPU marker and keep SSR disabled
         run: |
           python - <<'PY'
           from pathlib import Path
 
           path = Path("hf-space/app.py")
           text = path.read_text(encoding="utf-8")
+
+          if "import spaces\n" not in text:
+              text = text.replace("import psutil\n", "import psutil\nimport spaces\n", 1)
+
+          marker = '''\n\n@spaces.GPU(duration=1)\ndef zero_gpu_runtime_probe() -> str:\n    \"\"\"Minimal GPU-decorated function required by ZeroGPU hosting.\"\"\"\n    return \"ZeroGPU runtime available\"\n'''
+          anchor = 'HERMES_INSTALL_STATE: dict[str, Any] = {'
+          if "def zero_gpu_runtime_probe" not in text:
+              position = text.index(anchor)
+              text = text[:position] + marker + "\n\n" + text[position:]
 
           text = text.replace(
               'app = gr.mount_gradio_app(api, demo, path="/control")',
@@ -34,13 +43,16 @@ jobs:
               text = text.rstrip() + launch
 
           path.write_text(text, encoding="utf-8")
-          print("Configured ssr_mode=False and restored Uvicorn launch.")
+          print("Added @spaces.GPU marker and preserved ZeroGPU server settings.")
           PY
+
+      - name: Validate Python syntax
+        run: python -m py_compile hf-space/app.py
 
       - name: Commit fix
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add hf-space/app.py
-          git commit -m "Configure Gradio SSR for ZeroGPU" || true
+          git commit -m "Add required ZeroGPU function" || true
           git push
