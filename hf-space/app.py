@@ -14,6 +14,7 @@ from typing import Any
 
 import gradio as gr
 import psutil
+import spaces
 from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -33,6 +34,14 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 PROCESSES: dict[str, subprocess.Popen[Any]] = {}
 HERMES_PROCESS: subprocess.Popen[Any] | None = None
 HERMES_INSTALL_THREAD: threading.Thread | None = None
+
+
+@spaces.GPU(duration=1)
+def zero_gpu_runtime_probe() -> str:
+    """Minimal GPU-decorated function required by ZeroGPU hosting."""
+    return "ZeroGPU runtime available"
+
+
 HERMES_INSTALL_STATE: dict[str, Any] = {
     "running": False,
     "last_result": None,
