@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Add ZeroGPU marker and keep SSR disabled
+      - name: Register the ZeroGPU function as a Gradio event
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -27,11 +27,28 @@ jobs:
           if "import spaces\n" not in text:
               text = text.replace("import psutil\n", "import psutil\nimport spaces\n", 1)
 
-          marker = '''\n\n@spaces.GPU(duration=1)\ndef zero_gpu_runtime_probe() -> str:\n    \"\"\"Minimal GPU-decorated function required by ZeroGPU hosting.\"\"\"\n    return \"ZeroGPU runtime available\"\n'''
+          marker = '''\n\n@spaces.GPU(duration=1)\ndef zero_gpu_runtime_probe() -> str:\n    \"\"\"Minimal registered function required by ZeroGPU hosting.\"\"\"\n    return \"ZeroGPU runtime available\"\n'''
           anchor = 'HERMES_INSTALL_STATE: dict[str, Any] = {'
           if "def zero_gpu_runtime_probe" not in text:
               position = text.index(anchor)
               text = text[:position] + marker + "\n\n" + text[position:]
+
+          component_anchor = '    token = gr.Textbox(label="ADMIN_TOKEN", type="password")\n'
+          components = (
+              '    token = gr.Textbox(label="ADMIN_TOKEN", type="password")\n'
+              '    zero_gpu_button = gr.Button("ZeroGPU runtime probe", visible=False)\n'
+              '    zero_gpu_output = gr.Textbox(label="ZeroGPU status", visible=False)\n'
+          )
+          if "zero_gpu_button = gr.Button" not in text:
+              text = text.replace(component_anchor, components, 1)
+
+          event_anchor = '    refresh.click(gradio_status, outputs=[status_output, logs_output])\n'
+          event = (
+              '    zero_gpu_button.click(zero_gpu_runtime_probe, outputs=zero_gpu_output)\n'
+              '    refresh.click(gradio_status, outputs=[status_output, logs_output])\n'
+          )
+          if "zero_gpu_button.click" not in text:
+              text = text.replace(event_anchor, event, 1)
 
           text = text.replace(
               'app = gr.mount_gradio_app(api, demo, path="/control")',
@@ -43,7 +60,7 @@ jobs:
               text = text.rstrip() + launch
 
           path.write_text(text, encoding="utf-8")
-          print("Added @spaces.GPU marker and preserved ZeroGPU server settings.")
+          print("Registered @spaces.GPU as a hidden Gradio event.")
           PY
 
       - name: Validate Python syntax
@@ -54,5 +71,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add hf-space/app.py
-          git commit -m "Add required ZeroGPU function" || true
+          git commit -m "Register ZeroGPU function in Gradio" || true
           git push
