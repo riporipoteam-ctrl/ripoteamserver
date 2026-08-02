@@ -1,35 +1,31 @@
 # Deployment checklist
 
-## 1. GitHub
+## 1. Hugging Face trusted publishing
 
-The repository is `riporipoteam-ctrl/ripoteamserver`.
+Open the settings for Space `Echoxr/ripoteam-cloud-pc`.
 
-In **Settings → Pages**, choose **GitHub Actions**.
+Under **Trusted Publishers**, add **GitHub Actions** with these exact claims:
 
-Add repository variables:
+- Repository: `riporipoteam-ctrl/ripoteamserver`
+- Branch: `main`
+- Workflow: `sync-huggingface.yml`
 
-- `HF_SPACE_REPO` = `Echoxr/ripoteam-cloud-pc`
-- `HF_SPACE_URL` = `https://echoxr-ripoteam-cloud-pc.hf.space`
-- `CLOUDFLARE_PROXY_URL` = optional Worker URL
+This gives the workflow a short-lived, Space-scoped token through GitHub OIDC. No permanent `HF_TOKEN` GitHub secret is required.
 
-Add repository secrets:
+In the same Space settings, add these secrets:
 
-- `HF_TOKEN` = Hugging Face write token
-- `HF_VNC_PASSWORD` = strong VNC password
-- `HF_ADMIN_TOKEN` = long random admin token
+- `VNC_PASSWORD` — a strong password for the Linux desktop
+- `ADMIN_TOKEN` — a separate long random value for Hermes and log controls
 
-Run **Create or update Hugging Face Space**. After it finishes, **Verify Hugging Face Space** checks the real `/api/health` endpoint automatically.
+## 2. GitHub
 
-## 2. Hugging Face
+In repository **Settings → Pages**, choose **GitHub Actions**.
 
-The workflow uploads `hf-space/` to the public Gradio Space `Echoxr/ripoteam-cloud-pc`.
+The production Space URL is already configured as `https://echoxr-ripoteam-cloud-pc.hf.space`.
 
-Set or verify Space secrets:
+Run **Actions → Create or update Hugging Face Space → Run workflow**. The workflow uploads only the `hf-space/` folder. After it succeeds, **Verify Hugging Face Space** waits for the real `/api/health` endpoint automatically.
 
-- `VNC_PASSWORD`
-- `ADMIN_TOKEN`
-
-Wait for the build to finish, then use the GitHub Pages dashboard or open the noVNC desktop path from the Space control page.
+The Pages workflow deploys the `site/` folder.
 
 ## 3. Hermes
 
@@ -57,7 +53,7 @@ Add GitHub secrets:
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
 
-Run **Deploy optional Cloudflare proxy** and place the resulting URL in the `CLOUDFLARE_PROXY_URL` GitHub variable.
+Run **Deploy optional Cloudflare proxy** and place the resulting Worker URL in a repository variable named `CLOUDFLARE_PROXY_URL`.
 
 The noVNC desktop still connects directly to Hugging Face.
 
@@ -65,4 +61,4 @@ The noVNC desktop still connects directly to Hugging Face.
 
 The GitHub Pages frontend remains available as a static site. When opened, it requests the Space health endpoint, waits while a sleeping or rebuilding Space starts, and reconnects to noVNC.
 
-The verification workflow checks the Space after deployments. It does not schedule artificial traffic whose sole purpose is defeating Hugging Face's free-tier sleep policy.
+The verification workflow checks the Space after deployments. It does not schedule artificial traffic whose sole purpose is defeating Hugging Face's free-tier sleep policy. Hugging Face documents paid hardware as the supported route for indefinite execution.
