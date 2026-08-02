@@ -14,23 +14,23 @@ This project connects:
 - Xvfb, x11vnc and noVNC
 - FastAPI health/control endpoints
 - VNC password and admin-token protection
-- GitHub-to-Hugging-Face automatic deployment
+- Keyless GitHub-to-Hugging-Face deployment through OIDC Trusted Publishers
 - GitHub Pages automatic deployment
 - Post-deployment Space health verification
 - Optional Cloudflare Worker deployment
 - Hermes installer and gateway controls
 
-## Required private settings
+## One-time private setup
 
-Add these under **GitHub → Settings → Secrets and variables → Actions**:
+In the Hugging Face Space settings:
 
-- `HF_TOKEN` — Hugging Face write token
-- `HF_VNC_PASSWORD` — a strong VNC password
-- `HF_ADMIN_TOKEN` — a separate long random admin token
+1. Add a **GitHub Actions Trusted Publisher** for repository `riporipoteam-ctrl/ripoteamserver`, branch `main`, workflow `sync-huggingface.yml`.
+2. Add Space secret `VNC_PASSWORD` with a strong password.
+3. Add Space secret `ADMIN_TOKEN` with a separate long random value.
 
-Never commit or paste these values into public files.
+No permanent `HF_TOKEN` needs to be stored in GitHub. Never commit or paste passwords into public files.
 
-Then run the **Create or update Hugging Face Space** workflow.
+Then run the GitHub workflow **Create or update Hugging Face Space**.
 
 ## Availability
 
