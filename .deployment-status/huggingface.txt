@@ -1,4 +1,5 @@
 Hugging Face deployment: success
-Source commit: 75af3547c47cc6852366a6d917259c229596bc00
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30770268315
-Recorded at: 2026-08-02T22:31:25Z
+Hugging Face Space health: failure
+Source commit: f64be5f530fcc283c6ac57d0fbd1bba1c3c29d70
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30770402023
+Recorded at: 2026-08-02T22:45:11Z
