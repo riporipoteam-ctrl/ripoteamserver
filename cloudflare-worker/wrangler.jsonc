@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ripoteam-hf-wake-proxy",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-02",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "vars": {
+    "SPACE_ORIGIN": "https://echoxr-ripoteam-cloud-pc.hf.space",
+    "ALLOWED_ORIGIN": "https://riporipoteam-ctrl.github.io"
+  }
+}
