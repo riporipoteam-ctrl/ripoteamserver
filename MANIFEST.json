@@ -1,0 +1,22 @@
+[
+  ".github/workflows/deploy-cloudflare.yml",
+  ".github/workflows/pages.yml",
+  ".github/workflows/sync-huggingface.yml",
+  ".github/workflows/verify-space.yml",
+  ".gitignore",
+  "README.md",
+  "cloudflare-worker/README.md",
+  "cloudflare-worker/package.json",
+  "cloudflare-worker/src/index.js",
+  "cloudflare-worker/wrangler.jsonc",
+  "docs/DEPLOY.md",
+  "hf-space/README.md",
+  "hf-space/app.py",
+  "hf-space/packages.txt",
+  "hf-space/requirements.txt",
+  "site/.nojekyll",
+  "site/app.js",
+  "site/config.js",
+  "site/index.html",
+  "site/styles.css"
+]
