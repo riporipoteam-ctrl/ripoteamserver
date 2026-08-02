@@ -1,4 +1,4 @@
-name: Repair Gradio Server backend
+name: Start Linux desktop in Gradio Server mode
 
 on:
   push:
@@ -11,12 +11,12 @@ permissions:
   contents: write
 
 jobs:
-  repair:
+  fix:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Repair imports and duplicate ZeroGPU probe
+      - name: Move desktop startup before app launch
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -24,39 +24,30 @@ jobs:
           path = Path("hf-space/app.py")
           text = path.read_text(encoding="utf-8")
 
-          text = text.replace("from fastapp.", "from fastapi.")
+          startup_hook = '''\n\n@app.on_event("startup")\nasync def startup() -> None:\n    if os.environ.get("RIPO_SKIP_DESKTOP") != "1":\n        start_desktop()\n'''
+          text = text.replace(startup_hook, "", 1)
 
-          standalone = '''\n\n@spaces.GPU(duration=1)\ndef zero_gpu_runtime_probe() -> str:\n    \"\"\"Minimal GPU-decorated function required by ZeroGPU hosting.\"\"\"\n    return \"ZeroGPU runtime available\"\n'''
-          text = text.replace(standalone, "", 1)
-
-          if text.count("def zero_gpu_runtime_probe") != 1:
-              raise SystemExit(
-                  f"Expected exactly one ZeroGPU probe, found {text.count('def zero_gpu_runtime_probe')}"
-              )
-          if "from fastapp" in text:
-              raise SystemExit("Broken fastapp import remains")
-          if "from fastapi.middleware.cors import CORSMiddleware" not in text:
-              raise SystemExit("FastAPI middleware import missing")
-          if '@app.api(name="zero_gpu_runtime_probe")' not in text:
-              raise SystemExit("Server API ZeroGPU endpoint missing")
+          old_launch = "\n\napp.launch(show_error=True)\n"
+          new_launch = '''\n\nif os.environ.get("RIPO_SKIP_DESKTOP") != "1":\n    start_desktop()\n\napp.launch(show_error=True)\n'''
+          if old_launch not in text:
+              raise SystemExit("Could not locate Gradio Server launch")
+          text = text.replace(old_launch, new_launch, 1)
 
           path.write_text(text, encoding="utf-8")
-          print("Repaired Server mode source.")
+          print("Desktop now starts before Gradio Server launch.")
           PY
 
-      - name: Validate repaired source
+      - name: Validate source
         run: |
           python -m py_compile hf-space/app.py
-          test "$(grep -c '^def zero_gpu_runtime_probe' hf-space/app.py)" -eq 1
-          ! grep -F 'fastapp' hf-space/app.py
-          grep -F 'from fastapi.middleware.cors import CORSMiddleware' hf-space/app.py
-          grep -F '@app.api(name="zero_gpu_runtime_probe")' hf-space/app.py
+          grep -F 'start_desktop()' hf-space/app.py
           grep -F 'app.launch(show_error=True)' hf-space/app.py
+          ! grep -F '@app.on_event("startup")' hf-space/app.py
 
-      - name: Commit repair
+      - name: Commit desktop startup fix
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add hf-space/app.py
-          git commit -m "Repair Gradio Server backend" || true
+          git commit -m "Start Linux desktop before Server launch" || true
           git push
