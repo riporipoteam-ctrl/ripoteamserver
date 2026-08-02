@@ -1,9 +1,9 @@
 {
-  "sha": "7c20f4e1b57345c98825ae20a8f6adf7c619b4bf",
-  "last_modified": "2026-08-02 23:14:15+00:00",
+  "sha": "51e08a0d416b6cee4f11ca3926da99b949aae964",
+  "last_modified": "2026-08-02 23:18:24+00:00",
   "runtime": {
-    "stage": "BUILDING",
-    "hardware": null,
+    "stage": "RUNNING",
+    "hardware": "zero-a10g",
     "requested_hardware": "zero-a10g",
     "sleep_time": 172800,
     "storage": null,
@@ -11,13 +11,14 @@
     "hot_reloading": null,
     "volumes": null,
     "raw": {
-      "stage": "BUILDING",
+      "stage": "RUNNING",
       "hardware": {
-        "current": null,
+        "current": "zero-a10g",
         "requested": "zero-a10g"
       },
       "gcTimeout": 172800,
       "replicas": {
+        "current": 1,
         "requested": 1
       },
       "devMode": false,
@@ -26,7 +27,17 @@
           "domain": "echoxr-ripoteam-cloud-pc.hf.space",
           "stage": "READY"
         }
-      ]
+      ],
+      "sha": "51e08a0d416b6cee4f11ca3926da99b949aae964",
+      "pySpacesVersion": "0.51.1"
     }
   }
 }
+
+PUBLIC ROUTES
+root_status=200
+health_status=200
+novnc_status=200
+
+HEALTH RESPONSE
+{"ok":true,"name":"Ripo Team Cloud PC","platform":"Hugging Face Gradio Space","architecture":"x86_64","cpu_count":192,"memory_total":2147443806208,"memory_available":900264243200,"disk_total":8589854879744,"disk_free":2188360028160,"desktop":{"xvfb":{"pid":221,"running":true,"returncode":null},"openbox":{"pid":224,"running":true,"returncode":null},"pcmanfm":{"pid":225,"running":true,"returncode":null},"lxpanel":{"pid":226,"running":true,"returncode":null},"xterm":{"pid":230,"running":true,"returncode":null},"x11vnc":{"pid":231,"running":true,"returncode":null}},"security":{"custom_vnc_password":true,"admin_token_configured":true},"hermes":{"installed":false,"running":false,"install":{"running":false,"last_result":null,"started_at":null,"finished_at":null}},"timestamp":1785712803.0577023}
