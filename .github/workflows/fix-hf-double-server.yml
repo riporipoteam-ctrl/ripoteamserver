@@ -1,4 +1,4 @@
-name: Refactor Hugging Face backend to Gradio Server
+name: Repair Gradio Server backend
 
 on:
   push:
@@ -11,95 +11,52 @@ permissions:
   contents: write
 
 jobs:
-  refactor:
+  repair:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Convert mounted Blocks app to Gradio Server mode
+      - name: Repair imports and duplicate ZeroGPU probe
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
 
-          app_path = Path("hf-space/app.py")
-          text = app_path.read_text(encoding="utf-8")
+          path = Path("hf-space/app.py")
+          text = path.read_text(encoding="utf-8")
 
-          # ZeroGPU's runtime scanner is most reliable when spaces is imported
-          # immediately after the mandatory future import.
-          text = text.replace(
-              "from __future__ import annotations\n\n",
-              "from __future__ import annotations\n\nimport spaces\n",
-              1,
-          )
-          # Remove any later duplicate import left by prior iterations.
-          head, separator, tail = text.partition("import asyncio\n")
-          if separator:
-              tail = tail.replace("import spaces\n", "")
-              text = head + separator + tail
+          text = text.replace("from fastapp.", "from fastapi.")
 
-          text = text.replace("import gradio as gr\n", "from gradio import Server\n", 1)
-          text = text.replace(
-              "from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect\n",
-              "from fastapi import Header, HTTPException, WebSocket, WebSocketDisconnect\n",
-              1,
-          )
+          standalone = '''\n\n@spaces.GPU(duration=1)\ndef zero_gpu_runtime_probe() -> str:\n    \"\"\"Minimal GPU-decorated function required by ZeroGPU hosting.\"\"\"\n    return \"ZeroGPU runtime available\"\n'''
+          text = text.replace(standalone, "", 1)
 
-          # Remove the previous standalone/hidden Blocks GPU probe. Server mode
-          # registers the probe directly through app.api below.
-          text = re.sub(
-              r"\n\n@spaces\.GPU\(duration=1\)\ndef zero_gpu_runtime_probe\(\) -> str:\n"
-              r"(?:    .*\n)+?\n(?=HERMES_INSTALL_STATE)",
-              "\n\n",
-              text,
-              count=1,
-          )
+          if text.count("def zero_gpu_runtime_probe") != 1:
+              raise SystemExit(
+                  f"Expected exactly one ZeroGPU probe, found {text.count('def zero_gpu_runtime_probe')}"
+              )
+          if "from fastapp" in text:
+              raise SystemExit("Broken fastapp import remains")
+          if "from fastapi.middleware.cors import CORSMiddleware" not in text:
+              raise SystemExit("FastAPI middleware import missing")
+          if '@app.api(name="zero_gpu_runtime_probe")' not in text:
+              raise SystemExit("Server API ZeroGPU endpoint missing")
 
-          text = text.replace('api = FastAPI(title="Ripo Team Cloud PC")', 'app = Server()', 1)
-          text = text.replace("api.", "app.")
-
-          endpoint = '''app = Server()\n\n\n@app.api(name="zero_gpu_runtime_probe")\n@spaces.GPU(duration=1)\ndef zero_gpu_runtime_probe() -> str:\n    \"\"\"Minimal registered endpoint required by ZeroGPU hosting.\"\"\"\n    return \"ZeroGPU runtime available\"\n'''
-          text = text.replace("app = Server()", endpoint, 1)
-
-          text = text.replace(
-              '<a class="secondary" href="/control">Control panel</a>',
-              '<a class="secondary" href="/gradio_api/info">API info</a>',
-          )
-
-          # The GitHub Pages frontend is the control UI. Remove the old Blocks
-          # control panel and launch the Server app directly.
-          control_marker = "\ndef token_valid(token: str) -> bool:\n"
-          if control_marker not in text:
-              raise SystemExit("Could not locate the old Blocks control section")
-          text = text.split(control_marker, 1)[0].rstrip()
-          text += "\n\n\napp.launch(show_error=True)\n"
-
-          app_path.write_text(text, encoding="utf-8")
-
-          requirements = Path("hf-space/requirements.txt")
-          req_text = requirements.read_text(encoding="utf-8")
-          req_text = re.sub(r"^gradio.*$", "gradio>=6.20,<7", req_text, flags=re.MULTILINE)
-          requirements.write_text(req_text, encoding="utf-8")
-
-          print("Converted app.py to Gradio Server mode.")
+          path.write_text(text, encoding="utf-8")
+          print("Repaired Server mode source.")
           PY
 
-      - name: Validate transformed source
+      - name: Validate repaired source
         run: |
           python -m py_compile hf-space/app.py
-          grep -F 'app = Server()' hf-space/app.py
+          test "$(grep -c '^def zero_gpu_runtime_probe' hf-space/app.py)" -eq 1
+          ! grep -F 'fastapp' hf-space/app.py
+          grep -F 'from fastapi.middleware.cors import CORSMiddleware' hf-space/app.py
           grep -F '@app.api(name="zero_gpu_runtime_probe")' hf-space/app.py
-          grep -F '@spaces.GPU(duration=1)' hf-space/app.py
           grep -F 'app.launch(show_error=True)' hf-space/app.py
-          if grep -F 'with gr.Blocks' hf-space/app.py; then
-            echo "Old Blocks application is still present." >&2
-            exit 1
-          fi
 
-      - name: Commit Server mode refactor
+      - name: Commit repair
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add hf-space/app.py hf-space/requirements.txt
-          git commit -m "Use Gradio Server mode for ZeroGPU" || true
+          git add hf-space/app.py
+          git commit -m "Repair Gradio Server backend" || true
           git push
