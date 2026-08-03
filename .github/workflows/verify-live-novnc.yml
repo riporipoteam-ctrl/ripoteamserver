@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/verify-live-novnc.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".verification/novnc-trigger.txt"
   workflow_dispatch:
 
 permissions:
@@ -19,7 +23,7 @@ jobs:
 
       - name: Test binary WebSocket and VNC greeting
         run: |
-          echo "Live noVNC verifier revision 2"
+          echo "Live noVNC verifier revision 3"
           python -m pip install --quiet websockets
           python - <<'PY'
           import asyncio
@@ -58,6 +62,7 @@ jobs:
                           return
                   except Exception as exc:
                       last_error = repr(exc)
+                      print(f"Attempt {attempt} failed: {last_error}")
                       await asyncio.sleep(10)
               result.extend([
                   "status=failure",
@@ -73,8 +78,8 @@ jobs:
               print("\n".join(result))
           PY
 
-      - name: Save verification result
-        if: always()
+      - name: Save push verification result
+        if: always() && github.event_name != 'pull_request'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
