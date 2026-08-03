@@ -1,10 +1,10 @@
-name: Verify lightweight full desktop deployment
+name: Verify mobile Cloud PC deployment
 
 on:
   pull_request:
     branches: [main]
     paths:
-      - ".verification/full-desktop-live.txt"
+      - ".verification/mobile-control-live.txt"
   workflow_dispatch:
 
 permissions:
@@ -13,47 +13,74 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify live desktop and Pages build
+      - name: Verify live mobile desktop and Pages build
         run: |
           set -u
           HF="https://echoxr-ripoteam-cloud-pc.hf.space"
           PAGES="https://riporipoteam-ctrl.github.io/ripoteamserver"
           success=false
 
-          for attempt in $(seq 1 35); do
+          for attempt in $(seq 1 40); do
             echo "Verification attempt $attempt"
             health_status=$(curl -L -sS --max-time 30 -o /tmp/health.json -w '%{http_code}' "$HF/api/health?check=$attempt" || true)
+            caps_status=$(curl -L -sS --max-time 30 -o /tmp/caps.json -w '%{http_code}' "$HF/api/desktop/capabilities?check=$attempt" || true)
             desktop_status=$(curl -L -sS --max-time 30 -o /tmp/desktop.html -w '%{http_code}' "$HF/desktop?check=$attempt" || true)
-            pages_status=$(curl -L -sS --max-time 30 -o /tmp/pages-app.js -w '%{http_code}' "$PAGES/app.js?check=$attempt" || true)
-            config_status=$(curl -L -sS --max-time 30 -o /tmp/pages-config.js -w '%{http_code}' "$PAGES/config.js?check=$attempt" || true)
+            wrong_password_status=$(curl -L -sS --max-time 30 -o /tmp/login.json -w '%{http_code}' -H 'content-type: application/json' -d '{"password":"definitely-not-the-real-password"}' "$HF/api/desktop/login" || true)
+            index_status=$(curl -L -sS --max-time 30 -o /tmp/index.html -w '%{http_code}' "$PAGES/?check=$attempt" || true)
+            app_status=$(curl -L -sS --max-time 30 -o /tmp/app.js -w '%{http_code}' "$PAGES/app.js?check=$attempt" || true)
+            css_status=$(curl -L -sS --max-time 30 -o /tmp/styles.css -w '%{http_code}' "$PAGES/styles.css?check=$attempt" || true)
+            manifest_status=$(curl -L -sS --max-time 30 -o /tmp/manifest.json -w '%{http_code}' "$PAGES/manifest.webmanifest?check=$attempt" || true)
+            sw_status=$(curl -L -sS --max-time 30 -o /tmp/sw.js -w '%{http_code}' "$PAGES/sw.js?check=$attempt" || true)
 
-            echo "health=$health_status desktop=$desktop_status pages=$pages_status config=$config_status"
+            echo "health=$health_status caps=$caps_status desktop=$desktop_status wrong-password=$wrong_password_status index=$index_status app=$app_status css=$css_status manifest=$manifest_status sw=$sw_status"
 
             if [ "$health_status" = "200" ] \
+              && [ "$caps_status" = "200" ] \
               && [ "$desktop_status" = "200" ] \
-              && [ "$pages_status" = "200" ] \
-              && [ "$config_status" = "200" ] \
-              && grep -q 'Ripo Team Linux' /tmp/desktop.html \
-              && grep -q '/desktop?v=2026-08-03-full-lxde-1' /tmp/pages-app.js \
-              && grep -q '2026-08-03-full-lxde-1' /tmp/pages-config.js; then
+              && [ "$wrong_password_status" = "401" ] \
+              && [ "$index_status" = "200" ] \
+              && [ "$app_status" = "200" ] \
+              && [ "$css_status" = "200" ] \
+              && [ "$manifest_status" = "200" ] \
+              && [ "$sw_status" = "200" ] \
+              && grep -q 'data-app="browser"' /tmp/desktop.html \
+              && grep -q 'data-app="files"' /tmp/desktop.html \
+              && grep -q 'data-app="terminal"' /tmp/desktop.html \
+              && grep -q 'data-app="editor"' /tmp/desktop.html \
+              && grep -q 'data-app="settings"' /tmp/desktop.html \
+              && grep -q 'qualityButton' /tmp/desktop.html \
+              && grep -q 'rightClickButton' /tmp/desktop.html \
+              && grep -q 'Open mobile computer' /tmp/index.html \
+              && grep -q 'manifest.webmanifest' /tmp/index.html \
+              && grep -q '2026-08-03-mobile-control-v3' /tmp/app.js \
+              && grep -q 'safe-area-inset-bottom' /tmp/styles.css \
+              && grep -q 'ripo-cloud-shell-v3' /tmp/sw.js; then
               if python - <<'PY'
           import json
           from pathlib import Path
 
-          data = json.loads(Path('/tmp/health.json').read_text())
-          desktop = data.get('desktop', {})
+          health = json.loads(Path('/tmp/health.json').read_text())
+          desktop = health.get('desktop', {})
           for process in ('xvfb', 'openbox', 'pcmanfm', 'lxpanel', 'x11vnc'):
               assert desktop.get(process, {}).get('running') is True, (process, desktop)
           assert 'xterm' not in desktop, desktop
-          assert 'lxde' not in desktop, desktop
-          assert data.get('memory_source') == 'container-cgroup', data
-          assert isinstance(data.get('memory_total'), int) and 0 < data['memory_total'] < 512 * 1024**3, data
-          assert data.get('disk_total') is None, data
-          assert 'not your personal disk quota' in data.get('disk_note', ''), data
+          assert health.get('memory_source') == 'container-cgroup', health
+          assert health.get('disk_total') is None, health
+
+          caps = json.loads(Path('/tmp/caps.json').read_text())
+          assert caps.get('transport') == 'adaptive-https-frame-polling', caps
+          assert caps.get('mobile_controls') is True, caps
+          apps = caps.get('apps', {})
+          for app in ('browser', 'files', 'terminal', 'editor', 'settings'):
+              assert apps.get(app) is True, (app, apps)
+
+          manifest = json.loads(Path('/tmp/manifest.json').read_text())
+          assert manifest.get('display') == 'standalone', manifest
+          assert manifest.get('short_name') == 'Ripo Cloud PC', manifest
           PY
               then
                 success=true
@@ -67,4 +94,6 @@ jobs:
           echo "success=$success"
           echo "Final health:"
           python -m json.tool /tmp/health.json 2>/dev/null || cat /tmp/health.json || true
+          echo "Final capabilities:"
+          python -m json.tool /tmp/caps.json 2>/dev/null || cat /tmp/caps.json || true
           [ "$success" = "true" ]
