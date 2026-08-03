@@ -1,6 +1,10 @@
 name: Install full LXDE cloud desktop
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".verification/full-desktop-trigger.txt"
   pull_request:
     branches: [main]
     paths:
@@ -116,6 +120,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add hf-space/app.py
-          git commit -m "Launch full LXDE desktop and fix resource meters"
+          git commit -m "Launch full LXDE desktop and fix resource meters" || true
           git pull --rebase origin main
           git push origin HEAD:main
