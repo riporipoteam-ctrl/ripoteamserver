@@ -1,15 +1,97 @@
-Hugging Face deployment: failure
-Hugging Face runtime wait: skipped
+Hugging Face deployment: success
+Hugging Face runtime wait: cancelled
 Hugging Face Space health: skipped
-Source commit: 6adb69b8e58ef842211e02a119567086be1f143c
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30805316961
-Recorded at: 2026-08-03T10:23:05Z
+Source commit: 5bcba1dda61aaefcb10174b87daef4037610c072
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30805933283
+Recorded at: 2026-08-03T10:33:11Z
 
 ===== space-info.txt =====
-/home/runner/work/_temp/9d6d9c9a-13d5-440b-95a0-c332207f73a2.sh: line 2: hf: command not found
+{
+  "id": "Echoxr/ripoteam-cloud-pc",
+  "author": "Echoxr",
+  "card_data": {},
+  "created_at": "2026-08-02T20:55:52+00:00",
+  "disabled": false,
+  "gated": false,
+  "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
+  "last_modified": "2026-08-03T10:32:11+00:00",
+  "likes": 0,
+  "models": [
+    "Salesforce/ctrl"
+  ],
+  "private": false,
+  "runtime": {
+    "stage": "RUNNING_BUILDING",
+    "hardware": "zero-a10g",
+    "requested_hardware": "zero-a10g",
+    "sleep_time": 172800,
+    "dev_mode": false,
+    "raw": {
+      "stage": "RUNNING_BUILDING",
+      "hardware": {
+        "current": "zero-a10g",
+        "requested": "zero-a10g"
+      },
+      "gcTimeout": 172800,
+      "replicas": {
+        "current": 1,
+        "requested": 1
+      },
+      "devMode": false,
+      "domains": [
+        {
+          "domain": "echoxr-ripoteam-cloud-pc.hf.space",
+          "stage": "READY"
+        }
+      ],
+      "sha": "01669a115d931926d0efdb135e1588b10717628b",
+      "pySpacesVersion": "0.51.1"
+    }
+  },
+  "sdk": "gradio",
+  "sha": "5cb2fd6d5b3c96f2e4984ce96a76fa00eebb41c7",
+  "siblings": [
+    {
+      "rfilename": ".deploy-trigger"
+    },
+    {
+      "rfilename": ".gitattributes"
+    },
+    {
+      "rfilename": "README.md"
+    },
+    {
+      "rfilename": "app.py"
+    },
+    {
+      "rfilename": "desktop_http.py"
+    },
+    {
+      "rfilename": "desktop_setup.py"
+    },
+    {
+      "rfilename": "packages.txt"
+    },
+    {
+      "rfilename": "requirements.txt"
+    }
+  ],
+  "subdomain": "echoxr-ripoteam-cloud-pc",
+  "tags": [
+    "gradio",
+    "region:us"
+  ],
+  "used_storage": 0
+}
 
 ===== build-logs.txt =====
-/home/runner/work/_temp/9d6d9c9a-13d5-440b-95a0-c332207f73a2.sh: line 3: hf: command not found
+[1m[31mError: Space 'Echoxr/ripoteam-cloud-pc' not found.
+If the repo is private, make sure you are authenticated and your token has the required permissions.
+If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-cloud-pc --type space[0m
+[90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
 
 ===== runtime-logs.txt =====
-/home/runner/work/_temp/9d6d9c9a-13d5-440b-95a0-c332207f73a2.sh: line 4: hf: command not found
+[1m[31mError: Space 'Echoxr/ripoteam-cloud-pc' not found.
+If the repo is private, make sure you are authenticated and your token has the required permissions.
+If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-cloud-pc --type space[0m
+[90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
