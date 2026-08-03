@@ -3,97 +3,139 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#060812">
-  <meta name="description" content="Ripo Team Cloud PC control centre">
+  <meta name="theme-color" content="#070914">
+  <meta name="description" content="Ripo Team Cloud PC — a mobile-friendly Linux computer in your browser.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Ripo Cloud PC">
   <title>Ripo Team Cloud PC</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <div id="boot" class="boot">
+  <div id="boot" class="boot" role="status" aria-live="polite">
     <div class="logo">R</div>
     <h1>Ripo Team Cloud PC</h1>
-    <p>Loading command centre…</p>
+    <p>Preparing your command centre…</p>
     <div class="boot-line"><span></span></div>
   </div>
 
   <main id="app" class="app hidden">
     <header class="topbar">
-      <div class="brand"><span class="mini-logo">R</span><strong>Ripo Team OS</strong></div>
-      <div class="top-status"><i id="status-dot" class="dot checking"></i><span id="status-text">Checking</span><time id="clock"></time></div>
+      <div class="brand">
+        <span class="mini-logo">R</span>
+        <div><strong>Ripo Team OS</strong><small>Cloud computer</small></div>
+      </div>
+      <div class="top-actions">
+        <div class="top-status" aria-live="polite">
+          <i id="status-dot" class="dot checking"></i>
+          <span id="status-text">Checking</span>
+          <time id="clock"></time>
+        </div>
+        <button id="open-desktop-top" class="compact-primary" type="button">Open computer</button>
+      </div>
     </header>
 
     <section class="workspace">
       <nav class="dock" aria-label="Cloud PC applications">
-        <button class="active" data-window="desktop" title="Linux desktop">🖥️</button>
-        <button data-window="server" title="Server">📡</button>
-        <button data-window="hermes" title="Hermes">🧠</button>
-        <button data-window="logs" title="Logs">📜</button>
-        <button data-window="settings" title="Settings">⚙️</button>
+        <button class="active" data-window="desktop" type="button"><span class="nav-icon">▣</span><span class="nav-label">Computer</span></button>
+        <button data-window="server" type="button"><span class="nav-icon">◉</span><span class="nav-label">Server</span></button>
+        <button data-window="hermes" type="button"><span class="nav-icon">✦</span><span class="nav-label">Hermes</span></button>
+        <button data-window="logs" type="button"><span class="nav-icon">≡</span><span class="nav-label">Logs</span></button>
+        <button data-window="settings" type="button"><span class="nav-icon">⚙</span><span class="nav-label">Settings</span></button>
       </nav>
 
       <section id="desktop" class="window desktop-window">
         <div class="window-bar">
-          <div><strong>Linux Computer</strong><span id="desktop-subtitle">Connecting…</span></div>
-          <div class="window-buttons"><button id="reconnect" title="Reconnect">↻</button><button id="fullscreen" title="Fullscreen">⛶</button></div>
+          <div class="window-title">
+            <strong>Linux Computer</strong>
+            <span id="desktop-subtitle">Connecting…</span>
+          </div>
+          <div class="window-buttons">
+            <button id="open-desktop" type="button" title="Open in a separate tab"><span>↗</span><b>Open</b></button>
+            <button id="reconnect" type="button" title="Reconnect">↻</button>
+            <button id="fullscreen" type="button" title="Fullscreen">⛶</button>
+          </div>
         </div>
+
+        <div class="mobile-tip">
+          <strong>Best on phones:</strong> tap <b>Open</b> for a larger computer view with Browser, Files and Terminal buttons.
+        </div>
+
         <div id="connect-panel" class="connect-panel">
           <div class="orb"><span></span></div>
-          <h2 id="connect-title">Waking Hugging Face Space</h2>
-          <p id="connect-message">The first start or a wake from sleep can take several minutes.</p>
+          <h2 id="connect-title">Waking your cloud computer</h2>
+          <p id="connect-message">A sleeping Hugging Face Space can take a moment to return.</p>
           <div class="progress"><span id="progress"></span></div>
-          <button id="connect-button" class="primary">Try now</button>
+          <div class="connect-actions">
+            <button id="connect-button" class="primary" type="button">Connect now</button>
+            <button id="open-direct-wait" type="button">Open full page</button>
+          </div>
         </div>
+
         <iframe id="desktop-frame" class="desktop-frame hidden" allow="clipboard-read; clipboard-write; fullscreen" title="Ripo Team Linux desktop"></iframe>
       </section>
 
-      <section id="server" class="window floating hidden">
-        <div class="window-bar"><strong>Server status</strong><button data-close="server">×</button></div>
+      <aside class="overview" aria-label="Cloud PC overview">
+        <div class="overview-heading"><span>Live overview</span><i id="overview-dot" class="dot checking"></i></div>
+        <article><small>Computer</small><strong id="overview-state">Starting</strong></article>
+        <article><small>Architecture</small><strong id="overview-arch">x86-64</strong></article>
+        <article><small>Memory limit</small><strong id="overview-memory">Checking…</strong></article>
+        <p>Use the full-page computer view on mobile for larger controls and reliable app launching.</p>
+        <button id="overview-open" class="primary" type="button">Open mobile computer</button>
+      </aside>
+
+      <section id="server" class="window floating hidden" role="dialog" aria-modal="true" aria-label="Server status">
+        <div class="window-bar"><strong>Server status</strong><button data-close="server" type="button">×</button></div>
         <div class="content metrics">
           <article><span>State</span><strong id="metric-state">Checking</strong></article>
           <article><span>Architecture</span><strong id="metric-arch">—</strong></article>
-          <article><span>CPU</span><strong id="metric-cpu">—</strong></article>
-          <article><span>Memory</span><strong id="metric-memory">—</strong></article>
-          <article><span>Disk</span><strong id="metric-disk">—</strong></article>
+          <article><span>CPU limit</span><strong id="metric-cpu">—</strong></article>
+          <article><span>Memory limit</span><strong id="metric-memory">—</strong></article>
+          <article><span>Storage</span><strong id="metric-disk">—</strong></article>
           <article><span>Hermes</span><strong id="metric-hermes">—</strong></article>
           <pre id="health-json"></pre>
         </div>
       </section>
 
-      <section id="hermes" class="window floating hidden">
-        <div class="window-bar"><strong>Hermes Agent</strong><button data-close="hermes">×</button></div>
+      <section id="hermes" class="window floating hidden" role="dialog" aria-modal="true" aria-label="Hermes Agent">
+        <div class="window-bar"><strong>Hermes Agent</strong><button data-close="hermes" type="button">×</button></div>
         <div class="content">
-          <p class="muted">Install Hermes, complete its setup in the Linux terminal, then run its gateway for Telegram, Discord or API access.</p>
+          <p class="muted">Install Hermes, finish setup inside Terminal, then run its gateway for Telegram, Discord or API access.</p>
           <div class="button-grid">
-            <button id="install-hermes" class="primary">Install Hermes</button>
-            <button id="start-hermes">Start gateway</button>
-            <button id="stop-hermes">Stop gateway</button>
-            <button id="refresh-hermes">Refresh status</button>
+            <button id="install-hermes" class="primary" type="button">Install Hermes</button>
+            <button id="start-hermes" type="button">Start gateway</button>
+            <button id="stop-hermes" type="button">Stop gateway</button>
+            <button id="refresh-hermes" type="button">Refresh status</button>
           </div>
           <div id="hermes-result" class="result">No action yet.</div>
         </div>
       </section>
 
-      <section id="logs" class="window floating hidden">
-        <div class="window-bar"><strong>System logs</strong><button data-close="logs">×</button></div>
+      <section id="logs" class="window floating hidden" role="dialog" aria-modal="true" aria-label="System logs">
+        <div class="window-bar"><strong>System logs</strong><button data-close="logs" type="button">×</button></div>
         <div class="content">
           <div class="log-tabs">
-            <button data-log="x11vnc">VNC</button>
-            <button data-log="openbox">Desktop</button>
-            <button data-log="hermes-install">Hermes install</button>
-            <button data-log="hermes-gateway">Hermes gateway</button>
+            <button data-log="x11vnc" type="button">Screen</button>
+            <button data-log="openbox" type="button">Desktop</button>
+            <button data-log="pcmanfm" type="button">Files</button>
+            <button data-log="hermes-install" type="button">Hermes install</button>
+            <button data-log="hermes-gateway" type="button">Hermes gateway</button>
           </div>
           <pre id="log-output">Choose a log.</pre>
         </div>
       </section>
 
-      <section id="settings" class="window floating hidden">
-        <div class="window-bar"><strong>Settings</strong><button data-close="settings">×</button></div>
+      <section id="settings" class="window floating hidden" role="dialog" aria-modal="true" aria-label="Settings">
+        <div class="window-bar"><strong>Settings</strong><button data-close="settings" type="button">×</button></div>
         <div class="content form">
-          <label>Hugging Face Space URL<input id="space-url" type="url" placeholder="https://username-space.hf.space"></label>
-          <label>Cloudflare proxy URL, optional<input id="proxy-url" type="url" placeholder="https://your-worker.workers.dev"></label>
+          <label>Hugging Face Space URL<input id="space-url" type="url" inputmode="url" placeholder="https://username-space.hf.space"></label>
+          <label>Cloudflare proxy URL, optional<input id="proxy-url" type="url" inputmode="url" placeholder="https://your-worker.workers.dev"></label>
           <label>ADMIN_TOKEN<input id="admin-token" type="password" placeholder="Stored only on this device"></label>
-          <button id="save-settings" class="primary">Save settings</button>
-          <p class="muted">The VNC password is entered inside noVNC. Never put passwords directly in the public GitHub repository.</p>
+          <button id="save-settings" class="primary" type="button">Save settings</button>
+          <button id="install-app" class="hidden" type="button">Install on this device</button>
+          <p class="muted">Your desktop password is entered inside the computer view and is never stored in this public GitHub site.</p>
         </div>
       </section>
     </section>
