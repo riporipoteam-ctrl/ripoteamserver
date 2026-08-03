@@ -1,9 +1,9 @@
 Hugging Face deployment: success
-Hugging Face runtime wait: failure
-Hugging Face Space health: skipped
-Source commit: 57d308223a1c9af35b32a3e09dcd4c1b87f1449f
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30807076182
-Recorded at: 2026-08-03T10:52:59Z
+Hugging Face runtime wait: success
+Hugging Face Space health: success
+Source commit: 9f3e522a2fa00d69d1a3f195851ec1ee53a63632
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30807740677
+Recorded at: 2026-08-03T11:01:30Z
 
 ===== space-info.txt =====
 {
@@ -14,25 +14,27 @@ Recorded at: 2026-08-03T10:52:59Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-03T10:49:43+00:00",
+  "last_modified": "2026-08-03T11:00:01+00:00",
   "likes": 0,
   "models": [
     "Salesforce/ctrl"
   ],
   "private": false,
   "runtime": {
-    "stage": "RUNTIME_ERROR",
+    "stage": "RUNNING",
+    "hardware": "zero-a10g",
     "requested_hardware": "zero-a10g",
     "sleep_time": 172800,
     "dev_mode": false,
     "raw": {
-      "stage": "RUNTIME_ERROR",
+      "stage": "RUNNING",
       "hardware": {
+        "current": "zero-a10g",
         "requested": "zero-a10g"
       },
       "gcTimeout": 172800,
-      "errorMessage": "Exit code: 128. Reason: failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: error running prestart hook #0: exit status 1, stdout: , stderr: Using requested mode 'legacy'",
       "replicas": {
+        "current": 1,
         "requested": 1
       },
       "devMode": false,
@@ -41,11 +43,13 @@ Recorded at: 2026-08-03T10:52:59Z
           "domain": "echoxr-ripoteam-cloud-pc.hf.space",
           "stage": "READY"
         }
-      ]
+      ],
+      "sha": "8624a506f525a96fed547aad8cbe54189aabe549",
+      "pySpacesVersion": "0.51.1"
     }
   },
   "sdk": "gradio",
-  "sha": "8017f337f6272073a4a8a1edc2146e3079f92ece",
+  "sha": "8624a506f525a96fed547aad8cbe54189aabe549",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
@@ -91,3 +95,6 @@ If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-clou
 If the repo is private, make sure you are authenticated and your token has the required permissions.
 If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-cloud-pc --type space[0m
 [90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
+
+===== last-health.txt =====
+{"ok":true,"name":"Ripo Team Cloud PC","platform":"Hugging Face Gradio Space","architecture":"x86_64","cpu_count":16,"cpu_source":"container-cgroup","memory_total":104000000000,"memory_available":103378173952,"memory_source":"container-cgroup","disk_total":null,"disk_free":null,"disk_note":"Ephemeral Hugging Face Space storage; the shared host filesystem size is not your personal disk quota.","desktop":{"xvfb":{"pid":221,"running":true,"returncode":null},"openbox":{"pid":224,"running":true,"returncode":null},"pcmanfm":{"pid":225,"running":true,"returncode":null},"lxpanel":{"pid":226,"running":true,"returncode":null},"x11vnc":{"pid":227,"running":true,"returncode":null}},"security":{"custom_vnc_password":true,"admin_token_configured":true},"hermes":{"installed":false,"running":false,"install":{"running":false,"last_result":null,"started_at":null,"finished_at":null}},"timestamp":1785754889.4912097}
