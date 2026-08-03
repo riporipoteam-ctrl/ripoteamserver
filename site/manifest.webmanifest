@@ -1,0 +1,14 @@
+{
+  "name": "Ripo Team Cloud PC",
+  "short_name": "Ripo Cloud PC",
+  "description": "A mobile-friendly Linux cloud computer and server control centre.",
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#070914",
+  "theme_color": "#070914",
+  "icons": [
+    {"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
