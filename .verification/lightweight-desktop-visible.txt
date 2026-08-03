@@ -1,2 +1,2 @@
 Run the visible lightweight desktop recovery job and expose its logs.
-Revision 2 after fixing indentation.
+Revision 3 after fixing desktop_setup.py syntax.
