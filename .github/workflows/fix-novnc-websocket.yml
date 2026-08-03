@@ -18,6 +18,7 @@ jobs:
 
       - name: Wire HTTP desktop routes into app
         run: |
+          echo "HTTP desktop integration revision 2"
           python - <<'PY'
           from pathlib import Path
 
