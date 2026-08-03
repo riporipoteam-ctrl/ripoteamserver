@@ -1,4 +1,4 @@
-name: Fix noVNC WebSocket handshake
+name: Install WebSocket-free HTTP desktop
 
 on:
   push:
@@ -11,54 +11,55 @@ permissions:
   contents: write
 
 jobs:
-  fix:
+  install:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Patch WebSocket subprotocol handling
+      - name: Wire HTTP desktop routes into app
         run: |
-          echo "noVNC handshake patch revision 2"
           python - <<'PY'
           from pathlib import Path
 
           path = Path("hf-space/app.py")
           text = path.read_text(encoding="utf-8")
-          old = '''@app.websocket("/websockify")
-async def websockify_proxy(websocket: WebSocket) -> None:
-    await websocket.accept()
-'''
-          new = '''@app.websocket("/websockify")
-async def websockify_proxy(websocket: WebSocket) -> None:
-    requested_protocols = [
-        item.strip()
-        for item in websocket.headers.get("sec-websocket-protocol", "").split(",")
-        if item.strip()
-    ]
-    selected_protocol = "binary" if "binary" in requested_protocols else None
-    await websocket.accept(subprotocol=selected_protocol)
-'''
-          if old not in text:
-              if 'websocket.accept(subprotocol=selected_protocol)' in text:
-                  print("Patch is already present.")
-              else:
-                  raise SystemExit("Could not locate noVNC WebSocket accept block")
-          else:
-              text = text.replace(old, new, 1)
-              path.write_text(text, encoding="utf-8")
+
+          import_line = "from desktop_http import install_desktop_routes\n"
+          if import_line not in text:
+              anchor = "from gradio import Server\n"
+              if anchor not in text:
+                  raise SystemExit("Could not locate Gradio import")
+              text = text.replace(anchor, import_line + anchor, 1)
+
+          route_call = "install_desktop_routes(app, password=VNC_PASSWORD, display=DISPLAY)\n\n\n"
+          if "install_desktop_routes(app" not in text:
+              anchor = '@app.get("/api/health")\n'
+              if anchor not in text:
+                  raise SystemExit("Could not locate health route")
+              text = text.replace(anchor, route_call + anchor, 1)
+
+          text = text.replace(
+              '/novnc/vnc.html?autoconnect=true&resize=scale&path=websockify',
+              '/desktop',
+          )
+          text = text.replace("Open Linux desktop", "Open HTTPS Linux desktop")
+
+          path.write_text(text, encoding="utf-8")
+          print("HTTP desktop routes wired into app.py")
           PY
 
       - name: Validate source
         run: |
-          python -m py_compile hf-space/app.py
-          grep -F 'selected_protocol = "binary"' hf-space/app.py
-          grep -F 'websocket.accept(subprotocol=selected_protocol)' hf-space/app.py
+          python -m py_compile hf-space/app.py hf-space/desktop_http.py
+          grep -F 'from desktop_http import install_desktop_routes' hf-space/app.py
+          grep -F 'install_desktop_routes(app, password=VNC_PASSWORD, display=DISPLAY)' hf-space/app.py
+          grep -F 'href="/desktop"' hf-space/app.py
 
-      - name: Commit fix
+      - name: Commit backend integration
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
           git add hf-space/app.py
-          git commit -m "Fix noVNC WebSocket subprotocol handshake" || true
+          git commit -m "Enable WebSocket-free HTTP Linux desktop" || true
           git push
