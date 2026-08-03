@@ -2,10 +2,13 @@ build-essential
 ca-certificates
 curl
 dbus-x11
+desktop-file-utils
 ffmpeg
 firefox-esr
 fonts-dejavu-core
 git
+lxde-core
+lxappearance
 lxpanel
 lxterminal
 mousepad
