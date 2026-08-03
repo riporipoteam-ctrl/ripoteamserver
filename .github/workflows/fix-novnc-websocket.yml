@@ -18,6 +18,7 @@ jobs:
 
       - name: Patch WebSocket subprotocol handling
         run: |
+          echo "noVNC handshake patch revision 2"
           python - <<'PY'
           from pathlib import Path
 
@@ -38,9 +39,13 @@ async def websockify_proxy(websocket: WebSocket) -> None:
     await websocket.accept(subprotocol=selected_protocol)
 '''
           if old not in text:
-              raise SystemExit("Could not locate noVNC WebSocket accept block")
-          text = text.replace(old, new, 1)
-          path.write_text(text, encoding="utf-8")
+              if 'websocket.accept(subprotocol=selected_protocol)' in text:
+                  print("Patch is already present.")
+              else:
+                  raise SystemExit("Could not locate noVNC WebSocket accept block")
+          else:
+              text = text.replace(old, new, 1)
+              path.write_text(text, encoding="utf-8")
           PY
 
       - name: Validate source
@@ -53,6 +58,7 @@ async def websockify_proxy(websocket: WebSocket) -> None:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
           git add hf-space/app.py
           git commit -m "Fix noVNC WebSocket subprotocol handshake" || true
           git push
