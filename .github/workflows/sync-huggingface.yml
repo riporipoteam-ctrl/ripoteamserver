@@ -33,6 +33,45 @@ jobs:
           curl -LsSf https://hf.co/cli/install.sh | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Exchange GitHub OIDC identity for a short-lived Hub token
+        run: |
+          set -euo pipefail
+          ID_TOKEN=$(curl -sSf \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://huggingface.co" \
+            | jq -r .value)
+
+          HEADERS=$(mktemp)
+          BODY=$(mktemp)
+          STATUS=$(curl -sS -D "$HEADERS" -o "$BODY" -w '%{http_code}' \
+            -X POST "https://huggingface.co/oauth/token" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg t "$ID_TOKEN" --arg r "$HF_OIDC_RESOURCE" \
+              '{
+                grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+                subject_token_type: "urn:ietf:params:oauth:token-type:id_token",
+                subject_token: $t,
+                resource: $r
+              }')")
+
+          if [ "$STATUS" -ne 200 ]; then
+            REQUEST_ID=$(grep -i '^x-request-id:' "$HEADERS" | sed 's/.*: *//' | tr -d '\r')
+            echo "::error::Hugging Face token exchange failed with HTTP $STATUS (request ${REQUEST_ID:-unknown})"
+            cat "$BODY"
+            exit 1
+          fi
+
+          HF_TOKEN=$(jq -r .access_token "$BODY")
+          test -n "$HF_TOKEN"
+          test "$HF_TOKEN" != "null"
+          echo "::add-mask::$HF_TOKEN"
+          DELIM="EOF_$(openssl rand -hex 16)"
+          {
+            echo "HF_TOKEN<<$DELIM"
+            echo "$HF_TOKEN"
+            echo "$DELIM"
+          } >> "$GITHUB_ENV"
+
       - name: Upload Space through trusted publishing
         id: upload
         continue-on-error: true
@@ -62,8 +101,8 @@ jobs:
         run: |
           set +e
           hf spaces info "$HF_SPACE_ID" 2>&1 | tee /tmp/space-info.txt
-          hf spaces logs "$HF_SPACE_ID" --build -n 250 2>&1 | tee /tmp/build-logs.txt
-          hf spaces logs "$HF_SPACE_ID" -n 250 2>&1 | tee /tmp/runtime-logs.txt
+          hf spaces logs "$HF_SPACE_ID" --build -n 300 2>&1 | tee /tmp/build-logs.txt
+          hf spaces logs "$HF_SPACE_ID" -n 300 2>&1 | tee /tmp/runtime-logs.txt
           exit 0
 
       - name: Test live health endpoint
@@ -100,7 +139,7 @@ jobs:
               if [ -s "$file" ]; then
                 echo
                 echo "===== $(basename "$file") ====="
-                tail -n 250 "$file"
+                tail -n 300 "$file"
               fi
             done
           } > .deployment-status/huggingface.txt
