@@ -40,13 +40,29 @@ jobs:
               "spaceUrl": os.environ["HF_SPACE_URL"],
               "cloudflareProxyUrl": os.environ.get("CLOUDFLARE_PROXY_URL", ""),
               "pollSeconds": 5,
-              "wakeTimeoutSeconds": 240,
+              "wakeTimeoutSeconds": 300,
+              "deploymentVersion": "2026-08-03-http-desktop-1",
           }
           Path("site/config.js").write_text(
               "window.RIPO_CONFIG = " + json.dumps(config, indent=2) + ";\n",
               encoding="utf-8",
           )
+
+          app_path = Path("site/app.js")
+          app_text = app_path.read_text(encoding="utf-8")
+          old = '/novnc/vnc.html?autoconnect=true&resize=scale&path=websockify'
+          new = '/desktop?v=2026-08-03-http-desktop-1'
+          if old in app_text:
+              app_text = app_text.replace(old, new)
+          elif new not in app_text:
+              raise SystemExit("Could not locate the desktop iframe URL in site/app.js")
+          app_path.write_text(app_text, encoding="utf-8")
           PY
+
+      - name: Verify production desktop route
+        run: |
+          grep -F '/desktop?v=2026-08-03-http-desktop-1' site/app.js
+          ! grep -F '/novnc/vnc.html' site/app.js
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6
