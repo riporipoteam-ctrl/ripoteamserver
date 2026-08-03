@@ -29,23 +29,16 @@ jobs:
 
           path = Path('hf-space/app.py')
           text = path.read_text(encoding='utf-8')
-          old = '''    if shutil.which("startlxde"):
-              spawn("lxde", ["dbus-launch", "--exit-with-session", "startlxde"])
-          else:
-              spawn("openbox", ["dbus-launch", "--exit-with-session", "openbox-session"])
-              spawn("pcmanfm", ["pcmanfm", "--desktop", "--profile", "LXDE"])
-              spawn("lxpanel", ["lxpanel", "--profile", "LXDE"])
-          '''
-          new = '''    spawn("openbox", ["dbus-launch", "--exit-with-session", "openbox-session"])
-          spawn("pcmanfm", ["pcmanfm", "--desktop", "--profile", "LXDE"])
-          spawn("lxpanel", ["lxpanel", "--profile", "LXDE"])
-          '''
-          if old not in text:
-              start = text.index('    if shutil.which("startlxde"):')
-              end = text.index('    spawn(\n        "x11vnc",', start)
-              text = text[:start] + new + text[end:]
-          else:
-              text = text.replace(old, new, 1)
+          start_marker = '    if shutil.which("startlxde"):'
+          end_marker = '    spawn(\n        "x11vnc",'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          replacement = (
+              '    spawn("openbox", ["dbus-launch", "--exit-with-session", "openbox-session"])\n'
+              '    spawn("pcmanfm", ["pcmanfm", "--desktop", "--profile", "LXDE"])\n'
+              '    spawn("lxpanel", ["lxpanel", "--profile", "LXDE"])\n'
+          )
+          text = text[:start] + replacement + text[end:]
           text = text.replace('        "lxde",\n', '', 1)
           path.write_text(text, encoding='utf-8')
           PY
