@@ -36,7 +36,13 @@ jobs:
             echo
 
             if [ "$health_status" = "200" ] \
-              && python - <<'PY'
+              && [ "$desktop_status" = "200" ] \
+              && [ "$pages_status" = "200" ] \
+              && [ "$config_status" = "200" ] \
+              && grep -q 'Ripo Team Linux' /tmp/desktop.html \
+              && grep -q '/desktop?v=2026-08-03-full-lxde-1' /tmp/pages-app.js \
+              && grep -q '2026-08-03-full-lxde-1' /tmp/pages-config.js; then
+              if python - <<'PY'
           import json
           from pathlib import Path
 
@@ -49,14 +55,10 @@ jobs:
           assert data.get('disk_total') is None, data
           assert 'not your personal disk quota' in data.get('disk_note', ''), data
           PY
-              [ "$desktop_status" = "200" ] \
-              && grep -q 'Ripo Team Linux' /tmp/desktop.html \
-              && [ "$pages_status" = "200" ] \
-              && grep -q '/desktop?v=2026-08-03-full-lxde-1' /tmp/pages-app.js \
-              && [ "$config_status" = "200" ] \
-              && grep -q '2026-08-03-full-lxde-1' /tmp/pages-config.js; then
-              success=true
-              break
+              then
+                success=true
+                break
+              fi
             fi
 
             sleep 10
