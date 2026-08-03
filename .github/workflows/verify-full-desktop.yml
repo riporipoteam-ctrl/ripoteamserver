@@ -1,4 +1,4 @@
-name: Verify full LXDE desktop deployment
+name: Verify lightweight full desktop deployment
 
 on:
   pull_request:
@@ -13,18 +13,18 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
 
-      - name: Wait for full desktop deployment
+      - name: Verify live desktop and Pages build
         run: |
           set -u
           HF="https://echoxr-ripoteam-cloud-pc.hf.space"
           PAGES="https://riporipoteam-ctrl.github.io/ripoteamserver"
           success=false
 
-          for attempt in $(seq 1 55); do
+          for attempt in $(seq 1 35); do
             echo "Verification attempt $attempt"
             health_status=$(curl -L -sS --max-time 30 -o /tmp/health.json -w '%{http_code}' "$HF/api/health?check=$attempt" || true)
             desktop_status=$(curl -L -sS --max-time 30 -o /tmp/desktop.html -w '%{http_code}' "$HF/desktop?check=$attempt" || true)
@@ -32,8 +32,6 @@ jobs:
             config_status=$(curl -L -sS --max-time 30 -o /tmp/pages-config.js -w '%{http_code}' "$PAGES/config.js?check=$attempt" || true)
 
             echo "health=$health_status desktop=$desktop_status pages=$pages_status config=$config_status"
-            cat /tmp/health.json 2>/dev/null || true
-            echo
 
             if [ "$health_status" = "200" ] \
               && [ "$desktop_status" = "200" ] \
@@ -48,10 +46,12 @@ jobs:
 
           data = json.loads(Path('/tmp/health.json').read_text())
           desktop = data.get('desktop', {})
-          assert desktop.get('lxde', {}).get('running') is True, desktop
+          for process in ('xvfb', 'openbox', 'pcmanfm', 'lxpanel', 'x11vnc'):
+              assert desktop.get(process, {}).get('running') is True, (process, desktop)
           assert 'xterm' not in desktop, desktop
+          assert 'lxde' not in desktop, desktop
           assert data.get('memory_source') == 'container-cgroup', data
-          assert isinstance(data.get('memory_total'), int) and data['memory_total'] < 512 * 1024**3, data
+          assert isinstance(data.get('memory_total'), int) and 0 < data['memory_total'] < 512 * 1024**3, data
           assert data.get('disk_total') is None, data
           assert 'not your personal disk quota' in data.get('disk_note', ''), data
           PY
