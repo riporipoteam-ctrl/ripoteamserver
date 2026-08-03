@@ -17,13 +17,13 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
 
       - name: Test binary WebSocket and VNC greeting
         run: |
-          echo "Live noVNC verifier revision 3"
+          echo "Live noVNC diagnostic revision 4"
           python -m pip install --quiet websockets
           python - <<'PY'
           import asyncio
@@ -35,41 +35,35 @@ jobs:
           result = []
 
           async def check():
-              last_error = None
-              for attempt in range(1, 31):
-                  try:
-                      async with websockets.connect(
-                          URI,
-                          subprotocols=["binary"],
-                          open_timeout=20,
-                          close_timeout=5,
-                          max_size=None,
-                      ) as ws:
-                          greeting = await asyncio.wait_for(ws.recv(), timeout=15)
-                          if isinstance(greeting, str):
-                              greeting = greeting.encode()
-                          if ws.subprotocol != "binary":
-                              raise RuntimeError(f"Unexpected subprotocol: {ws.subprotocol!r}")
-                          if not greeting.startswith(b"RFB"):
-                              raise RuntimeError(f"Unexpected VNC greeting: {greeting[:32]!r}")
-                          result.extend([
-                              "status=success",
-                              f"attempt={attempt}",
-                              f"subprotocol={ws.subprotocol}",
-                              f"greeting={greeting[:12].decode(errors='replace').strip()}",
-                              f"checked_at={datetime.datetime.now(datetime.timezone.utc).isoformat()}",
-                          ])
-                          return
-                  except Exception as exc:
-                      last_error = repr(exc)
-                      print(f"Attempt {attempt} failed: {last_error}")
-                      await asyncio.sleep(10)
-              result.extend([
-                  "status=failure",
-                  f"error={last_error}",
-                  f"checked_at={datetime.datetime.now(datetime.timezone.utc).isoformat()}",
-              ])
-              raise SystemExit(1)
+              try:
+                  async with websockets.connect(
+                      URI,
+                      subprotocols=["binary"],
+                      open_timeout=20,
+                      close_timeout=5,
+                      max_size=None,
+                  ) as ws:
+                      greeting = await asyncio.wait_for(ws.recv(), timeout=15)
+                      if isinstance(greeting, str):
+                          greeting = greeting.encode()
+                      if ws.subprotocol != "binary":
+                          raise RuntimeError(f"Unexpected subprotocol: {ws.subprotocol!r}")
+                      if not greeting.startswith(b"RFB"):
+                          raise RuntimeError(f"Unexpected VNC greeting: {greeting[:32]!r}")
+                      result.extend([
+                          "status=success",
+                          f"subprotocol={ws.subprotocol}",
+                          f"greeting={greeting[:12].decode(errors='replace').strip()}",
+                          f"checked_at={datetime.datetime.now(datetime.timezone.utc).isoformat()}",
+                      ])
+              except Exception as exc:
+                  result.extend([
+                      "status=failure",
+                      f"error_type={type(exc).__name__}",
+                      f"error={exc!r}",
+                      f"checked_at={datetime.datetime.now(datetime.timezone.utc).isoformat()}",
+                  ])
+                  raise
 
           try:
               asyncio.run(check())
