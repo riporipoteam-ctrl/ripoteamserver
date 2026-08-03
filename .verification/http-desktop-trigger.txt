@@ -1,1 +1,1 @@
-Run WebSocket-free HTTP desktop integration on main.
+Run WebSocket-free HTTP desktop integration revision 2 on main.
