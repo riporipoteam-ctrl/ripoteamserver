@@ -35,7 +35,6 @@ PROCESSES: dict[str, subprocess.Popen[Any]] = {}
 HERMES_PROCESS: subprocess.Popen[Any] | None = None
 HERMES_INSTALL_THREAD: threading.Thread | None = None
 
-
 HERMES_INSTALL_STATE: dict[str, Any] = {
     "running": False,
     "last_result": None,
@@ -192,7 +191,7 @@ def install_hermes_worker() -> None:
             "ok": completed.returncode == 0,
             "returncode": completed.returncode,
         }
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         HERMES_INSTALL_STATE["last_result"] = {"ok": False, "error": str(exc)}
     finally:
         HERMES_INSTALL_STATE["running"] = False
@@ -235,10 +234,10 @@ def stop_hermes_gateway() -> dict[str, Any]:
     try:
         os.killpg(HERMES_PROCESS.pid, signal.SIGTERM)
         HERMES_PROCESS.wait(timeout=10)
-    except Exception:  # noqa: BLE001
+    except Exception:
         try:
             os.killpg(HERMES_PROCESS.pid, signal.SIGKILL)
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     HERMES_PROCESS = None
     return {"ok": True, "message": "Hermes gateway stopped."}
@@ -297,8 +296,8 @@ app = Server()
 @app.api(name="zero_gpu_runtime_probe")
 @spaces.GPU(duration=1)
 def zero_gpu_runtime_probe() -> str:
-    """Minimal registered endpoint required by ZeroGPU hosting."""
     return "ZeroGPU runtime available"
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -356,7 +355,14 @@ async def hermes_stop(x_admin_token: str | None = Header(default=None)) -> JSONR
 
 @app.websocket("/websockify")
 async def websockify_proxy(websocket: WebSocket) -> None:
-    await websocket.accept()
+    requested_protocols = [
+        item.strip()
+        for item in websocket.headers.get("sec-websocket-protocol", "").split(",")
+        if item.strip()
+    ]
+    selected_protocol = "binary" if "binary" in requested_protocols else None
+    await websocket.accept(subprotocol=selected_protocol)
+
     try:
         reader, writer = await asyncio.open_connection("127.0.0.1", VNC_PORT)
     except OSError:
@@ -379,7 +385,10 @@ async def websockify_proxy(websocket: WebSocket) -> None:
             pass
         finally:
             writer.close()
-            await writer.wait_closed()
+            try:
+                await writer.wait_closed()
+            except ConnectionError:
+                pass
 
     async def vnc_to_browser() -> None:
         try:
@@ -418,7 +427,7 @@ def novnc_directory() -> Path:
 
 app.mount("/novnc", StaticFiles(directory=str(novnc_directory()), html=True), name="novnc")
 
-ROOT_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ripo Team Cloud PC</title><style>:root{font-family:Inter,system-ui,sans-serif;color:#f7f8ff;background:#060812}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 20% 20%,#27348b55,transparent 34rem),#060812;display:grid;place-items:center}.card{width:min(820px,calc(100% - 28px));padding:34px;border:1px solid #ffffff1c;border-radius:26px;background:#0d1222d9;box-shadow:0 30px 100px #0007}.eyebrow{color:#8e9bc8;font-weight:800;letter-spacing:.14em;font-size:.74rem}h1{font-size:clamp(2.2rem,7vw,5rem);line-height:.96;letter-spacing:-.055em;margin:10px 0 18px}p{color:#b4bddc;line-height:1.7}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}a{padding:13px 17px;border-radius:13px;text-decoration:none;font-weight:850}.primary{background:#f5f7ff;color:#071020}.secondary{border:1px solid #ffffff24;color:#f5f7ff}</style></head><body><main class="card"><div class="eyebrow">RIPO TEAM INFRASTRUCTURE</div><h1>Cloud PC is online.</h1><p>This Space runs a Linux x86-64 desktop with a file manager, app panel, terminal, browser and Hermes controls. Set VNC_PASSWORD and ADMIN_TOKEN in the Space secrets before using it publicly.</p><div class="actions"><a class="primary" href="/novnc/vnc.html?autoconnect=true&resize=scale&path=websockify">Open Linux desktop</a><a class="secondary" href="/gradio_api/info">API info</a><a class="secondary" href="/api/health">Health JSON</a></div></main></body></html>"""
+ROOT_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ripo Team Cloud PC</title><style>:root{font-family:Inter,system-ui,sans-serif;color:#f7f8ff;background:#060812}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 20% 20%,#27348b55,transparent 34rem),#060812;display:grid;place-items:center}.card{width:min(820px,calc(100% - 28px));padding:34px;border:1px solid #ffffff1c;border-radius:26px;background:#0d1222d9;box-shadow:0 30px 100px #0007}.eyebrow{color:#8e9bc8;font-weight:800;letter-spacing:.14em;font-size:.74rem}h1{font-size:clamp(2.2rem,7vw,5rem);line-height:.96;letter-spacing:-.055em;margin:10px 0 18px}p{color:#b4bddc;line-height:1.7}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}a{padding:13px 17px;border-radius:13px;text-decoration:none;font-weight:850}.primary{background:#f5f7ff;color:#071020}.secondary{border:1px solid #ffffff24;color:#f5f7ff}</style></head><body><main class="card"><div class="eyebrow">RIPO TEAM INFRASTRUCTURE</div><h1>Cloud PC is online.</h1><p>This Space runs a Linux x86-64 desktop with a file manager, app panel, terminal, browser and Hermes controls.</p><div class="actions"><a class="primary" href="/novnc/vnc.html?autoconnect=true&resize=scale&path=websockify">Open Linux desktop</a><a class="secondary" href="/gradio_api/info">API info</a><a class="secondary" href="/api/health">Health JSON</a></div></main></body></html>"""
 
 
 @app.get("/", response_class=HTMLResponse)
