@@ -1,0 +1,1 @@
+Verify the live full LXDE desktop, corrected memory limit, and GitHub Pages build.
