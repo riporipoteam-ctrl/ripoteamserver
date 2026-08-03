@@ -1,9 +1,9 @@
-Hugging Face deployment: success
-Hugging Face runtime wait: success
-Hugging Face Space health: success
-Source commit: 6ed4c8feb576169255527cacf325f76bb10a75c3
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30796641546
-Recorded at: 2026-08-03T08:17:39Z
+Hugging Face deployment: skipped
+Hugging Face runtime wait: skipped
+Hugging Face Space health: skipped
+Source commit: 8814e465b8826b211304af895d0d96c471352ecb
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30798023541
+Recorded at: 2026-08-03T08:36:35Z
 
 ===== space-info.txt =====
 {
@@ -86,6 +86,3 @@ If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-clou
 If the repo is private, make sure you are authenticated and your token has the required permissions.
 If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-cloud-pc --type space[0m
 [90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
-
-===== last-health.txt =====
-{"ok":true,"name":"Ripo Team Cloud PC","platform":"Hugging Face Gradio Space","architecture":"x86_64","cpu_count":192,"memory_total":2147443830784,"memory_available":1129304178688,"disk_total":8589854879744,"disk_free":1708591591424,"desktop":{"xvfb":{"pid":221,"running":true,"returncode":null},"openbox":{"pid":224,"running":true,"returncode":null},"pcmanfm":{"pid":225,"running":true,"returncode":null},"lxpanel":{"pid":226,"running":true,"returncode":null},"xterm":{"pid":227,"running":true,"returncode":null},"x11vnc":{"pid":228,"running":true,"returncode":null}},"security":{"custom_vnc_password":true,"admin_token_configured":true},"hermes":{"installed":false,"running":false,"install":{"running":false,"last_result":null,"started_at":null,"finished_at":null}},"timestamp":1785745011.4062617}
