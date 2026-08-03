@@ -1,0 +1,68 @@
+name: Verify full LXDE desktop deployment
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".verification/full-desktop-live.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for full desktop deployment
+        run: |
+          set -u
+          HF="https://echoxr-ripoteam-cloud-pc.hf.space"
+          PAGES="https://riporipoteam-ctrl.github.io/ripoteamserver"
+          success=false
+
+          for attempt in $(seq 1 55); do
+            echo "Verification attempt $attempt"
+            health_status=$(curl -L -sS --max-time 30 -o /tmp/health.json -w '%{http_code}' "$HF/api/health?check=$attempt" || true)
+            desktop_status=$(curl -L -sS --max-time 30 -o /tmp/desktop.html -w '%{http_code}' "$HF/desktop?check=$attempt" || true)
+            pages_status=$(curl -L -sS --max-time 30 -o /tmp/pages-app.js -w '%{http_code}' "$PAGES/app.js?check=$attempt" || true)
+            config_status=$(curl -L -sS --max-time 30 -o /tmp/pages-config.js -w '%{http_code}' "$PAGES/config.js?check=$attempt" || true)
+
+            echo "health=$health_status desktop=$desktop_status pages=$pages_status config=$config_status"
+            cat /tmp/health.json 2>/dev/null || true
+            echo
+
+            if [ "$health_status" = "200" ] \
+              && python - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path('/tmp/health.json').read_text())
+          desktop = data.get('desktop', {})
+          assert desktop.get('lxde', {}).get('running') is True, desktop
+          assert 'xterm' not in desktop, desktop
+          assert data.get('memory_source') == 'container-cgroup', data
+          assert isinstance(data.get('memory_total'), int) and data['memory_total'] < 512 * 1024**3, data
+          assert data.get('disk_total') is None, data
+          assert 'not your personal disk quota' in data.get('disk_note', ''), data
+          PY
+              [ "$desktop_status" = "200" ] \
+              && grep -q 'Ripo Team Linux' /tmp/desktop.html \
+              && [ "$pages_status" = "200" ] \
+              && grep -q '/desktop?v=2026-08-03-full-lxde-1' /tmp/pages-app.js \
+              && [ "$config_status" = "200" ] \
+              && grep -q '2026-08-03-full-lxde-1' /tmp/pages-config.js; then
+              success=true
+              break
+            fi
+
+            sleep 10
+          done
+
+          echo "success=$success"
+          echo "Final health:"
+          python -m json.tool /tmp/health.json 2>/dev/null || cat /tmp/health.json || true
+          [ "$success" = "true" ]
