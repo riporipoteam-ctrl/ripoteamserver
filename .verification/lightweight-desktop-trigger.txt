@@ -1,1 +1,2 @@
 Apply the lightweight full desktop recovery after the ZeroGPU OCI prestart failure.
+Forced merge trigger revision 2.
