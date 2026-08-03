@@ -1,0 +1,81 @@
+name: Verify HTTPS Linux desktop deployment
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".verification/http-desktop-live-test.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for Hugging Face and GitHub Pages
+        run: |
+          set -u
+          HF="https://echoxr-ripoteam-cloud-pc.hf.space"
+          PAGES="https://riporipoteam-ctrl.github.io/ripoteamserver"
+          success=false
+
+          for attempt in $(seq 1 45); do
+            echo "Verification attempt $attempt"
+
+            desktop_status=$(curl -L -sS --max-time 25 -o /tmp/desktop.html -w '%{http_code}' "$HF/desktop" || true)
+            capabilities_status=$(curl -L -sS --max-time 25 -o /tmp/capabilities.json -w '%{http_code}' "$HF/api/desktop/capabilities" || true)
+            login_status=$(curl -L -sS --max-time 25 -o /tmp/login.json -w '%{http_code}' \
+              -H 'content-type: application/json' \
+              -d '{"password":"definitely-not-the-real-password"}' \
+              "$HF/api/desktop/login" || true)
+            pages_status=$(curl -L -sS --max-time 25 -o /tmp/pages.html -w '%{http_code}' "$PAGES/" || true)
+            app_status=$(curl -L -sS --max-time 25 -o /tmp/pages-app.js -w '%{http_code}' "$PAGES/app.js?test=$attempt" || true)
+            config_status=$(curl -L -sS --max-time 25 -o /tmp/pages-config.js -w '%{http_code}' "$PAGES/config.js?test=$attempt" || true)
+
+            echo "HF desktop=$desktop_status capabilities=$capabilities_status login=$login_status"
+            echo "Pages root=$pages_status app=$app_status config=$config_status"
+
+            if [ "$desktop_status" = "200" ] \
+              && grep -q 'Ripo Team Linux' /tmp/desktop.html \
+              && [ "$capabilities_status" = "200" ] \
+              && grep -q 'https-frame-polling' /tmp/capabilities.json \
+              && grep -q '"xdotool":true' /tmp/capabilities.json \
+              && [ "$login_status" = "401" ] \
+              && [ "$pages_status" = "200" ] \
+              && [ "$app_status" = "200" ] \
+              && grep -q '/desktop?v=2026-08-03-http-desktop-1' /tmp/pages-app.js \
+              && ! grep -q '/novnc/vnc.html' /tmp/pages-app.js \
+              && [ "$config_status" = "200" ] \
+              && grep -q '2026-08-03-http-desktop-1' /tmp/pages-config.js; then
+              success=true
+              break
+            fi
+
+            sleep 10
+          done
+
+          {
+            echo "success=$success"
+            echo "hf_desktop_status=$desktop_status"
+            echo "hf_capabilities_status=$capabilities_status"
+            echo "hf_login_rejection_status=$login_status"
+            echo "pages_status=$pages_status"
+            echo "pages_app_status=$app_status"
+            echo "pages_config_status=$config_status"
+            echo "capabilities=$(cat /tmp/capabilities.json 2>/dev/null || true)"
+            echo "config=$(tr '\n' ' ' < /tmp/pages-config.js 2>/dev/null || true)"
+          } | tee /tmp/http-desktop-verification.txt
+
+          [ "$success" = "true" ]
+
+      - name: Upload verification artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: http-desktop-verification
+          path: /tmp/http-desktop-verification.txt
