@@ -1,9 +1,9 @@
 Hugging Face deployment: success
-Hugging Face runtime wait: success
-Hugging Face Space health: success
-Source commit: a917bddc7545e4cdfcac3dc692182a0cae3ddc66
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30798638186
-Recorded at: 2026-08-03T08:48:51Z
+Hugging Face runtime wait: cancelled
+Hugging Face Space health: skipped
+Source commit: 0adb30aed7372d92c321133359744314c054cdc0
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30805293882
+Recorded at: 2026-08-03T10:22:50Z
 
 ===== space-info.txt =====
 {
@@ -14,20 +14,20 @@ Recorded at: 2026-08-03T08:48:51Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-03T08:45:48+00:00",
+  "last_modified": "2026-08-03T10:22:29+00:00",
   "likes": 0,
   "models": [
     "Salesforce/ctrl"
   ],
   "private": false,
   "runtime": {
-    "stage": "RUNNING",
+    "stage": "RUNNING_BUILDING",
     "hardware": "zero-a10g",
     "requested_hardware": "zero-a10g",
     "sleep_time": 172800,
     "dev_mode": false,
     "raw": {
-      "stage": "RUNNING",
+      "stage": "RUNNING_BUILDING",
       "hardware": {
         "current": "zero-a10g",
         "requested": "zero-a10g"
@@ -49,7 +49,7 @@ Recorded at: 2026-08-03T08:48:51Z
     }
   },
   "sdk": "gradio",
-  "sha": "db9c21e49301093149da4745a4e8525f7ed6d008",
+  "sha": "01669a115d931926d0efdb135e1588b10717628b",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
@@ -65,6 +65,9 @@ Recorded at: 2026-08-03T08:48:51Z
     },
     {
       "rfilename": "desktop_http.py"
+    },
+    {
+      "rfilename": "desktop_setup.py"
     },
     {
       "rfilename": "packages.txt"
@@ -92,6 +95,3 @@ If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-clou
 If the repo is private, make sure you are authenticated and your token has the required permissions.
 If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-cloud-pc --type space[0m
 [90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
-
-===== last-health.txt =====
-{"ok":true,"name":"Ripo Team Cloud PC","platform":"Hugging Face Gradio Space","architecture":"x86_64","cpu_count":192,"memory_total":2147443875840,"memory_available":842921005056,"disk_total":8589854879744,"disk_free":2179189993472,"desktop":{"xvfb":{"pid":221,"running":true,"returncode":null},"openbox":{"pid":222,"running":true,"returncode":null},"pcmanfm":{"pid":223,"running":true,"returncode":null},"lxpanel":{"pid":224,"running":true,"returncode":null},"xterm":{"pid":225,"running":true,"returncode":null},"x11vnc":{"pid":226,"running":true,"returncode":null}},"security":{"custom_vnc_password":true,"admin_token_configured":true},"hermes":{"installed":false,"running":false,"install":{"running":false,"last_result":null,"started_at":null,"finished_at":null}},"timestamp":1785746874.1600118}
