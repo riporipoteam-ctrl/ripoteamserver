@@ -1,0 +1,58 @@
+name: Fix noVNC WebSocket handshake
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fix-novnc-websocket.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch WebSocket subprotocol handling
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("hf-space/app.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''@app.websocket("/websockify")
+async def websockify_proxy(websocket: WebSocket) -> None:
+    await websocket.accept()
+'''
+          new = '''@app.websocket("/websockify")
+async def websockify_proxy(websocket: WebSocket) -> None:
+    requested_protocols = [
+        item.strip()
+        for item in websocket.headers.get("sec-websocket-protocol", "").split(",")
+        if item.strip()
+    ]
+    selected_protocol = "binary" if "binary" in requested_protocols else None
+    await websocket.accept(subprotocol=selected_protocol)
+'''
+          if old not in text:
+              raise SystemExit("Could not locate noVNC WebSocket accept block")
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Validate source
+        run: |
+          python -m py_compile hf-space/app.py
+          grep -F 'selected_protocol = "binary"' hf-space/app.py
+          grep -F 'websocket.accept(subprotocol=selected_protocol)' hf-space/app.py
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hf-space/app.py
+          git commit -m "Fix noVNC WebSocket subprotocol handshake" || true
+          git push
