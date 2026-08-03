@@ -1,0 +1,1 @@
+Run the full LXDE desktop installation from the latest main branch.
