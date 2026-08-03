@@ -1,9 +1,9 @@
 Hugging Face deployment: success
-Hugging Face runtime wait: cancelled
+Hugging Face runtime wait: failure
 Hugging Face Space health: skipped
-Source commit: 5bcba1dda61aaefcb10174b87daef4037610c072
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30805933283
-Recorded at: 2026-08-03T10:33:11Z
+Source commit: 65205db0d532410ae211c4e0e65512d1cc5166c4
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30806005484
+Recorded at: 2026-08-03T10:37:01Z
 
 ===== space-info.txt =====
 {
@@ -14,27 +14,25 @@ Recorded at: 2026-08-03T10:33:11Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-03T10:32:11+00:00",
+  "last_modified": "2026-08-03T10:33:29+00:00",
   "likes": 0,
   "models": [
     "Salesforce/ctrl"
   ],
   "private": false,
   "runtime": {
-    "stage": "RUNNING_BUILDING",
-    "hardware": "zero-a10g",
+    "stage": "RUNTIME_ERROR",
     "requested_hardware": "zero-a10g",
     "sleep_time": 172800,
     "dev_mode": false,
     "raw": {
-      "stage": "RUNNING_BUILDING",
+      "stage": "RUNTIME_ERROR",
       "hardware": {
-        "current": "zero-a10g",
         "requested": "zero-a10g"
       },
       "gcTimeout": 172800,
+      "errorMessage": "Exit code: 128. Reason: failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: error running prestart hook #0: exit status 1, stdout: , stderr: Using requested mode 'legacy'",
       "replicas": {
-        "current": 1,
         "requested": 1
       },
       "devMode": false,
@@ -43,13 +41,11 @@ Recorded at: 2026-08-03T10:33:11Z
           "domain": "echoxr-ripoteam-cloud-pc.hf.space",
           "stage": "READY"
         }
-      ],
-      "sha": "01669a115d931926d0efdb135e1588b10717628b",
-      "pySpacesVersion": "0.51.1"
+      ]
     }
   },
   "sdk": "gradio",
-  "sha": "5cb2fd6d5b3c96f2e4984ce96a76fa00eebb41c7",
+  "sha": "7662a5f9e925979b64b96219ba692b61eb5fd93e",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
