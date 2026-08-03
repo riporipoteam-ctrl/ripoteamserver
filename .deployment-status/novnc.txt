@@ -1,0 +1,4 @@
+status=failure
+error_type=TimeoutError
+error=TimeoutError('timed out during opening handshake')
+checked_at=2026-08-03T08:29:15.280078+00:00
