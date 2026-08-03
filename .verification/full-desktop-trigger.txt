@@ -1,1 +1,2 @@
 Run the full LXDE desktop installation and resource-meter correction.
+Revision 2: remove terminal auto-start and launch startlxde.
