@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import os
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +15,7 @@ def _write(path: Path, content: str, *, executable: bool = False) -> None:
 
 
 def configure_full_desktop(data_dir: Path, home: Path) -> None:
-    """Create a normal, computer-like LXDE desktop before the X session starts."""
+    """Create a normal, computer-like desktop before the X session starts."""
     desktop_dir = home / "Desktop"
     desktop_dir.mkdir(parents=True, exist_ok=True)
 
@@ -85,7 +84,7 @@ show_mounts=1
         "System-Info.desktop": (
             "System Info",
             "View the container resource limits",
-            "lxterminal -e bash -lc 'echo Ripo Team Cloud Linux; echo; echo CPU:; nproc; echo; echo Memory:; free -h; echo; echo Disk view:; df -h /; echo; read -p \\"Press Enter to close...\\"'",
+            "lxterminal -e bash -lc 'echo Ripo Team Cloud Linux; echo; echo CPU:; nproc; echo; echo Memory:; free -h; echo; echo Disk view:; df -h /; echo; exec bash'",
             "computer",
         ),
     }
@@ -105,7 +104,7 @@ StartupNotify=true
             executable=True,
         )
 
-    # Ensure LXDE starts the panel and desktop manager even on minimal images.
+    # Ensure the panel and desktop manager start on the minimal image.
     _write(
         home / ".config/lxsession/LXDE/autostart",
         """@lxpanel --profile LXDE
@@ -172,14 +171,18 @@ def _cpu_limit() -> tuple[float, str]:
 def detected_resources() -> dict[str, Any]:
     memory_total, memory_available, memory_source = _memory_limits()
     cpu_count, cpu_source = _cpu_limit()
-    rounded_cpu: int | float = int(cpu_count) if math.isclose(cpu_count, round(cpu_count), abs_tol=0.01) else round(cpu_count, 2)
+    rounded_cpu: int | float = (
+        int(cpu_count)
+        if math.isclose(cpu_count, round(cpu_count), abs_tol=0.01)
+        else round(cpu_count, 2)
+    )
     return {
         "cpu_count": rounded_cpu,
         "cpu_source": cpu_source,
         "memory_total": memory_total,
         "memory_available": memory_available,
         "memory_source": memory_source,
-        # statvfs/psutil sees the shared host filesystem on this Space, not the user's quota.
+        # statvfs/psutil sees the shared host filesystem, not the user's quota.
         "disk_total": None,
         "disk_free": None,
         "disk_note": "Ephemeral Hugging Face Space storage; the shared host filesystem size is not your personal disk quota.",
