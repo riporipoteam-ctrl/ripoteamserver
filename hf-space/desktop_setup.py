@@ -15,7 +15,7 @@ def _write(path: Path, content: str, *, executable: bool = False) -> None:
 
 
 def configure_full_desktop(data_dir: Path, home: Path) -> None:
-    """Create a normal, computer-like desktop before the X session starts."""
+    """Configure a lightweight, phone-friendly Openbox desktop."""
     desktop_dir = home / "Desktop"
     desktop_dir.mkdir(parents=True, exist_ok=True)
 
@@ -44,9 +44,8 @@ def configure_full_desktop(data_dir: Path, home: Path) -> None:
 </svg>\n""",
     )
 
-    pcmanfm_config = home / ".config/pcmanfm/LXDE/desktop-items-0.conf"
     _write(
-        pcmanfm_config,
+        home / ".config/pcmanfm/LXDE/desktop-items-0.conf",
         f"""[*]
 wallpaper_mode=fit
 wallpaper_common=1
@@ -55,25 +54,56 @@ desktop_bg=#0b1020
 desktop_fg=#ffffff
 desktop_shadow=#000000
 show_wm_menu=0
-sort=mtime;ascending;
+sort=name;ascending;
 show_documents=0
 show_trash=1
 show_mounts=1
 """,
     )
 
+    # PCManFM normally expects double-click. Single-click mode makes phone taps reliable.
+    _write(
+        home / ".config/libfm/libfm.conf",
+        """[config]
+single_click=1
+auto_selection_delay=250
+use_trash=1
+confirm_del=1
+quick_exec=1
+terminal=lxterminal
+thumbnail_local=1
+thumbnail_max=2048
+""",
+    )
+
+    system_info = data_dir / "system-info.sh"
+    _write(
+        system_info,
+        """#!/usr/bin/env bash
+printf 'Ripo Team Cloud Linux\n\nCPU limit: '
+nproc
+printf '\nMemory view:\n'
+free -h
+printf '\nFilesystem view:\n'
+df -h /
+printf '\nPress Enter to close...'
+read -r _
+""",
+        executable=True,
+    )
+
     launchers = {
+        "Browser.desktop": (
+            "Web Browser",
+            "Browse the web with Firefox",
+            "firefox-esr --new-window https://www.google.com",
+            "firefox-esr",
+        ),
         "Files.desktop": (
             "Files",
             "Open your Linux files",
             "pcmanfm",
             "system-file-manager",
-        ),
-        "Browser.desktop": (
-            "Web Browser",
-            "Browse the web with Firefox",
-            "firefox-esr --no-remote --new-window https://www.google.com",
-            "firefox-esr",
         ),
         "Terminal.desktop": (
             "Terminal",
@@ -81,13 +111,26 @@ show_mounts=1
             "lxterminal",
             "utilities-terminal",
         ),
+        "Text-Editor.desktop": (
+            "Text Editor",
+            "Edit text files",
+            "mousepad",
+            "accessories-text-editor",
+        ),
+        "Desktop-Settings.desktop": (
+            "Desktop Settings",
+            "Change the desktop appearance",
+            "lxappearance",
+            "preferences-desktop-theme",
+        ),
         "System-Info.desktop": (
             "System Info",
-            "View the container resource limits",
-            "lxterminal -e bash -lc 'echo Ripo Team Cloud Linux; echo; echo CPU:; nproc; echo; echo Memory:; free -h; echo; echo Disk view:; df -h /; echo; exec bash'",
+            "View Linux resource information",
+            f"lxterminal -e {system_info}",
             "computer",
         ),
     }
+
     for filename, (name, comment, command, icon) in launchers.items():
         _write(
             desktop_dir / filename,
@@ -104,13 +147,22 @@ StartupNotify=true
             executable=True,
         )
 
-    # Ensure the panel and desktop manager start on the minimal image.
     _write(
-        home / ".config/lxsession/LXDE/autostart",
-        """@lxpanel --profile LXDE
-@pcmanfm --desktop --profile LXDE
+        desktop_dir / "Welcome.txt",
+        """Welcome to Ripo Team Cloud Linux
+
+Phone controls:
+- Single-tap an icon to open it.
+- Use the Browser, Files, Terminal and Editor buttons in the mobile dock.
+- Use the keyboard button for typing.
+- Use the pointer button for a right-click.
+
+Storage is temporary unless persistent storage is attached to the Hugging Face Space.
 """,
     )
+
+    # Keep the session small and predictable. The app starts these processes itself.
+    _write(home / ".config/lxsession/LXDE/autostart", "")
 
 
 def _read_text(path: str) -> str | None:
@@ -127,7 +179,6 @@ def _finite_limit(raw: str | None) -> int | None:
         value = int(raw)
     except ValueError:
         return None
-    # cgroup v1 sometimes exposes an enormous sentinel instead of "max".
     if value <= 0 or value >= (1 << 60):
         return None
     return value
@@ -171,18 +222,13 @@ def _cpu_limit() -> tuple[float, str]:
 def detected_resources() -> dict[str, Any]:
     memory_total, memory_available, memory_source = _memory_limits()
     cpu_count, cpu_source = _cpu_limit()
-    rounded_cpu: int | float = (
-        int(cpu_count)
-        if math.isclose(cpu_count, round(cpu_count), abs_tol=0.01)
-        else round(cpu_count, 2)
-    )
+    rounded_cpu: int | float = int(cpu_count) if math.isclose(cpu_count, round(cpu_count), abs_tol=0.01) else round(cpu_count, 2)
     return {
         "cpu_count": rounded_cpu,
         "cpu_source": cpu_source,
         "memory_total": memory_total,
         "memory_available": memory_available,
         "memory_source": memory_source,
-        # statvfs/psutil sees the shared host filesystem, not the user's quota.
         "disk_total": None,
         "disk_free": None,
         "disk_note": "Ephemeral Hugging Face Space storage; the shared host filesystem size is not your personal disk quota.",
