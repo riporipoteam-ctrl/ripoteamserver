@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/fix-novnc-websocket.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".verification/http-desktop-trigger.txt"
   workflow_dispatch:
 
 permissions:
@@ -15,10 +19,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Wire HTTP desktop routes into app
         run: |
-          echo "HTTP desktop integration revision 2"
+          echo "HTTP desktop integration revision 3"
           python - <<'PY'
           from pathlib import Path
 
@@ -63,4 +69,4 @@ jobs:
           git pull --rebase origin main
           git add hf-space/app.py
           git commit -m "Enable WebSocket-free HTTP Linux desktop" || true
-          git push
+          git push origin HEAD:main
