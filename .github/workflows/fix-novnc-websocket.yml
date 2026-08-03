@@ -24,7 +24,7 @@ jobs:
 
       - name: Wire HTTP desktop routes into app
         run: |
-          echo "HTTP desktop integration revision 3"
+          echo "HTTP desktop integration revision 4"
           python - <<'PY'
           from pathlib import Path
 
@@ -66,7 +66,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main
           git add hf-space/app.py
           git commit -m "Enable WebSocket-free HTTP Linux desktop" || true
+          git pull --rebase origin main
           git push origin HEAD:main
