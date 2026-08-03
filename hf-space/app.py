@@ -117,12 +117,9 @@ def start_desktop() -> None:
         ],
     )
     wait_for_display()
-    if shutil.which("startlxde"):
-        spawn("lxde", ["dbus-launch", "--exit-with-session", "startlxde"])
-    else:
-        spawn("openbox", ["dbus-launch", "--exit-with-session", "openbox-session"])
-        spawn("pcmanfm", ["pcmanfm", "--desktop", "--profile", "LXDE"])
-        spawn("lxpanel", ["lxpanel", "--profile", "LXDE"])
+    spawn("openbox", ["dbus-launch", "--exit-with-session", "openbox-session"])
+    spawn("pcmanfm", ["pcmanfm", "--desktop", "--profile", "LXDE"])
+    spawn("lxpanel", ["lxpanel", "--profile", "LXDE"])
     spawn(
         "x11vnc",
         [
@@ -313,7 +310,6 @@ async def logs(name: str, x_admin_token: str | None = Header(default=None)) -> J
     authorize(x_admin_token)
     allowed = {
         "xvfb",
-        "lxde",
         "openbox",
         "pcmanfm",
         "lxpanel",
