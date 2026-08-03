@@ -7,7 +7,6 @@ ffmpeg
 firefox-esr
 fonts-dejavu-core
 git
-lxde-core
 lxappearance
 lxpanel
 lxterminal
