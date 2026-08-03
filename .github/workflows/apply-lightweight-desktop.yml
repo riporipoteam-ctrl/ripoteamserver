@@ -1,0 +1,69 @@
+name: Apply lightweight full desktop fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".verification/lightweight-desktop-trigger.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Replace LXDE session with proven desktop components
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('hf-space/app.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''    if shutil.which("startlxde"):
+              spawn("lxde", ["dbus-launch", "--exit-with-session", "startlxde"])
+          else:
+              spawn("openbox", ["dbus-launch", "--exit-with-session", "openbox-session"])
+              spawn("pcmanfm", ["pcmanfm", "--desktop", "--profile", "LXDE"])
+              spawn("lxpanel", ["lxpanel", "--profile", "LXDE"])
+          '''
+          new = '''    spawn("openbox", ["dbus-launch", "--exit-with-session", "openbox-session"])
+          spawn("pcmanfm", ["pcmanfm", "--desktop", "--profile", "LXDE"])
+          spawn("lxpanel", ["lxpanel", "--profile", "LXDE"])
+          '''
+          if old not in text:
+              raise SystemExit('Could not find the LXDE startup block')
+          text = text.replace(old, new, 1)
+          text = text.replace('        "lxde",\n', '', 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Validate desktop source
+        run: |
+          python -m py_compile hf-space/app.py hf-space/desktop_setup.py hf-space/desktop_http.py
+          grep -F 'configure_full_desktop(DATA_DIR, HOME)' hf-space/app.py
+          grep -F 'spawn("openbox", ["dbus-launch", "--exit-with-session", "openbox-session"])' hf-space/app.py
+          grep -F 'spawn("pcmanfm", ["pcmanfm", "--desktop", "--profile", "LXDE"])' hf-space/app.py
+          grep -F 'spawn("lxpanel", ["lxpanel", "--profile", "LXDE"])' hf-space/app.py
+          if grep -F 'spawn("xterm"' hf-space/app.py; then
+            echo 'Terminal still starts automatically' >&2
+            exit 1
+          fi
+          if grep -F 'startlxde' hf-space/app.py; then
+            echo 'Heavy LXDE session still starts' >&2
+            exit 1
+          fi
+
+      - name: Commit lightweight full desktop
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hf-space/app.py
+          git commit -m "Use lightweight full desktop on ZeroGPU"
+          git pull --rebase origin main
+          git push origin HEAD:main
