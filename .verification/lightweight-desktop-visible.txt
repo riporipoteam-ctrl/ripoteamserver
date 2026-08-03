@@ -1,1 +1,2 @@
 Run the visible lightweight desktop recovery job and expose its logs.
+Revision 2 after fixing indentation.
