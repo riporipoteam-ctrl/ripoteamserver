@@ -19,6 +19,7 @@ jobs:
 
       - name: Test binary WebSocket and VNC greeting
         run: |
+          echo "Live noVNC verifier revision 2"
           python -m pip install --quiet websockets
           python - <<'PY'
           import asyncio
