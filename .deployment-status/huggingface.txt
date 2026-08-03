@@ -1,9 +1,9 @@
-Hugging Face deployment: skipped
-Hugging Face runtime wait: skipped
-Hugging Face Space health: skipped
-Source commit: 8814e465b8826b211304af895d0d96c471352ecb
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30798023541
-Recorded at: 2026-08-03T08:36:35Z
+Hugging Face deployment: success
+Hugging Face runtime wait: success
+Hugging Face Space health: success
+Source commit: c87a030182d317a1e6272072bffc7ab98c0c6b1d
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/30798047607
+Recorded at: 2026-08-03T08:41:42Z
 
 ===== space-info.txt =====
 {
@@ -14,8 +14,11 @@ Recorded at: 2026-08-03T08:36:35Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-03T08:15:22+00:00",
+  "last_modified": "2026-08-03T08:36:54+00:00",
   "likes": 0,
+  "models": [
+    "Salesforce/ctrl"
+  ],
   "private": false,
   "runtime": {
     "stage": "RUNNING",
@@ -41,12 +44,12 @@ Recorded at: 2026-08-03T08:36:35Z
           "stage": "READY"
         }
       ],
-      "sha": "e8cff4786a80808befc570eb7c3aa0fe0be264ee",
+      "sha": "8fd5e55886af884b42f4eaf09d1b009cd98c4e82",
       "pySpacesVersion": "0.51.1"
     }
   },
   "sdk": "gradio",
-  "sha": "e8cff4786a80808befc570eb7c3aa0fe0be264ee",
+  "sha": "8fd5e55886af884b42f4eaf09d1b009cd98c4e82",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
@@ -59,6 +62,9 @@ Recorded at: 2026-08-03T08:36:35Z
     },
     {
       "rfilename": "app.py"
+    },
+    {
+      "rfilename": "desktop_http.py"
     },
     {
       "rfilename": "packages.txt"
@@ -86,3 +92,6 @@ If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-clou
 If the repo is private, make sure you are authenticated and your token has the required permissions.
 If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-cloud-pc --type space[0m
 [90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
+
+===== last-health.txt =====
+{"ok":true,"name":"Ripo Team Cloud PC","platform":"Hugging Face Gradio Space","architecture":"x86_64","cpu_count":192,"memory_total":2147443838976,"memory_available":846246412288,"disk_total":8589854879744,"disk_free":2054763880448,"desktop":{"xvfb":{"pid":221,"running":true,"returncode":null},"openbox":{"pid":222,"running":true,"returncode":null},"pcmanfm":{"pid":223,"running":true,"returncode":null},"lxpanel":{"pid":224,"running":true,"returncode":null},"xterm":{"pid":225,"running":true,"returncode":null},"x11vnc":{"pid":226,"running":true,"returncode":null}},"security":{"custom_vnc_password":true,"admin_token_configured":true},"hermes":{"installed":false,"running":false,"install":{"running":false,"last_result":null,"started_at":null,"finished_at":null}},"timestamp":1785746453.0019102}
