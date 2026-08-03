@@ -17,6 +17,7 @@ psmisc
 websockify
 x11vnc
 xdg-utils
+xdotool
 xterm
 xvfb
 xz-utils
