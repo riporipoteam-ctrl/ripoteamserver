@@ -1,0 +1,1 @@
+Run live noVNC WebSocket verification for Safari connection fix.
