@@ -41,7 +41,7 @@ jobs:
               "cloudflareProxyUrl": os.environ.get("CLOUDFLARE_PROXY_URL", ""),
               "pollSeconds": 5,
               "wakeTimeoutSeconds": 300,
-              "deploymentVersion": "2026-08-03-full-lxde-1",
+              "deploymentVersion": "2026-08-03-mobile-control-v3",
           }
           Path("site/config.js").write_text(
               "window.RIPO_CONFIG = " + json.dumps(config, indent=2) + ";\n",
@@ -49,9 +49,13 @@ jobs:
           )
           PY
 
-      - name: Verify production desktop route
+      - name: Verify production mobile desktop route
         run: |
-          grep -F '/desktop?v=2026-08-03-full-lxde-1' site/app.js
+          node --check site/app.js
+          node --check site/sw.js
+          grep -F '2026-08-03-mobile-control-v3' site/app.js
+          grep -F '/desktop?v=' site/app.js
+          grep -F 'Open mobile computer' site/index.html
           ! grep -F '/novnc/vnc.html' site/app.js
 
       - name: Configure GitHub Pages
