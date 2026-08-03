@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - ".verification/lightweight-desktop-trigger.txt"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".verification/lightweight-desktop-visible.txt"
   workflow_dispatch:
 
 permissions:
@@ -37,8 +41,11 @@ jobs:
           spawn("lxpanel", ["lxpanel", "--profile", "LXDE"])
           '''
           if old not in text:
-              raise SystemExit('Could not find the LXDE startup block')
-          text = text.replace(old, new, 1)
+              start = text.index('    if shutil.which("startlxde"):')
+              end = text.index('    spawn(\n        "x11vnc",', start)
+              text = text[:start] + new + text[end:]
+          else:
+              text = text.replace(old, new, 1)
           text = text.replace('        "lxde",\n', '', 1)
           path.write_text(text, encoding='utf-8')
           PY
