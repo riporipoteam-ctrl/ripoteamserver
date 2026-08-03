@@ -1,0 +1,1 @@
+Apply the lightweight full desktop recovery after the ZeroGPU OCI prestart failure.
