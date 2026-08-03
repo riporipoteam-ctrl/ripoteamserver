@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from desktop_http import install_desktop_routes
+from desktop_setup import configure_full_desktop, detected_resources
 from gradio import Server
 import psutil
 from fastapi import Header, HTTPException, WebSocket, WebSocketDisconnect
@@ -90,6 +91,7 @@ def wait_for_display(timeout: float = 20.0) -> None:
 
 
 def start_desktop() -> None:
+    configure_full_desktop(DATA_DIR, HOME)
     pass_file = DATA_DIR / "vnc.pass"
     subprocess.run(
         ["x11vnc", "-storepasswd", VNC_PASSWORD, str(pass_file)],
@@ -115,23 +117,12 @@ def start_desktop() -> None:
         ],
     )
     wait_for_display()
-    spawn("openbox", ["dbus-launch", "--exit-with-session", "openbox-session"])
-    spawn("pcmanfm", ["pcmanfm", "--desktop", "--profile", "LXDE"])
-    spawn("lxpanel", ["lxpanel", "--profile", "LXDE"])
-    spawn(
-        "xterm",
-        [
-            "xterm",
-            "-geometry",
-            "112x34+24+24",
-            "-fa",
-            "DejaVu Sans Mono",
-            "-fs",
-            "11",
-            "-title",
-            "Ripo Team Terminal",
-        ],
-    )
+    if shutil.which("startlxde"):
+        spawn("lxde", ["dbus-launch", "--exit-with-session", "startlxde"])
+    else:
+        spawn("openbox", ["dbus-launch", "--exit-with-session", "openbox-session"])
+        spawn("pcmanfm", ["pcmanfm", "--desktop", "--profile", "LXDE"])
+        spawn("lxpanel", ["lxpanel", "--profile", "LXDE"])
     spawn(
         "x11vnc",
         [
@@ -252,6 +243,7 @@ def read_log(name: str, max_bytes: int = 20_000) -> str:
 
 
 def status() -> dict[str, Any]:
+    resources = detected_resources()
     desktop = {
         name: {
             "pid": process.pid,
@@ -265,11 +257,7 @@ def status() -> dict[str, Any]:
         "name": "Ripo Team Cloud PC",
         "platform": "Hugging Face Gradio Space",
         "architecture": os.uname().machine,
-        "cpu_count": psutil.cpu_count(),
-        "memory_total": psutil.virtual_memory().total,
-        "memory_available": psutil.virtual_memory().available,
-        "disk_total": psutil.disk_usage("/").total,
-        "disk_free": psutil.disk_usage("/").free,
+        **resources,
         "desktop": desktop,
         "security": {
             "custom_vnc_password": VNC_PASSWORD != "ripo-change-me",
@@ -325,10 +313,10 @@ async def logs(name: str, x_admin_token: str | None = Header(default=None)) -> J
     authorize(x_admin_token)
     allowed = {
         "xvfb",
+        "lxde",
         "openbox",
         "pcmanfm",
         "lxpanel",
-        "xterm",
         "x11vnc",
         "hermes-install",
         "hermes-gateway",
@@ -431,7 +419,7 @@ def novnc_directory() -> Path:
 
 app.mount("/novnc", StaticFiles(directory=str(novnc_directory()), html=True), name="novnc")
 
-ROOT_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ripo Team Cloud PC</title><style>:root{font-family:Inter,system-ui,sans-serif;color:#f7f8ff;background:#060812}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 20% 20%,#27348b55,transparent 34rem),#060812;display:grid;place-items:center}.card{width:min(820px,calc(100% - 28px));padding:34px;border:1px solid #ffffff1c;border-radius:26px;background:#0d1222d9;box-shadow:0 30px 100px #0007}.eyebrow{color:#8e9bc8;font-weight:800;letter-spacing:.14em;font-size:.74rem}h1{font-size:clamp(2.2rem,7vw,5rem);line-height:.96;letter-spacing:-.055em;margin:10px 0 18px}p{color:#b4bddc;line-height:1.7}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}a{padding:13px 17px;border-radius:13px;text-decoration:none;font-weight:850}.primary{background:#f5f7ff;color:#071020}.secondary{border:1px solid #ffffff24;color:#f5f7ff}</style></head><body><main class="card"><div class="eyebrow">RIPO TEAM INFRASTRUCTURE</div><h1>Cloud PC is online.</h1><p>This Space runs a Linux x86-64 desktop with a file manager, app panel, terminal, browser and Hermes controls.</p><div class="actions"><a class="primary" href="/desktop">Open HTTPS Linux desktop</a><a class="secondary" href="/gradio_api/info">API info</a><a class="secondary" href="/api/health">Health JSON</a></div></main></body></html>"""
+ROOT_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ripo Team Cloud PC</title><style>:root{font-family:Inter,system-ui,sans-serif;color:#f7f8ff;background:#060812}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 20% 20%,#27348b55,transparent 34rem),#060812;display:grid;place-items:center}.card{width:min(820px,calc(100% - 28px));padding:34px;border:1px solid #ffffff1c;border-radius:26px;background:#0d1222d9;box-shadow:0 30px 100px #0007}.eyebrow{color:#8e9bc8;font-weight:800;letter-spacing:.14em;font-size:.74rem}h1{font-size:clamp(2.2rem,7vw,5rem);line-height:.96;letter-spacing:-.055em;margin:10px 0 18px}p{color:#b4bddc;line-height:1.7}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}a{padding:13px 17px;border-radius:13px;text-decoration:none;font-weight:850}.primary{background:#f5f7ff;color:#071020}.secondary{border:1px solid #ffffff24;color:#f5f7ff}</style></head><body><main class="card"><div class="eyebrow">RIPO TEAM INFRASTRUCTURE</div><h1>Cloud PC is online.</h1><p>This Space runs a full Linux LXDE desktop with a file manager, taskbar, browser, terminal shortcut and Hermes controls.</p><div class="actions"><a class="primary" href="/desktop">Open HTTPS Linux desktop</a><a class="secondary" href="/gradio_api/info">API info</a><a class="secondary" href="/api/health">Health JSON</a></div></main></body></html>"""
 
 
 @app.get("/", response_class=HTMLResponse)
