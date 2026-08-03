@@ -1,0 +1,121 @@
+name: Install full LXDE cloud desktop
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".verification/full-desktop-trigger.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Patch desktop startup and resource reporting
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("hf-space/app.py")
+          text = path.read_text(encoding="utf-8")
+
+          import_line = "from desktop_setup import configure_full_desktop, detected_resources\n"
+          if import_line not in text:
+              anchor = "from desktop_http import install_desktop_routes\n"
+              if anchor not in text:
+                  raise SystemExit("Could not locate desktop_http import")
+              text = text.replace(anchor, anchor + import_line, 1)
+
+          if "configure_full_desktop(DATA_DIR, HOME)" not in text:
+              anchor = "def start_desktop() -> None:\n"
+              if anchor not in text:
+                  raise SystemExit("Could not locate start_desktop")
+              text = text.replace(
+                  anchor,
+                  anchor + "    configure_full_desktop(DATA_DIR, HOME)\n",
+                  1,
+              )
+
+          old_session = '''    wait_for_display()
+    spawn("openbox", ["dbus-launch", "--exit-with-session", "openbox-session"])
+    spawn("pcmanfm", ["pcmanfm", "--desktop", "--profile", "LXDE"])
+    spawn("lxpanel", ["lxpanel", "--profile", "LXDE"])
+    spawn(
+        "xterm",
+        [
+            "xterm",
+            "-geometry",
+            "112x34+24+24",
+            "-fa",
+            "DejaVu Sans Mono",
+            "-fs",
+            "11",
+            "-title",
+            "Ripo Team Terminal",
+        ],
+    )
+'''
+          new_session = '''    wait_for_display()
+    if shutil.which("startlxde"):
+        spawn("lxde", ["dbus-launch", "--exit-with-session", "startlxde"])
+    else:
+        # Fallback for a partially installed image; still provide desktop + taskbar.
+        spawn("openbox", ["dbus-launch", "--exit-with-session", "openbox-session"])
+        spawn("pcmanfm", ["pcmanfm", "--desktop", "--profile", "LXDE"])
+        spawn("lxpanel", ["lxpanel", "--profile", "LXDE"])
+'''
+          if old_session in text:
+              text = text.replace(old_session, new_session, 1)
+          elif 'spawn("xterm"' in text:
+              raise SystemExit("Terminal startup exists but expected block was not found")
+
+          if "resources = detected_resources()" not in text:
+              anchor = "def status() -> dict[str, Any]:\n"
+              if anchor not in text:
+                  raise SystemExit("Could not locate status function")
+              text = text.replace(anchor, anchor + "    resources = detected_resources()\n", 1)
+
+          old_metrics = '''        "cpu_count": psutil.cpu_count(),
+        "memory_total": psutil.virtual_memory().total,
+        "memory_available": psutil.virtual_memory().available,
+        "disk_total": psutil.disk_usage("/").total,
+        "disk_free": psutil.disk_usage("/").free,
+'''
+          if old_metrics in text:
+              text = text.replace(old_metrics, "        **resources,\n", 1)
+          elif '"memory_source"' not in text and "**resources" not in text:
+              raise SystemExit("Could not locate old resource metrics")
+
+          if '"lxde",' not in text:
+              text = text.replace('        "xvfb",\n', '        "xvfb",\n        "lxde",\n', 1)
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Validate full desktop source
+        run: |
+          python -m py_compile hf-space/app.py hf-space/desktop_setup.py hf-space/desktop_http.py
+          grep -F 'from desktop_setup import configure_full_desktop, detected_resources' hf-space/app.py
+          grep -F 'configure_full_desktop(DATA_DIR, HOME)' hf-space/app.py
+          grep -F 'spawn("lxde", ["dbus-launch", "--exit-with-session", "startlxde"])' hf-space/app.py
+          grep -F 'resources = detected_resources()' hf-space/app.py
+          if grep -F 'spawn("xterm"' hf-space/app.py; then
+            echo "Terminal still auto-starts" >&2
+            exit 1
+          fi
+
+      - name: Commit full desktop backend
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hf-space/app.py
+          git commit -m "Launch full LXDE desktop and fix resource meters"
+          git pull --rebase origin main
+          git push origin HEAD:main
