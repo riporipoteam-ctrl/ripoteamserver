@@ -20,7 +20,8 @@ jobs:
       - name: Validate dashboard
         run: |
           node --check site/app.js
-          grep -F 'Public Telegram' site/index.html
+          grep -F 'id="telegram-access-card"' site/index.html
+          grep -F 'public-safe Telegram access' site/index.html
           grep -F 'publicTelegram' site/app.js
           grep -F 'Public · no pairing · safe tools' site/app.js
       - name: Commit dashboard
