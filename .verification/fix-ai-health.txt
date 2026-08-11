@@ -1,1 +1,2 @@
 Expose the local AI stack inside the main health response.
+Revision 2: marker-based patch.
