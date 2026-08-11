@@ -2,6 +2,10 @@ name: Integrate sealed Telegram secret
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".verification/sealed-telegram-run.txt"
   pull_request:
     branches: [main]
     paths:
