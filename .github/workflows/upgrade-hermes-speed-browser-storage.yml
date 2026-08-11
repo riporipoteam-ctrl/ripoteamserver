@@ -1,0 +1,42 @@
+name: Upgrade Hermes speed browser storage
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".verification/upgrade-hermes-speed-browser-storage.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply performance browser storage patch
+        run: python .github/scripts/upgrade_hermes_speed_browser_storage.py
+      - name: Validate upgraded backend
+        run: |
+          python -m py_compile hf-space/ai_stack.py hf-space/storage_saver.py
+          grep -F 'qwen3:4b-instruct' hf-space/ai_stack.py
+          grep -F 'OLLAMA_CONTEXT_LENGTH", "16384"' hf-space/ai_stack.py
+          grep -F 'disk-cleanup' hf-space/ai_stack.py
+          grep -F 'security-guidance' hf-space/ai_stack.py
+          grep -F '    - browser' hf-space/ai_stack.py
+          grep -F 'install_browser_tools' hf-space/ai_stack.py
+          grep -F 'ripo-web-browser' hf-space/ai_stack.py
+          grep -F 'storage_saver.cleanup' hf-space/ai_stack.py
+      - name: Commit upgrade
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hf-space/ai_stack.py hf-space/storage_saver.py
+          if git diff --cached --quiet; then
+            echo "No backend changes needed"
+            exit 0
+          fi
+          git commit -m "Speed up Hermes and add browser storage saver"
+          git pull --rebase origin main
+          git push origin HEAD:main
