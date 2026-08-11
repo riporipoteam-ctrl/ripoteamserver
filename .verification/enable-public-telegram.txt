@@ -1,0 +1,1 @@
+Enable public Telegram access without pairing while restricting Telegram sessions to the safe toolset.
