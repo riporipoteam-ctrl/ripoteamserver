@@ -1,1 +1,2 @@
 Run the validated Ollama + Hermes AI stack integration against current main.
+Revision 2: execute through pull-request CI.
