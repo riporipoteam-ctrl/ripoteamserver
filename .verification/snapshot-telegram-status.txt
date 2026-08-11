@@ -1,1 +1,1 @@
-Capture post-pairing encrypted Telegram status at 2026-08-11T14:55+02:00.
+Capture current Telegram pairing state after restart at 2026-08-11T14:57+02:00.
