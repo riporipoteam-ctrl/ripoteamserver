@@ -1,0 +1,1 @@
+Run sealed Telegram integration.
