@@ -13,6 +13,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from sealed_secrets import SealedSecretManager
+
 OLLAMA_API = "http://127.0.0.1:11434"
 DEFAULT_MODEL = os.environ.get("RIPO_AI_MODEL", "qwen3:4b")
 SESSION_TIMEOUT_SECONDS = 1800
@@ -23,6 +25,12 @@ class AIStack:
         self.home = home
         self.data_dir = data_dir
         self.log_dir = log_dir
+        self.sealed_secrets = SealedSecretManager(
+            admin_token=os.environ.get("ADMIN_TOKEN", ""),
+            vnc_password=os.environ.get("VNC_PASSWORD", ""),
+            base_dir=Path(__file__).resolve().parent,
+        )
+        self.sealed_secret_status = self.sealed_secrets.load_telegram_token()
         self.ollama_root = data_dir / "ollama"
         self.ollama_models = data_dir / "ollama-models"
         self.hermes_home = home / ".hermes"
@@ -369,7 +377,12 @@ class AIStack:
             "model": {"name": DEFAULT_MODEL, "installed": DEFAULT_MODEL in models, "available_models": models, "endpoint": f"{OLLAMA_API}/v1", "context_length": int(self._env()["OLLAMA_CONTEXT_LENGTH"])},
             "ollama": {"installed": self.ollama_binary() is not None, "running": self.ollama_ready()},
             "hermes": {"installed": self.hermes_binary() is not None, "gateway_running": gateway_running, "skills": skill_count, "plugins": len(plugin_paths)},
-            "telegram": {"token_configured": bool(os.environ.get("TELEGRAM_BOT_TOKEN")), "allowlist_configured": bool(os.environ.get("TELEGRAM_ALLOWED_USERS")), "access_mode": "allowlist" if os.environ.get("TELEGRAM_ALLOWED_USERS") else "default-deny-pairing"},
+            "telegram": {
+                "token_configured": bool(os.environ.get("TELEGRAM_BOT_TOKEN")),
+                "allowlist_configured": bool(os.environ.get("TELEGRAM_ALLOWED_USERS")),
+                "access_mode": "allowlist" if os.environ.get("TELEGRAM_ALLOWED_USERS") else "default-deny-pairing",
+                "sealing": self.sealed_secrets.status(),
+            },
             "bootstrap": dict(self.state),
             "storage": {"model_directory": str(self.ollama_models), "ephemeral": True},
         }
