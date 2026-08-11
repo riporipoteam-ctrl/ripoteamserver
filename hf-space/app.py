@@ -13,11 +13,12 @@ import time
 from pathlib import Path
 from typing import Any
 
+from ai_stack import AIStack
 from desktop_http import install_desktop_routes
 from desktop_setup import configure_full_desktop, detected_resources
 from gradio import Server
 import psutil
-from fastapi import Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Body, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -32,6 +33,8 @@ ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+AI_STACK = AIStack(home=HOME, data_dir=DATA_DIR / "ai", log_dir=LOG_DIR)
 
 PROCESSES: dict[str, subprocess.Popen[Any]] = {}
 HERMES_PROCESS: subprocess.Popen[Any] | None = None
@@ -241,6 +244,7 @@ def read_log(name: str, max_bytes: int = 20_000) -> str:
 
 def status() -> dict[str, Any]:
     resources = detected_resources()
+    ai = AI_STACK.status()
     desktop = {
         name: {
             "pid": process.pid,
@@ -325,20 +329,80 @@ async def logs(name: str, x_admin_token: str | None = Header(default=None)) -> J
 @app.post("/api/hermes/install")
 async def hermes_install(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
     authorize(x_admin_token)
-    return JSONResponse(install_hermes())
+    return JSONResponse(AI_STACK.bootstrap_async())
 
 
 @app.post("/api/hermes/start")
 async def hermes_start(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
     authorize(x_admin_token)
-    result = start_hermes_gateway()
+    result = AI_STACK.start_gateway()
     return JSONResponse(result, status_code=200 if result["ok"] else 409)
 
 
 @app.post("/api/hermes/stop")
 async def hermes_stop(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
     authorize(x_admin_token)
-    return JSONResponse(stop_hermes_gateway())
+    return JSONResponse(AI_STACK.stop_gateway())
+
+
+@app.get("/api/ai/status")
+async def ai_status() -> JSONResponse:
+    return JSONResponse(AI_STACK.status())
+
+
+@app.post("/api/ai/bootstrap")
+async def ai_bootstrap(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+    authorize(x_admin_token)
+    return JSONResponse(AI_STACK.bootstrap_async())
+
+
+@app.post("/api/ai/ollama/start")
+async def ai_ollama_start(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+    authorize(x_admin_token)
+    result = await asyncio.to_thread(AI_STACK.start_ollama)
+    return JSONResponse(result, status_code=200 if result["ok"] else 409)
+
+
+@app.post("/api/ai/ollama/stop")
+async def ai_ollama_stop(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+    authorize(x_admin_token)
+    return JSONResponse(AI_STACK.stop_ollama())
+
+
+@app.post("/api/ai/model/pull")
+async def ai_model_pull(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+    authorize(x_admin_token)
+    result = await asyncio.to_thread(AI_STACK.pull_model)
+    return JSONResponse(result, status_code=200 if result["ok"] else 409)
+
+
+@app.post("/api/ai/hermes/start")
+async def ai_hermes_start(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+    authorize(x_admin_token)
+    result = AI_STACK.start_gateway()
+    return JSONResponse(result, status_code=200 if result["ok"] else 409)
+
+
+@app.post("/api/ai/hermes/stop")
+async def ai_hermes_stop(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+    authorize(x_admin_token)
+    return JSONResponse(AI_STACK.stop_gateway())
+
+
+@app.post("/api/ai/telegram/pair")
+async def ai_telegram_pair(
+    payload: dict[str, Any] = Body(default_factory=dict),
+    x_admin_token: str | None = Header(default=None),
+) -> JSONResponse:
+    authorize(x_admin_token)
+    result = await asyncio.to_thread(AI_STACK.approve_pairing, str(payload.get("code", "")))
+    return JSONResponse(result, status_code=200 if result["ok"] else 400)
+
+
+@app.get("/api/ai/logs/{name}")
+async def ai_logs(name: str, x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+    authorize(x_admin_token)
+    return JSONResponse({"ok": True, "name": name, "content": AI_STACK.read_log(name)})
 
 
 @app.websocket("/websockify")
@@ -425,5 +489,8 @@ async def root() -> str:
 
 if os.environ.get("RIPO_SKIP_DESKTOP") != "1":
     start_desktop()
+
+if os.environ.get("RIPO_AI_AUTOSTART", "1") != "0":
+    AI_STACK.bootstrap_async()
 
 app.launch(show_error=True)
