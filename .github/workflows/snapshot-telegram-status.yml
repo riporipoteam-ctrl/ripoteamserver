@@ -12,11 +12,67 @@ permissions:
 jobs:
   snapshot:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Read safe public AI status
+      - name: Wait for upgraded AI stack
         run: |
           set -euo pipefail
-          curl -L -sS --max-time 60 'https://echoxr-ripoteam-cloud-pc.hf.space/api/ai/status?snapshot=1' -o /tmp/ai.json
+          URL='https://echoxr-ripoteam-cloud-pc.hf.space/api/ai/status'
+          ready=false
+          for attempt in $(seq 1 70); do
+            echo "Readiness attempt $attempt"
+            if curl -L -sS --max-time 60 "$URL?upgrade_check=$attempt" -o /tmp/ai.json; then
+              python - <<'PY' || true
+          import json
+          from pathlib import Path
+          d=json.loads(Path('/tmp/ai.json').read_text())
+          print(json.dumps({
+            'model': d.get('model'),
+            'ollama': d.get('ollama'),
+            'hermes': d.get('hermes'),
+            'browser': d.get('browser'),
+            'telegram': d.get('telegram'),
+            'bootstrap': d.get('bootstrap'),
+            'storage': d.get('storage'),
+          }, indent=2))
+          PY
+              if python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('/tmp/ai.json').read_text())
+          model=d.get('model') or {}
+          ollama=d.get('ollama') or {}
+          hermes=d.get('hermes') or {}
+          browser=d.get('browser') or {}
+          telegram=d.get('telegram') or {}
+          bootstrap=d.get('bootstrap') or {}
+          saver=(d.get('storage') or {}).get('saver') or {}
+          assert model.get('name') == 'qwen3:4b-instruct', model
+          assert model.get('installed') is True, model
+          assert model.get('context_length') == 16384, model
+          assert ollama.get('running') is True, ollama
+          assert hermes.get('installed') is True, hermes
+          assert hermes.get('gateway_running') is True, hermes
+          assert int(hermes.get('skills') or 0) >= 90, hermes
+          assert int(hermes.get('plugins') or 0) >= 90, hermes
+          assert browser.get('agent_browser') is True, browser
+          assert browser.get('toolset') == 'browser', browser
+          assert telegram.get('access_mode') == 'public-safe', telegram
+          assert telegram.get('pairing_required') is False, telegram
+          assert bootstrap.get('stage') == 'ready', bootstrap
+          assert bootstrap.get('last_error') is None, bootstrap
+          assert saver.get('last_error') is None, saver
+          assert saver.get('pressure') in {'normal','elevated','high','critical','unknown'}, saver
+          PY
+              then
+                ready=true
+                break
+              fi
+            fi
+            sleep 15
+          done
+          echo "ready=$ready"
+          echo "Final safe status:"
           python - <<'PY'
           import json
           from pathlib import Path
@@ -25,8 +81,11 @@ jobs:
             'model': d.get('model'),
             'ollama': d.get('ollama'),
             'hermes': d.get('hermes'),
+            'browser': d.get('browser'),
             'telegram': d.get('telegram'),
             'bootstrap': d.get('bootstrap'),
+            'storage': d.get('storage'),
           }
           print(json.dumps(safe, indent=2))
           PY
+          [ "$ready" = "true" ]
