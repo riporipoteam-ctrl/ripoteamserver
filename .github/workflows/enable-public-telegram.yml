@@ -1,0 +1,38 @@
+name: Enable public-safe Telegram
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".verification/enable-public-telegram.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply public-safe Telegram patch
+        run: python .github/scripts/enable_public_telegram.py
+      - name: Validate Python and safety markers
+        run: |
+          python -m py_compile hf-space/ai_stack.py hf-space/app.py hf-space/sealed_secrets.py
+          grep -F '"TELEGRAM_ALLOW_ALL_USERS": "true"' hf-space/ai_stack.py
+          grep -F '"    - safe\\n"' hf-space/ai_stack.py
+          grep -F 'Pairing disabled because Telegram is running in public-safe mode.' hf-space/ai_stack.py
+          grep -F '"access_mode": "public-safe"' hf-space/ai_stack.py
+          ! grep -F '"platform_toolsets:\\n"' hf-space/ai_stack.py | grep -F 'hermes-telegram'
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hf-space/ai_stack.py
+          if git diff --cached --quiet; then
+            echo "No changes needed"
+            exit 0
+          fi
+          git commit -m "Make Telegram public with safe tools only"
+          git push
