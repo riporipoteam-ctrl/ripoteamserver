@@ -1,0 +1,1 @@
+Update the Cloud PC dashboard for public-safe Telegram mode and remove obsolete pairing UI.
