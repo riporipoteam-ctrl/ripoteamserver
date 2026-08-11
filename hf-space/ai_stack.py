@@ -243,9 +243,13 @@ class AIStack:
             "        allow_admin_from:\n"
             '          - "0"\n'
             "        user_allowed_commands:\n"
+            "          - new\n"
+            "          - reset\n"
             "          - status\n"
             "          - model\n"
-            "          - history\n"
+            "          - commands\n"
+            "          - help\n"
+            "          - whoami\n"
             "        group_allow_admin_from:\n"
             '          - "0"\n'
             "        group_user_allowed_commands:\n"
