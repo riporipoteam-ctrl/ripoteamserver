@@ -78,6 +78,8 @@ class AIStack:
                 "OLLAMA_MAX_LOADED_MODELS": env.get("OLLAMA_MAX_LOADED_MODELS", "1"),
                 "OLLAMA_CONTEXT_LENGTH": env.get("OLLAMA_CONTEXT_LENGTH", "65536"),
                 "HERMES_API_TIMEOUT": env.get("HERMES_API_TIMEOUT", "1800"),
+                "TELEGRAM_ALLOW_ALL_USERS": "true",
+                "HERMES_EXEC_ASK": "true",
             }
         )
         lib_dir = self.ollama_root / "lib" / "ollama"
@@ -229,11 +231,25 @@ class AIStack:
             '  mode: "both"\n'
             "  idle_minutes: 1440\n"
             "  at_hour: 4\n"
+            "platform_toolsets:\n"
+            "  telegram:\n"
+            "    - safe\n"
             "gateway:\n"
             "  platforms:\n"
             "    telegram:\n"
             "      extra:\n"
-            "        disable_link_previews: true\n",
+            "        disable_link_previews: true\n"
+            "        require_mention: true\n"
+            "        allow_admin_from:\n"
+            '          - "0"\n'
+            "        user_allowed_commands:\n"
+            "          - status\n"
+            "          - model\n"
+            "          - history\n"
+            "        group_allow_admin_from:\n"
+            '          - "0"\n'
+            "        group_user_allowed_commands:\n"
+            "          - status\n",
             encoding="utf-8",
         )
         self._install_ripo_skills()
@@ -247,7 +263,7 @@ class AIStack:
             "research": ("Research technical questions with source checking and concise synthesis.", """Use for technical research.\n- Prefer official documentation, source repositories, and primary research.\n- Distinguish confirmed facts from inference.\n- For changing software behavior, verify the current version.\n- Summarize findings with the most actionable details first.\n"""),
             "security": ("Security checklist for bots, servers, and automation.", """Use before exposing a service or bot.\n- Secrets belong in environment secret stores, never public Git history.\n- Default-deny access to messaging bots with user allowlists or pairing.\n- Bind internal services to loopback unless they must be public.\n- Validate inputs to shell/tool endpoints.\n- Redact credentials from logs and status pages.\n"""),
             "deploy": ("Deploy and verify the Ripo Team Cloud PC stack.", """Use for GitHub Pages and Hugging Face Space deployments.\n1. Validate code locally or with CI.\n2. Deploy frontend and backend independently.\n3. Poll the Space health endpoint.\n4. Verify the live frontend assets with cache-busting.\n5. Record the exact failing stage if a check does not pass.\n"""),
-            "telegram-bot": ("Operate the private Hermes Telegram bot.", """Use for Telegram gateway administration.\n- Require pairing or an explicit allowlist; never enable allow-all for a terminal-capable agent.\n- Never echo the bot token.\n- Use `hermes pairing` commands to approve trusted users.\n- After config changes, restart `hermes gateway` and verify its log.\n"""),
+            "telegram-bot": ("Operate the public-safe Hermes Telegram bot.", """Use for Telegram gateway administration.\n- Telegram public access is intentionally enabled, but the Telegram platform is restricted to the read-only `safe` toolset.\n- Never echo the bot token or expose Cloud PC admin credentials.\n- Do not enable terminal, file-write, code-execution, cron, deployment, or admin toolsets for public Telegram sessions.\n- After config changes, restart `hermes gateway` and verify its log.\n"""),
             "local-ai": ("Operate Ollama and the local Qwen model efficiently.", """Use for local inference management.\n- Default model is qwen3:4b through `http://127.0.0.1:11434/v1`.\n- Check `ollama ps` and `ollama list` before pulling duplicates.\n- Keep one model loaded at a time on the Space.\n- Reduce context or switch to a smaller model when latency is too high.\n- Remember ZeroGPU does not automatically accelerate a normal Ollama background process.\n"""),
         }
         base = self.hermes_home / "skills" / "ripo-team"
@@ -301,6 +317,9 @@ class AIStack:
         time.sleep(1.5)
         if self._gateway_process.poll() is not None:
             return {"ok": False, "message": "Hermes gateway exited during startup. Check the Hermes gateway log."}
+        public_telegram = str(self._env().get("TELEGRAM_ALLOW_ALL_USERS", "")).lower() in {"1", "true", "yes", "on"}
+        if public_telegram:
+            return {"ok": True, "message": "Hermes Telegram gateway started in PUBLIC SAFE mode. No pairing code is required; Telegram is limited to the safe toolset."}
         return {"ok": True, "message": "Hermes Telegram gateway started. " + ("Telegram is restricted by your allowlist." if os.environ.get("TELEGRAM_ALLOWED_USERS") else "Unknown Telegram users remain denied until paired.")}
 
     def stop_gateway(self) -> dict[str, Any]:
@@ -453,8 +472,16 @@ class AIStack:
             self.install_optional_skills()
             if os.environ.get("TELEGRAM_BOT_TOKEN"):
                 self.start_gateway()
-                self.process_pairing_request()
-                self.start_remote_pairing_watcher()
+                public_telegram = str(self._env().get("TELEGRAM_ALLOW_ALL_USERS", "")).lower() in {"1", "true", "yes", "on"}
+                if public_telegram:
+                    self.pairing_command_status.update(
+                        watching=False,
+                        last_ok=True,
+                        message="Pairing disabled because Telegram is running in public-safe mode.",
+                    )
+                else:
+                    self.process_pairing_request()
+                    self.start_remote_pairing_watcher()
             self._set_state("ready", "Local AI and Hermes are ready.")
             return {"ok": True, "message": "Local AI and Hermes are ready."}
         except Exception as exc:
@@ -482,6 +509,7 @@ class AIStack:
             if root.exists():
                 plugin_paths.update(root.rglob("plugin.yaml"))
         gateway_running = bool(self._gateway_process and self._gateway_process.poll() is None)
+        public_telegram = str(self._env().get("TELEGRAM_ALLOW_ALL_USERS", "")).lower() in {"1", "true", "yes", "on"}
         return {
             "ok": True,
             "model": {"name": DEFAULT_MODEL, "installed": DEFAULT_MODEL in models, "available_models": models, "endpoint": f"{OLLAMA_API}/v1", "context_length": int(self._env()["OLLAMA_CONTEXT_LENGTH"])},
@@ -490,7 +518,9 @@ class AIStack:
             "telegram": {
                 "token_configured": bool(os.environ.get("TELEGRAM_BOT_TOKEN")),
                 "allowlist_configured": bool(os.environ.get("TELEGRAM_ALLOWED_USERS")),
-                "access_mode": "allowlist" if os.environ.get("TELEGRAM_ALLOWED_USERS") else "default-deny-pairing",
+                "access_mode": "public-safe" if public_telegram else ("allowlist" if os.environ.get("TELEGRAM_ALLOWED_USERS") else "default-deny-pairing"),
+                "pairing_required": not public_telegram,
+                "tool_profile": "safe" if public_telegram else "hermes-telegram",
                 "sealing": self.sealed_secrets.status(),
                 "pairing_export": (json.loads(self.pairing_export_path.read_text(encoding="utf-8")) if self.pairing_export_path.exists() else None),
                 "pairing_command": dict(self.pairing_command_status),
