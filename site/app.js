@@ -1,7 +1,7 @@
 "use strict";
 
 const defaults = window.RIPO_CONFIG || {};
-const DEPLOYMENT_VERSION = "2026-08-11-local-ai-v1";
+const DEPLOYMENT_VERSION = "2026-08-11-public-telegram-v1";
 const cfg = {
   spaceUrl: localStorage.getItem("ripo-space-url") || defaults.spaceUrl || "",
   proxyUrl: localStorage.getItem("ripo-proxy-url") || defaults.cloudflareProxyUrl || "",
@@ -22,6 +22,7 @@ const el = {
   aiModel: q("#ai-model"), aiModelDetail: q("#ai-model-detail"), aiOllama: q("#ai-ollama"), aiHermes: q("#ai-hermes"),
   aiHermesDetail: q("#ai-hermes-detail"), aiTelegram: q("#ai-telegram"), aiTelegramDetail: q("#ai-telegram-detail"),
   aiSkills: q("#ai-skills"), aiPlugins: q("#ai-plugins"), pairCode: q("#telegram-pair-code"), secretWarning: q("#telegram-secret-warning"),
+  telegramAccessCard: q("#telegram-access-card"), telegramAccessTitle: q("#telegram-access-title"), telegramAccessCopy: q("#telegram-access-copy"), telegramPairRow: q("#telegram-pair-row"),
 };
 
 let connecting = false;
@@ -86,7 +87,13 @@ function renderAi(data) {
   if (el.aiHermes) el.aiHermes.textContent = hermes.gateway_running ? "Gateway running" : hermes.installed ? "Installed" : "Not installed";
   if (el.aiHermesDetail) el.aiHermesDetail.textContent = hermes.gateway_running ? "Local model + Telegram active" : "Agent + tool gateway";
   if (el.aiTelegram) el.aiTelegram.textContent = telegram.token_configured ? (hermes.gateway_running ? "Connected" : "Configured") : "Secret missing";
-  if (el.aiTelegramDetail) el.aiTelegramDetail.textContent = telegram.access_mode === "allowlist" ? "Restricted allowlist" : "Default deny · pairing";
+  const publicTelegram = telegram.access_mode === "public-safe" || telegram.pairing_required === false;
+  if (el.aiTelegramDetail) el.aiTelegramDetail.textContent = publicTelegram ? "Public · no pairing · safe tools" : telegram.access_mode === "allowlist" ? "Restricted allowlist" : "Default deny · pairing";
+  if (el.telegramAccessTitle) el.telegramAccessTitle.textContent = publicTelegram ? "Public Telegram" : "Private Telegram pairing";
+  if (el.telegramAccessCopy) el.telegramAccessCopy.textContent = publicTelegram
+    ? "Anyone can chat with Hermes without a pairing code. Telegram sessions use the safe tool profile; Cloud PC admin and terminal controls remain private."
+    : "After the bot sends you a pairing code, enter it here. Unknown users remain denied.";
+  if (el.telegramPairRow) el.telegramPairRow.classList.toggle("hidden", publicTelegram);
   if (el.aiSkills) el.aiSkills.textContent = Number.isFinite(hermes.skills) ? `${hermes.skills}` : "—";
   if (el.aiPlugins) el.aiPlugins.textContent = Number.isFinite(hermes.plugins) ? `${hermes.plugins}` : "—";
   if (el.secretWarning) el.secretWarning.classList.toggle("hidden", Boolean(telegram.token_configured));
@@ -255,7 +262,7 @@ q("#pull-model").onclick = () => aiAction("/api/ai/model/pull", "Pulling Qwen3 4
 q("#start-hermes").onclick = () => aiAction("/api/ai/hermes/start", "Starting Hermes Telegram gateway", 90000);
 q("#stop-hermes").onclick = () => aiAction("/api/ai/hermes/stop", "Stopping Hermes gateway");
 q("#refresh-hermes").onclick = () => aiStatus().catch((error) => { if (el.result) el.result.textContent = error.message; });
-q("#approve-pair").onclick = () => {
+if (q("#approve-pair")) q("#approve-pair").onclick = () => {
   const code = (el.pairCode?.value || "").trim();
   if (!code) { el.result.textContent = "Enter the pairing code Hermes sent you on Telegram."; return; }
   aiAction("/api/ai/telegram/pair", "Approving Telegram pairing", 60000, { code });

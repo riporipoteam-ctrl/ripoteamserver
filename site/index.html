@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#070914">
-  <meta name="description" content="Ripo Team Cloud PC — mobile Linux, local AI, Hermes Agent and private Telegram automation.">
+  <meta name="description" content="Ripo Team Cloud PC — mobile Linux, local AI, Hermes Agent and public-safe Telegram access.">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ripo Cloud PC">
@@ -113,7 +113,7 @@
             <article><span>Model</span><strong id="ai-model">qwen3:4b</strong><small id="ai-model-detail">Checking…</small></article>
             <article><span>Ollama</span><strong id="ai-ollama">Checking…</strong><small>Local OpenAI-compatible endpoint</small></article>
             <article><span>Hermes</span><strong id="ai-hermes">Checking…</strong><small id="ai-hermes-detail">Agent + gateway</small></article>
-            <article><span>Telegram</span><strong id="ai-telegram">Checking…</strong><small id="ai-telegram-detail">Private access</small></article>
+            <article><span>Telegram</span><strong id="ai-telegram">Checking…</strong><small id="ai-telegram-detail">Checking access…</small></article>
             <article><span>Skills</span><strong id="ai-skills">—</strong><small>Bundled + Ripo Team skills</small></article>
             <article><span>Plugins</span><strong id="ai-plugins">—</strong><small>Hermes plugin system</small></article>
           </div>
@@ -128,9 +128,9 @@
             <button id="refresh-hermes" type="button">Refresh status</button>
           </div>
 
-          <div class="pair-card">
-            <div><strong>Private Telegram pairing</strong><p>After the bot sends you a pairing code, enter it here. Unknown users remain denied.</p></div>
-            <div class="pair-row"><input id="telegram-pair-code" autocomplete="one-time-code" autocapitalize="characters" placeholder="Pairing code"><button id="approve-pair" type="button">Approve me</button></div>
+          <div id="telegram-access-card" class="pair-card">
+            <div><strong id="telegram-access-title">Telegram access</strong><p id="telegram-access-copy">Checking Telegram access mode…</p></div>
+            <div id="telegram-pair-row" class="pair-row"><input id="telegram-pair-code" autocomplete="one-time-code" autocapitalize="characters" placeholder="Pairing code"><button id="approve-pair" type="button">Approve me</button></div>
           </div>
 
           <div id="telegram-secret-warning" class="secret-warning hidden">
