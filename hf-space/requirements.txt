@@ -1,3 +1,4 @@
+cryptography>=43,<47
 fastapi>=0.115,<1
 gradio>=6.20,<7
 huggingface_hub>=0.30
