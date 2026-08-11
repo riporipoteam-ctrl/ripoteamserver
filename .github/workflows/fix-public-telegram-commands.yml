@@ -20,11 +20,14 @@ jobs:
       - name: Validate Python and command list
         run: |
           python -m py_compile hf-space/ai_stack.py
-          grep -F '"          - new\\n"' hf-space/ai_stack.py
-          grep -F '"          - reset\\n"' hf-space/ai_stack.py
-          grep -F '"          - commands\\n"' hf-space/ai_stack.py
-          grep -F '"          - whoami\\n"' hf-space/ai_stack.py
-          ! grep -F '"          - history\\n"' hf-space/ai_stack.py
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('hf-space/ai_stack.py').read_text(encoding='utf-8')
+          for command in ('new', 'reset', 'status', 'model', 'commands', 'help', 'whoami'):
+              assert f'- {command}' in text, command
+          assert '- history' not in text
+          print('Telegram public command policy validated.')
+          PY
       - name: Commit command fix
         run: |
           git config user.name "github-actions[bot]"
