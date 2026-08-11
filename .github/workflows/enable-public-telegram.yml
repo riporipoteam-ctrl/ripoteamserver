@@ -20,11 +20,23 @@ jobs:
       - name: Validate Python and safety markers
         run: |
           python -m py_compile hf-space/ai_stack.py hf-space/app.py hf-space/sealed_secrets.py
-          grep -F '"TELEGRAM_ALLOW_ALL_USERS": "true"' hf-space/ai_stack.py
-          grep -F '"    - safe\\n"' hf-space/ai_stack.py
-          grep -F 'Pairing disabled because Telegram is running in public-safe mode.' hf-space/ai_stack.py
-          grep -F '"access_mode": "public-safe"' hf-space/ai_stack.py
-          ! grep -F '"platform_toolsets:\\n"' hf-space/ai_stack.py | grep -F 'hermes-telegram'
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('hf-space/ai_stack.py').read_text(encoding='utf-8')
+          required = [
+              '"TELEGRAM_ALLOW_ALL_USERS": "true"',
+              'platform_toolsets:',
+              '- safe',
+              'Pairing disabled because Telegram is running in public-safe mode.',
+              '"access_mode": "public-safe"',
+              '"tool_profile": "safe"',
+              'HERMES_EXEC_ASK',
+          ]
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit(f'Missing safety markers: {missing}')
+          print('Public-safe Telegram markers verified.')
+          PY
       - name: Commit patch
         run: |
           git config user.name "github-actions[bot]"
