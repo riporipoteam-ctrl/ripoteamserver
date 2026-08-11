@@ -1,0 +1,37 @@
+name: Integrate sealed Telegram v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".verification/sealed-telegram-v2.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Apply patch
+        run: python scripts/integrate_sealed_telegram.py
+      - name: Validate
+        run: |
+          python -m py_compile hf-space/sealed_secrets.py hf-space/ai_stack.py hf-space/app.py
+          grep -F 'SealedSecretManager' hf-space/ai_stack.py
+          grep -F '"sealing": self.sealed_secrets.status()' hf-space/ai_stack.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hf-space/ai_stack.py
+          if git diff --cached --quiet; then
+            echo "Already integrated"
+            exit 0
+          fi
+          git commit -m "Integrate sealed Telegram secret loader"
+          git pull --rebase origin main
+          git push origin HEAD:main
