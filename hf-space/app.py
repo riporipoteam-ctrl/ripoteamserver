@@ -265,10 +265,12 @@ def status() -> dict[str, Any]:
             "admin_token_configured": bool(ADMIN_TOKEN),
         },
         "hermes": {
-            "installed": hermes_binary() is not None,
-            "running": bool(HERMES_PROCESS and HERMES_PROCESS.poll() is None),
-            "install": HERMES_INSTALL_STATE,
+            "installed": ai["hermes"]["installed"],
+            "running": ai["hermes"]["gateway_running"],
+            "skills": ai["hermes"]["skills"],
+            "plugins": ai["hermes"]["plugins"],
         },
+        "ai": ai,
         "timestamp": time.time(),
     }
 
