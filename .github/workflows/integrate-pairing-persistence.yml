@@ -1,0 +1,38 @@
+name: Integrate Telegram pairing persistence
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".verification/integrate-pairing-persistence.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Apply pairing persistence patch
+        run: python scripts/integrate_pairing_persistence.py
+
+      - name: Validate Python
+        run: python -m py_compile hf-space/sealed_secrets.py hf-space/ai_stack.py hf-space/app.py
+
+      - name: Commit integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hf-space/ai_stack.py
+          if git diff --cached --quiet; then
+            echo "Integration already present."
+            exit 0
+          fi
+          git commit -m "Persist Telegram pairing across Space rebuilds"
+          git pull --rebase origin main
+          git push origin HEAD:main
