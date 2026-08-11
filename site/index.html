@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#070914">
-  <meta name="description" content="Ripo Team Cloud PC — a mobile-friendly Linux computer in your browser.">
+  <meta name="description" content="Ripo Team Cloud PC — mobile Linux, local AI, Hermes Agent and private Telegram automation.">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ripo Cloud PC">
@@ -17,7 +17,7 @@
   <div id="boot" class="boot" role="status" aria-live="polite">
     <div class="logo">R</div>
     <h1>Ripo Team Cloud PC</h1>
-    <p>Preparing your command centre…</p>
+    <p>Preparing your computer and local AI…</p>
     <div class="boot-line"><span></span></div>
   </div>
 
@@ -25,7 +25,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="mini-logo">R</span>
-        <div><strong>Ripo Team OS</strong><small>Cloud computer</small></div>
+        <div><strong>Ripo Team OS</strong><small>Cloud computer + local AI</small></div>
       </div>
       <div class="top-actions">
         <div class="top-status" aria-live="polite">
@@ -41,7 +41,7 @@
       <nav class="dock" aria-label="Cloud PC applications">
         <button class="active" data-window="desktop" type="button"><span class="nav-icon">▣</span><span class="nav-label">Computer</span></button>
         <button data-window="server" type="button"><span class="nav-icon">◉</span><span class="nav-label">Server</span></button>
-        <button data-window="hermes" type="button"><span class="nav-icon">✦</span><span class="nav-label">Hermes</span></button>
+        <button data-window="hermes" type="button"><span class="nav-icon">✦</span><span class="nav-label">AI</span></button>
         <button data-window="logs" type="button"><span class="nav-icon">≡</span><span class="nav-label">Logs</span></button>
         <button data-window="settings" type="button"><span class="nav-icon">⚙</span><span class="nav-label">Settings</span></button>
       </nav>
@@ -60,13 +60,13 @@
         </div>
 
         <div class="mobile-tip">
-          <strong>Best on phones:</strong> tap <b>Open</b> for a larger computer view with Browser, Files and Terminal buttons.
+          <strong>Phone mode:</strong> tap <b>Open</b> for the large desktop with Browser, Files, Terminal and Editor launchers.
         </div>
 
         <div id="connect-panel" class="connect-panel">
           <div class="orb"><span></span></div>
           <h2 id="connect-title">Waking your cloud computer</h2>
-          <p id="connect-message">A sleeping Hugging Face Space can take a moment to return.</p>
+          <p id="connect-message">The desktop comes online first; local Qwen and Hermes prepare in the background.</p>
           <div class="progress"><span id="progress"></span></div>
           <div class="connect-actions">
             <button id="connect-button" class="primary" type="button">Connect now</button>
@@ -82,7 +82,8 @@
         <article><small>Computer</small><strong id="overview-state">Starting</strong></article>
         <article><small>Architecture</small><strong id="overview-arch">x86-64</strong></article>
         <article><small>Memory limit</small><strong id="overview-memory">Checking…</strong></article>
-        <p>Use the full-page computer view on mobile for larger controls and reliable app launching.</p>
+        <article><small>Local AI</small><strong id="overview-ai">Preparing…</strong></article>
+        <p>Qwen3 4B runs locally through Ollama. Hermes uses it for tools, skills and the Telegram gateway.</p>
         <button id="overview-open" class="primary" type="button">Open mobile computer</button>
       </aside>
 
@@ -99,29 +100,59 @@
         </div>
       </section>
 
-      <section id="hermes" class="window floating hidden" role="dialog" aria-modal="true" aria-label="Hermes Agent">
-        <div class="window-bar"><strong>Hermes Agent</strong><button data-close="hermes" type="button">×</button></div>
-        <div class="content">
-          <p class="muted">Install Hermes, finish setup inside Terminal, then run its gateway for Telegram, Discord or API access.</p>
-          <div class="button-grid">
-            <button id="install-hermes" class="primary" type="button">Install Hermes</button>
-            <button id="start-hermes" type="button">Start gateway</button>
-            <button id="stop-hermes" type="button">Stop gateway</button>
+      <section id="hermes" class="window floating ai-window hidden" role="dialog" aria-modal="true" aria-label="Local AI and Hermes">
+        <div class="window-bar"><div class="window-title"><strong>Local AI &amp; Hermes</strong><span>Qwen3 4B · Ollama · NousResearch Hermes</span></div><button data-close="hermes" type="button">×</button></div>
+        <div class="content ai-content">
+          <div class="ai-banner">
+            <div><small>AI stack</small><strong id="ai-stage">Checking status…</strong><p id="ai-message">The model and agent install automatically in the background.</p></div>
+            <i id="ai-dot" class="dot checking"></i>
+          </div>
+
+          <div class="ai-metrics">
+            <article><span>Model</span><strong id="ai-model">qwen3:4b</strong><small id="ai-model-detail">Checking…</small></article>
+            <article><span>Ollama</span><strong id="ai-ollama">Checking…</strong><small>Local OpenAI-compatible endpoint</small></article>
+            <article><span>Hermes</span><strong id="ai-hermes">Checking…</strong><small id="ai-hermes-detail">Agent + gateway</small></article>
+            <article><span>Telegram</span><strong id="ai-telegram">Checking…</strong><small id="ai-telegram-detail">Private access</small></article>
+            <article><span>Skills</span><strong id="ai-skills">—</strong><small>Bundled + Ripo Team skills</small></article>
+            <article><span>Plugins</span><strong id="ai-plugins">—</strong><small>Hermes plugin system</small></article>
+          </div>
+
+          <div class="button-grid ai-actions">
+            <button id="setup-ai" class="primary" type="button">Setup / repair AI</button>
+            <button id="start-ai" type="button">Start Ollama</button>
+            <button id="stop-ai" type="button">Stop Ollama</button>
+            <button id="pull-model" type="button">Pull Qwen model</button>
+            <button id="start-hermes" type="button">Start Hermes</button>
+            <button id="stop-hermes" type="button">Stop Hermes</button>
             <button id="refresh-hermes" type="button">Refresh status</button>
           </div>
-          <div id="hermes-result" class="result">No action yet.</div>
+
+          <div class="pair-card">
+            <div><strong>Private Telegram pairing</strong><p>After the bot sends you a pairing code, enter it here. Unknown users remain denied.</p></div>
+            <div class="pair-row"><input id="telegram-pair-code" autocomplete="one-time-code" autocapitalize="characters" placeholder="Pairing code"><button id="approve-pair" type="button">Approve me</button></div>
+          </div>
+
+          <div id="telegram-secret-warning" class="secret-warning hidden">
+            Telegram is waiting for the protected <code>TELEGRAM_BOT_TOKEN</code> Space secret. The token is never displayed or stored in this public site.
+          </div>
+
+          <div id="hermes-result" class="result">AI controls ready.</div>
         </div>
       </section>
 
       <section id="logs" class="window floating hidden" role="dialog" aria-modal="true" aria-label="System logs">
-        <div class="window-bar"><strong>System logs</strong><button data-close="logs" type="button">×</button></div>
+        <div class="window-bar"><strong>System &amp; AI logs</strong><button data-close="logs" type="button">×</button></div>
         <div class="content">
           <div class="log-tabs">
             <button data-log="x11vnc" type="button">Screen</button>
             <button data-log="openbox" type="button">Desktop</button>
             <button data-log="pcmanfm" type="button">Files</button>
-            <button data-log="hermes-install" type="button">Hermes install</button>
-            <button data-log="hermes-gateway" type="button">Hermes gateway</button>
+            <button data-ai-log="ollama-install" type="button">Ollama install</button>
+            <button data-ai-log="ollama" type="button">Ollama</button>
+            <button data-ai-log="ollama-pull" type="button">Model pull</button>
+            <button data-ai-log="hermes-install" type="button">Hermes install</button>
+            <button data-ai-log="hermes-skills" type="button">Skills</button>
+            <button data-ai-log="hermes-gateway" type="button">Telegram gateway</button>
           </div>
           <pre id="log-output">Choose a log.</pre>
         </div>
@@ -135,7 +166,7 @@
           <label>ADMIN_TOKEN<input id="admin-token" type="password" placeholder="Stored only on this device"></label>
           <button id="save-settings" class="primary" type="button">Save settings</button>
           <button id="install-app" class="hidden" type="button">Install on this device</button>
-          <p class="muted">Your desktop password is entered inside the computer view and is never stored in this public GitHub site.</p>
+          <p class="muted">Desktop and admin passwords stay on your device. Telegram credentials belong in Hugging Face Secrets, never GitHub.</p>
         </div>
       </section>
     </section>
