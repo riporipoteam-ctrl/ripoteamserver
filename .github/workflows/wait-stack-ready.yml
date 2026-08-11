@@ -1,0 +1,65 @@
+name: Wait for full AI stack ready
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".verification/wait-stack-ready.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Ollama, model, Hermes and Telegram
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 90); do
+            echo "Full stack check $attempt"
+            code=$(curl -L -sS --max-time 30 -o /tmp/ai.json -w '%{http_code}' "https://echoxr-ripoteam-cloud-pc.hf.space/api/ai/status?full_stack=$attempt" || true)
+            if [ "$code" = "200" ]; then
+              if python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('/tmp/ai.json').read_text())
+          model=d.get('model',{})
+          ollama=d.get('ollama',{})
+          hermes=d.get('hermes',{})
+          telegram=d.get('telegram',{})
+          bootstrap=d.get('bootstrap',{})
+          safe={
+              'model': model.get('name'),
+              'model_installed': model.get('installed'),
+              'ollama_installed': ollama.get('installed'),
+              'ollama_running': ollama.get('running'),
+              'hermes_installed': hermes.get('installed'),
+              'gateway_running': hermes.get('gateway_running'),
+              'skills': hermes.get('skills'),
+              'plugins': hermes.get('plugins'),
+              'telegram_token_configured': telegram.get('token_configured'),
+              'access_mode': telegram.get('access_mode'),
+              'bootstrap_running': bootstrap.get('running'),
+              'bootstrap_stage': bootstrap.get('stage'),
+              'last_error': bootstrap.get('last_error'),
+          }
+          print(json.dumps(safe, indent=2))
+          assert model.get('installed') is True
+          assert ollama.get('running') is True
+          assert hermes.get('installed') is True
+          assert hermes.get('gateway_running') is True
+          assert telegram.get('token_configured') is True
+          assert bootstrap.get('stage') == 'ready'
+          assert bootstrap.get('last_error') is None
+          PY
+              then
+                echo "FULL_STACK_READY"
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+          echo "Full AI stack did not become ready in time" >&2
+          cat /tmp/ai.json || true
+          exit 1
