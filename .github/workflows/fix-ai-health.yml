@@ -22,25 +22,20 @@ jobs:
           from pathlib import Path
           path = Path('hf-space/app.py')
           text = path.read_text(encoding='utf-8')
-          old = '''        "hermes": {
-              "installed": hermes_binary() is not None,
-              "running": bool(HERMES_PROCESS and HERMES_PROCESS.poll() is None),
-              "install": HERMES_INSTALL_STATE,
-          },
-          "timestamp": time.time(),
-          '''
-          new = '''        "hermes": {
-              "installed": ai["hermes"]["installed"],
-              "running": ai["hermes"]["gateway_running"],
-              "skills": ai["hermes"]["skills"],
-              "plugins": ai["hermes"]["plugins"],
-          },
-          "ai": ai,
-          "timestamp": time.time(),
-          '''
-          if old not in text:
-              raise SystemExit('Expected legacy Hermes health block was not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          start_marker = '        "hermes": {\n            "installed": hermes_binary() is not None,'
+          end_marker = '        "timestamp": time.time(),'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          replacement = (
+              '        "hermes": {\n'
+              '            "installed": ai["hermes"]["installed"],\n'
+              '            "running": ai["hermes"]["gateway_running"],\n'
+              '            "skills": ai["hermes"]["skills"],\n'
+              '            "plugins": ai["hermes"]["plugins"],\n'
+              '        },\n'
+              '        "ai": ai,\n'
+          )
+          path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
           PY
       - name: Validate
         run: |
