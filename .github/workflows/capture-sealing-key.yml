@@ -1,0 +1,57 @@
+name: Capture Space sealing key
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".verification/capture-sealing-key.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Wait for public sealing key
+        run: |
+          set -euo pipefail
+          mkdir -p .deployment-status
+          for attempt in $(seq 1 60); do
+            code=$(curl -L -sS --max-time 30 -o /tmp/ai.json -w '%{http_code}' "https://echoxr-ripoteam-cloud-pc.hf.space/api/ai/status?seal=$attempt" || true)
+            if [ "$code" = "200" ]; then
+              if python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('/tmp/ai.json').read_text())
+          sealing = data.get('telegram', {}).get('sealing', {})
+          assert sealing.get('available') is True
+          assert sealing.get('public_key')
+          assert sealing.get('key_id')
+          safe = {
+              'available': True,
+              'algorithm': sealing.get('algorithm'),
+              'key_id': sealing.get('key_id'),
+              'public_key': sealing.get('public_key'),
+          }
+          Path('.deployment-status/sealing-key.json').write_text(json.dumps(safe, indent=2) + '\n')
+          PY
+              then
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+          echo "Space sealing key did not become available in time" >&2
+          exit 1
+      - name: Commit public key status
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .deployment-status/sealing-key.json
+          git commit -m "Record Space sealing public key" || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
