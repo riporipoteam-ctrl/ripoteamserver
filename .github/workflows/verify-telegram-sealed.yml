@@ -1,0 +1,84 @@
+name: Verify sealed Telegram gateway
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".verification/verify-telegram-sealed.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Wait for sealed Telegram gateway
+        run: |
+          set -euo pipefail
+          mkdir -p .deployment-status
+          for attempt in $(seq 1 80); do
+            echo "Telegram verification attempt $attempt"
+            code=$(curl -L -sS --max-time 30 -o /tmp/ai.json -w '%{http_code}' "https://echoxr-ripoteam-cloud-pc.hf.space/api/ai/status?telegram_verify=$attempt" || true)
+            if [ "$code" = "200" ]; then
+              if python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('/tmp/ai.json').read_text())
+          telegram = data.get('telegram', {})
+          sealing = telegram.get('sealing', {})
+          hermes = data.get('hermes', {})
+          bootstrap = data.get('bootstrap', {})
+          assert telegram.get('token_configured') is True
+          assert sealing.get('loaded') is True
+          assert sealing.get('source') == 'sealed-envelope'
+          assert hermes.get('gateway_running') is True
+          assert bootstrap.get('stage') == 'ready'
+          assert bootstrap.get('last_error') is None
+          safe = {
+              'status': 'READY',
+              'token_configured': True,
+              'credential_source': 'sealed-envelope',
+              'gateway_running': True,
+              'access_mode': telegram.get('access_mode'),
+              'model': data.get('model', {}).get('name'),
+              'model_installed': data.get('model', {}).get('installed'),
+              'ollama_running': data.get('ollama', {}).get('running'),
+              'skills': hermes.get('skills'),
+              'plugins': hermes.get('plugins'),
+              'bootstrap_stage': bootstrap.get('stage'),
+              'last_error': bootstrap.get('last_error'),
+          }
+          Path('.deployment-status/telegram.json').write_text(json.dumps(safe, indent=2) + '\n')
+          PY
+              then
+                sleep 20
+                code2=$(curl -L -sS --max-time 30 -o /tmp/ai2.json -w '%{http_code}' "https://echoxr-ripoteam-cloud-pc.hf.space/api/ai/status?telegram_stability=$attempt" || true)
+                if [ "$code2" = "200" ] && python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('/tmp/ai2.json').read_text())
+          assert d.get('telegram',{}).get('token_configured') is True
+          assert d.get('telegram',{}).get('sealing',{}).get('loaded') is True
+          assert d.get('hermes',{}).get('gateway_running') is True
+          PY
+                then
+                  exit 0
+                fi
+              fi
+            fi
+            sleep 10
+          done
+          echo "Telegram gateway did not become ready and stable in time" >&2
+          exit 1
+      - name: Commit safe Telegram status
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .deployment-status/telegram.json
+          git commit -m "Record sealed Telegram gateway status" || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
