@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 CONTEXT = b"ripo-team-space-sealed-secret-v1"
 PURPOSE = b"telegram-bot-token"
+ALLOWLIST_PURPOSE = b"telegram-allowed-users"
 
 
 def _b64e(value: bytes) -> str:
@@ -26,31 +27,41 @@ def _b64d(value: str) -> bytes:
 
 
 class SealedSecretManager:
-    """Decrypts a public-repo ciphertext using secrets already present only in the Space."""
+    """Decrypts public-repo ciphertext using secrets already present only in the Space."""
 
     def __init__(self, *, admin_token: str, vnc_password: str, base_dir: Path) -> None:
         self.base_dir = base_dir
         self.admin_token = admin_token
         self.vnc_password = vnc_password
         self.envelope_path = base_dir / "sealed" / "telegram.json"
+        self.allowlist_envelope_path = base_dir / "sealed" / "telegram-allowlist.json"
         self._last_status: dict[str, Any] = {
             "loaded": False,
             "source": "environment" if os.environ.get("TELEGRAM_BOT_TOKEN") else "none",
             "message": "Telegram token has not been loaded from a sealed envelope.",
         }
+        self._allowlist_status: dict[str, Any] = {
+            "loaded": bool(os.environ.get("TELEGRAM_ALLOWED_USERS")),
+            "source": "environment" if os.environ.get("TELEGRAM_ALLOWED_USERS") else "none",
+            "message": "Telegram allowlist has not been loaded from sealed state.",
+        }
 
-    def _private_key(self) -> X25519PrivateKey | None:
+    def _master_material(self) -> bytes | None:
         if not self.admin_token or not self.vnc_password:
             return None
-        material = (
+        return hashlib.sha256(
             CONTEXT
             + b"\x00"
             + self.admin_token.encode("utf-8")
             + b"\x00"
             + self.vnc_password.encode("utf-8")
-        )
-        seed = hashlib.sha256(material).digest()
-        return X25519PrivateKey.from_private_bytes(seed)
+        ).digest()
+
+    def _private_key(self) -> X25519PrivateKey | None:
+        material = self._master_material()
+        if material is None:
+            return None
+        return X25519PrivateKey.from_private_bytes(material)
 
     def public_info(self) -> dict[str, Any]:
         private_key = self._private_key()
@@ -83,6 +94,17 @@ class SealedSecretManager:
             salt=CONTEXT,
             info=PURPOSE,
         ).derive(shared)
+
+    def _allowlist_key(self) -> bytes:
+        material = self._master_material()
+        if material is None:
+            raise RuntimeError("Space sealing key is unavailable because ADMIN_TOKEN or VNC_PASSWORD is missing.")
+        return HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=CONTEXT,
+            info=ALLOWLIST_PURPOSE,
+        ).derive(material)
 
     def load_telegram_token(self) -> dict[str, Any]:
         if os.environ.get("TELEGRAM_BOT_TOKEN"):
@@ -136,6 +158,69 @@ class SealedSecretManager:
             }
             return dict(self._last_status)
 
+    def seal_telegram_allowlist(self, user_ids: list[str]) -> dict[str, Any]:
+        normalized = sorted({str(value).strip() for value in user_ids if str(value).strip().isdigit()})
+        if not normalized:
+            raise ValueError("No valid Telegram user IDs were provided for sealing.")
+        info = self.public_info()
+        if not info.get("available"):
+            raise RuntimeError("Space sealing key is unavailable.")
+        nonce = os.urandom(12)
+        payload = ",".join(normalized).encode("utf-8")
+        aad = f"1:telegram-allowed-users:{info['key_id']}".encode("utf-8")
+        ciphertext = ChaCha20Poly1305(self._allowlist_key()).encrypt(nonce, payload, aad)
+        return {
+            "version": 1,
+            "purpose": "telegram-allowed-users",
+            "key_id": info["key_id"],
+            "nonce": _b64e(nonce),
+            "ciphertext": _b64e(ciphertext),
+        }
+
+    def load_telegram_allowlist(self) -> dict[str, Any]:
+        if os.environ.get("TELEGRAM_ALLOWED_USERS"):
+            self._allowlist_status = {
+                "loaded": True,
+                "source": "environment",
+                "message": "Telegram allowlist is configured through the Space environment.",
+            }
+            return dict(self._allowlist_status)
+        if not self.allowlist_envelope_path.exists():
+            self._allowlist_status = {
+                "loaded": False,
+                "source": "none",
+                "message": "No sealed Telegram allowlist is deployed yet.",
+            }
+            return dict(self._allowlist_status)
+        try:
+            envelope = json.loads(self.allowlist_envelope_path.read_text(encoding="utf-8"))
+            info = self.public_info()
+            if envelope.get("version") != 1 or envelope.get("purpose") != "telegram-allowed-users":
+                raise ValueError("Unsupported Telegram allowlist envelope.")
+            if envelope.get("key_id") != info.get("key_id"):
+                raise RuntimeError("Allowlist envelope key id does not match this Space instance.")
+            nonce = _b64d(str(envelope["nonce"]))
+            ciphertext = _b64d(str(envelope["ciphertext"]))
+            aad = f"1:telegram-allowed-users:{info['key_id']}".encode("utf-8")
+            plaintext = ChaCha20Poly1305(self._allowlist_key()).decrypt(nonce, ciphertext, aad)
+            value = plaintext.decode("utf-8").strip()
+            if not value or not all(part.isdigit() for part in value.split(",")):
+                raise ValueError("Decrypted Telegram allowlist failed validation.")
+            os.environ["TELEGRAM_ALLOWED_USERS"] = value
+            self._allowlist_status = {
+                "loaded": True,
+                "source": "sealed-envelope",
+                "message": "Telegram allowlist was restored from sealed repository state.",
+            }
+            return dict(self._allowlist_status)
+        except Exception as exc:
+            self._allowlist_status = {
+                "loaded": False,
+                "source": "sealed-envelope",
+                "message": f"Sealed Telegram allowlist could not be opened: {exc}",
+            }
+            return dict(self._allowlist_status)
+
     def status(self) -> dict[str, Any]:
         return {
             **self.public_info(),
@@ -143,4 +228,10 @@ class SealedSecretManager:
             "source": self._last_status.get("source"),
             "message": self._last_status.get("message"),
             "envelope_present": self.envelope_path.exists(),
+            "allowlist": {
+                "loaded": bool(self._allowlist_status.get("loaded")),
+                "source": self._allowlist_status.get("source"),
+                "message": self._allowlist_status.get("message"),
+                "envelope_present": self.allowlist_envelope_path.exists(),
+            },
         }
