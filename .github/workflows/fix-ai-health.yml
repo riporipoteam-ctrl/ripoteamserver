@@ -1,0 +1,57 @@
+name: Fix AI health summary
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".verification/fix-ai-health.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Patch health response
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('hf-space/app.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''        "hermes": {
+              "installed": hermes_binary() is not None,
+              "running": bool(HERMES_PROCESS and HERMES_PROCESS.poll() is None),
+              "install": HERMES_INSTALL_STATE,
+          },
+          "timestamp": time.time(),
+          '''
+          new = '''        "hermes": {
+              "installed": ai["hermes"]["installed"],
+              "running": ai["hermes"]["gateway_running"],
+              "skills": ai["hermes"]["skills"],
+              "plugins": ai["hermes"]["plugins"],
+          },
+          "ai": ai,
+          "timestamp": time.time(),
+          '''
+          if old not in text:
+              raise SystemExit('Expected legacy Hermes health block was not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Validate
+        run: |
+          python -m py_compile hf-space/app.py hf-space/ai_stack.py
+          grep -F '"ai": ai,' hf-space/app.py
+          grep -F 'ai["hermes"]["gateway_running"]' hf-space/app.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hf-space/app.py
+          git commit -m "Expose local AI status in health endpoint"
+          git pull --rebase origin main
+          git push origin HEAD:main
