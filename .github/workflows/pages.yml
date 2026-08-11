@@ -41,7 +41,7 @@ jobs:
               "cloudflareProxyUrl": os.environ.get("CLOUDFLARE_PROXY_URL", ""),
               "pollSeconds": 5,
               "wakeTimeoutSeconds": 300,
-              "deploymentVersion": "2026-08-03-mobile-control-v3",
+              "deploymentVersion": "2026-08-11-local-ai-v1",
           }
           Path("site/config.js").write_text(
               "window.RIPO_CONFIG = " + json.dumps(config, indent=2) + ";\n",
@@ -49,13 +49,16 @@ jobs:
           )
           PY
 
-      - name: Verify production mobile desktop route
+      - name: Verify production local AI dashboard
         run: |
           node --check site/app.js
           node --check site/sw.js
-          grep -F '2026-08-03-mobile-control-v3' site/app.js
-          grep -F '/desktop?v=' site/app.js
-          grep -F 'Open mobile computer' site/index.html
+          grep -F '2026-08-11-local-ai-v1' site/app.js
+          grep -F '/api/ai/status' site/app.js
+          grep -F 'Local AI &amp; Hermes' site/index.html
+          grep -F 'telegram-pair-code' site/index.html
+          grep -F 'ripo-cloud-shell-ai-v1' site/sw.js
+          test -s site/ai.css
           ! grep -F '/novnc/vnc.html' site/app.js
 
       - name: Configure GitHub Pages
