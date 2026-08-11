@@ -7,6 +7,9 @@ ffmpeg
 firefox-esr
 fonts-dejavu-core
 git
+htop
+jq
+lsof
 lxappearance
 lxpanel
 lxterminal
@@ -16,6 +19,9 @@ openbox
 pcmanfm
 procps
 psmisc
+tmux
+tree
+unzip
 websockify
 x11vnc
 xdg-utils
@@ -23,3 +29,5 @@ xdotool
 xterm
 xvfb
 xz-utils
+zip
+zstd
