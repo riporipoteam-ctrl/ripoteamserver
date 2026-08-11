@@ -1,0 +1,1 @@
+Capture current safe Telegram status.
