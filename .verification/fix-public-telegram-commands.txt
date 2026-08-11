@@ -1,1 +1,1 @@
-Fix Telegram public-user slash commands to match Hermes messaging command support on 2026-08-11.
+Retry Telegram public-user slash command fix after validation correction on 2026-08-11.
