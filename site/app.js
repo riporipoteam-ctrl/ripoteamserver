@@ -1,7 +1,7 @@
 "use strict";
 
 const defaults = window.RIPO_CONFIG || {};
-const DEPLOYMENT_VERSION = "2026-08-03-mobile-control-v3";
+const DEPLOYMENT_VERSION = "2026-08-11-local-ai-v1";
 const cfg = {
   spaceUrl: localStorage.getItem("ripo-space-url") || defaults.spaceUrl || "",
   proxyUrl: localStorage.getItem("ripo-proxy-url") || defaults.cloudflareProxyUrl || "",
@@ -14,17 +14,21 @@ const q = (selector) => document.querySelector(selector);
 const qa = (selector) => [...document.querySelectorAll(selector)];
 const el = {
   boot: q("#boot"), app: q("#app"), statusDot: q("#status-dot"), statusText: q("#status-text"),
-  overviewDot: q("#overview-dot"), overviewState: q("#overview-state"), overviewArch: q("#overview-arch"), overviewMemory: q("#overview-memory"),
+  overviewDot: q("#overview-dot"), overviewState: q("#overview-state"), overviewArch: q("#overview-arch"), overviewMemory: q("#overview-memory"), overviewAi: q("#overview-ai"),
   clock: q("#clock"), subtitle: q("#desktop-subtitle"), panel: q("#connect-panel"), title: q("#connect-title"),
   message: q("#connect-message"), progress: q("#progress"), frame: q("#desktop-frame"), health: q("#health-json"),
   result: q("#hermes-result"), log: q("#log-output"), spaceInput: q("#space-url"), proxyInput: q("#proxy-url"),
-  tokenInput: q("#admin-token"), installApp: q("#install-app"),
+  tokenInput: q("#admin-token"), installApp: q("#install-app"), aiDot: q("#ai-dot"), aiStage: q("#ai-stage"), aiMessage: q("#ai-message"),
+  aiModel: q("#ai-model"), aiModelDetail: q("#ai-model-detail"), aiOllama: q("#ai-ollama"), aiHermes: q("#ai-hermes"),
+  aiHermesDetail: q("#ai-hermes-detail"), aiTelegram: q("#ai-telegram"), aiTelegramDetail: q("#ai-telegram-detail"),
+  aiSkills: q("#ai-skills"), aiPlugins: q("#ai-plugins"), pairCode: q("#telegram-pair-code"), secretWarning: q("#telegram-secret-warning"),
 };
 
 let connecting = false;
 let lastHealth = null;
 let healthTimer = 0;
 let installPrompt = null;
+let aiBusy = false;
 
 function base() { return (cfg.proxyUrl || cfg.spaceUrl).replace(/\/+$/, ""); }
 function direct() { return cfg.spaceUrl.replace(/\/+$/, ""); }
@@ -32,10 +36,11 @@ function desktopUrl() { return `${direct()}/desktop?v=${encodeURIComponent(DEPLO
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 function setState(state, text) {
-  for (const dot of [el.statusDot, el.overviewDot]) dot.className = `dot ${state}`;
-  el.statusText.textContent = text;
-  el.overviewState.textContent = state === "online" ? "Online" : state === "offline" ? "Unavailable" : "Starting";
-  q("#metric-state").textContent = state === "online" ? "Online" : state === "offline" ? "Offline" : "Starting";
+  for (const dot of [el.statusDot, el.overviewDot]) if (dot) dot.className = `dot ${state}`;
+  if (el.statusText) el.statusText.textContent = text;
+  if (el.overviewState) el.overviewState.textContent = state === "online" ? "Online" : state === "offline" ? "Unavailable" : "Starting";
+  const metric = q("#metric-state");
+  if (metric) metric.textContent = state === "online" ? "Online" : state === "offline" ? "Offline" : "Starting";
 }
 
 function bytes(value) {
@@ -48,7 +53,7 @@ function bytes(value) {
 }
 
 function updateClock() {
-  el.clock.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (el.clock) el.clock.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 async function request(path, options = {}, timeoutMs = 25000) {
@@ -67,23 +72,58 @@ async function request(path, options = {}, timeoutMs = 25000) {
   }
 }
 
+function renderAi(data) {
+  if (!data) return;
+  const model = data.model || {};
+  const ollama = data.ollama || {};
+  const hermes = data.hermes || {};
+  const telegram = data.telegram || {};
+  const bootstrap = data.bootstrap || {};
+
+  if (el.aiModel) el.aiModel.textContent = model.name || "qwen3:4b";
+  if (el.aiModelDetail) el.aiModelDetail.textContent = model.installed ? `Installed · ${Math.round((model.context_length || 0) / 1024)}K context` : "Downloading / not installed yet";
+  if (el.aiOllama) el.aiOllama.textContent = ollama.running ? "Running" : ollama.installed ? "Installed" : "Not installed";
+  if (el.aiHermes) el.aiHermes.textContent = hermes.gateway_running ? "Gateway running" : hermes.installed ? "Installed" : "Not installed";
+  if (el.aiHermesDetail) el.aiHermesDetail.textContent = hermes.gateway_running ? "Local model + Telegram active" : "Agent + tool gateway";
+  if (el.aiTelegram) el.aiTelegram.textContent = telegram.token_configured ? (hermes.gateway_running ? "Connected" : "Configured") : "Secret missing";
+  if (el.aiTelegramDetail) el.aiTelegramDetail.textContent = telegram.access_mode === "allowlist" ? "Restricted allowlist" : "Default deny · pairing";
+  if (el.aiSkills) el.aiSkills.textContent = Number.isFinite(hermes.skills) ? `${hermes.skills}` : "—";
+  if (el.aiPlugins) el.aiPlugins.textContent = Number.isFinite(hermes.plugins) ? `${hermes.plugins}` : "—";
+  if (el.secretWarning) el.secretWarning.classList.toggle("hidden", Boolean(telegram.token_configured));
+
+  const ready = ollama.running && model.installed && hermes.installed;
+  const state = bootstrap.stage === "error" ? "offline" : ready ? "online" : "checking";
+  if (el.aiDot) el.aiDot.className = `dot ${state}`;
+  if (el.aiStage) el.aiStage.textContent = bootstrap.running ? "Preparing local AI…" : ready ? "Local AI ready" : bootstrap.stage === "error" ? "Setup needs attention" : "Preparing…";
+  if (el.aiMessage) el.aiMessage.textContent = bootstrap.last_error || bootstrap.message || "Qwen and Hermes prepare automatically.";
+  if (el.overviewAi) el.overviewAi.textContent = model.installed && ollama.running ? (hermes.gateway_running ? "Qwen + Hermes online" : "Qwen online") : bootstrap.running ? "Installing…" : "Preparing…";
+  const metricHermes = q("#metric-hermes");
+  if (metricHermes) metricHermes.textContent = hermes.gateway_running ? "Running" : hermes.installed ? "Installed" : "Not installed";
+}
+
 function renderHealth(data) {
   lastHealth = data;
-  el.health.textContent = JSON.stringify(data, null, 2);
+  if (el.health) el.health.textContent = JSON.stringify(data, null, 2);
   const architecture = data.architecture || "—";
   const memory = data.memory_total ? `${bytes(data.memory_available)} free / ${bytes(data.memory_total)}` : "Limit unavailable";
   q("#metric-arch").textContent = architecture;
   q("#metric-cpu").textContent = data.cpu_count ? `${data.cpu_count} vCPU` : "—";
   q("#metric-memory").textContent = memory;
   q("#metric-disk").textContent = data.disk_total ? `${bytes(data.disk_free)} free / ${bytes(data.disk_total)}` : (data.disk_note || "Ephemeral storage");
-  q("#metric-hermes").textContent = data.hermes?.running ? "Running" : data.hermes?.installed ? "Installed" : "Not installed";
-  el.overviewArch.textContent = architecture;
-  el.overviewMemory.textContent = data.memory_total ? bytes(data.memory_total) : "Managed by host";
+  if (el.overviewArch) el.overviewArch.textContent = architecture;
+  if (el.overviewMemory) el.overviewMemory.textContent = data.memory_total ? bytes(data.memory_total) : "Managed by host";
+  if (data.ai) renderAi(data.ai);
 }
 
 async function health() {
   const data = await request("/api/health", {}, 20000);
   renderHealth(data);
+  return data;
+}
+
+async function aiStatus() {
+  const data = await request("/api/ai/status", {}, 12000);
+  renderAi(data);
   return data;
 }
 
@@ -115,7 +155,7 @@ async function connect() {
     attempt += 1;
     const used = 1 - (deadline - Date.now()) / (cfg.wakeTimeoutSeconds * 1000);
     el.progress.style.width = `${Math.min(94, 6 + used * 87)}%`;
-    el.message.textContent = `Wake attempt ${attempt}. The first rebuild can take longer than a normal wake.`;
+    el.message.textContent = `Wake attempt ${attempt}. Desktop can appear before the local model finishes loading.`;
     try {
       await health();
       setState("online", "Server online");
@@ -154,13 +194,26 @@ function scheduleHealth() {
   }, 35000);
 }
 
-async function hermesAction(action) {
-  el.result.textContent = `Running ${action}…`;
+async function aiAction(path, label, timeoutMs = 45000, body = null) {
+  if (aiBusy) return;
+  aiBusy = true;
+  if (el.result) el.result.textContent = `${label}…`;
   try {
-    const data = await request(`/api/hermes/${action}`, { method: "POST" }, 40000);
-    el.result.textContent = data.message || JSON.stringify(data);
-    setTimeout(() => health().catch(() => {}), 1500);
-  } catch (error) { el.result.textContent = error.message; }
+    const options = { method: "POST" };
+    if (body !== null) {
+      options.headers = { "content-type": "application/json" };
+      options.body = JSON.stringify(body);
+    }
+    const data = await request(path, options, timeoutMs);
+    if (el.result) el.result.textContent = data.message || JSON.stringify(data);
+    await sleep(700);
+    await aiStatus().catch(() => {});
+    await health().catch(() => {});
+  } catch (error) {
+    if (el.result) el.result.textContent = error.name === "AbortError" ? `${label} is still running. Refresh status in a moment.` : error.message;
+  } finally {
+    aiBusy = false;
+  }
 }
 
 async function loadLog(name) {
@@ -169,16 +222,24 @@ async function loadLog(name) {
   catch (error) { el.log.textContent = error.message; }
 }
 
+async function loadAiLog(name) {
+  el.log.textContent = `Loading AI log ${name}…`;
+  try { const data = await request(`/api/ai/logs/${name}`); el.log.textContent = data.content; }
+  catch (error) { el.log.textContent = error.message; }
+}
+
 function openWindow(id, sourceButton) {
   const panel = document.getElementById(id);
   if (!panel) return;
   panel.classList.remove("hidden");
   qa(".dock button").forEach((button) => button.classList.toggle("active", button === sourceButton));
+  if (id === "hermes") aiStatus().catch((error) => { if (el.result) el.result.textContent = error.message; });
 }
 
 qa("[data-window]").forEach((button) => button.addEventListener("click", () => openWindow(button.dataset.window, button)));
 qa("[data-close]").forEach((button) => button.addEventListener("click", () => document.getElementById(button.dataset.close)?.classList.add("hidden")));
 qa("[data-log]").forEach((button) => button.addEventListener("click", () => loadLog(button.dataset.log)));
+qa("[data-ai-log]").forEach((button) => button.addEventListener("click", () => loadAiLog(button.dataset.aiLog)));
 q("#connect-button").onclick = connect;
 q("#reconnect").onclick = () => { el.frame.src = "about:blank"; setTimeout(connect, 80); };
 q("#fullscreen").onclick = async () => {
@@ -187,10 +248,18 @@ q("#fullscreen").onclick = async () => {
     else await document.exitFullscreen();
   } catch { window.open(desktopUrl(), "_blank", "noopener,noreferrer"); }
 };
-q("#install-hermes").onclick = () => hermesAction("install");
-q("#start-hermes").onclick = () => hermesAction("start");
-q("#stop-hermes").onclick = () => hermesAction("stop");
-q("#refresh-hermes").onclick = () => health().catch((error) => { el.result.textContent = error.message; });
+q("#setup-ai").onclick = () => aiAction("/api/ai/bootstrap", "Starting AI setup");
+q("#start-ai").onclick = () => aiAction("/api/ai/ollama/start", "Starting Ollama", 90000);
+q("#stop-ai").onclick = () => aiAction("/api/ai/ollama/stop", "Stopping Ollama");
+q("#pull-model").onclick = () => aiAction("/api/ai/model/pull", "Pulling Qwen3 4B", 600000);
+q("#start-hermes").onclick = () => aiAction("/api/ai/hermes/start", "Starting Hermes Telegram gateway", 90000);
+q("#stop-hermes").onclick = () => aiAction("/api/ai/hermes/stop", "Stopping Hermes gateway");
+q("#refresh-hermes").onclick = () => aiStatus().catch((error) => { if (el.result) el.result.textContent = error.message; });
+q("#approve-pair").onclick = () => {
+  const code = (el.pairCode?.value || "").trim();
+  if (!code) { el.result.textContent = "Enter the pairing code Hermes sent you on Telegram."; return; }
+  aiAction("/api/ai/telegram/pair", "Approving Telegram pairing", 60000, { code });
+};
 q("#save-settings").onclick = () => {
   cfg.spaceUrl = el.spaceInput.value.trim();
   cfg.proxyUrl = el.proxyInput.value.trim();
