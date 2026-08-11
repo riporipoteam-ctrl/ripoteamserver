@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "purpose": "telegram-bot-token",
+  "algorithm": "X25519-HKDF-SHA256-ChaCha20Poly1305",
+  "key_id": "8c9b4481631b0177",
+  "ephemeral_public_key": "1F628XpZizbCkPhjJZXCK9Zl0tyk5_nCWGLb2RVVcBo",
+  "nonce": "4uIFqUygneaY_P07",
+  "ciphertext": "k4J0iqMFQsrw9tW_378X1bzI1o2vLOyRqWJm9GdwiNogb2VLqb0NEcGuFZ97aHkDupKUHvLoJp-L3i8j4OQ"
+}
