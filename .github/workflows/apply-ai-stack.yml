@@ -1,0 +1,214 @@
+name: Integrate local AI stack
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".verification/ai-stack-visible.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Wire AI stack into Space
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('hf-space/app.py')
+          text = path.read_text(encoding='utf-8')
+
+          if 'from ai_stack import AIStack' not in text:
+              text = text.replace(
+                  'from typing import Any\n\nfrom desktop_http import install_desktop_routes',
+                  'from typing import Any\n\nfrom ai_stack import AIStack\nfrom desktop_http import install_desktop_routes',
+                  1,
+              )
+
+          text = text.replace(
+              'from fastapi import Header, HTTPException, WebSocket, WebSocketDisconnect',
+              'from fastapi import Body, Header, HTTPException, WebSocket, WebSocketDisconnect',
+              1,
+          )
+
+          marker = 'DATA_DIR.mkdir(parents=True, exist_ok=True)\nLOG_DIR.mkdir(parents=True, exist_ok=True)\n'
+          if 'AI_STACK = AIStack(' not in text:
+              text = text.replace(
+                  marker,
+                  marker + '\nAI_STACK = AIStack(home=HOME, data_dir=DATA_DIR / "ai", log_dir=LOG_DIR)\n',
+                  1,
+              )
+
+          old_status = '''def status() -> dict[str, Any]:
+              resources = detected_resources()
+              desktop = {
+          '''
+          new_status = '''def status() -> dict[str, Any]:
+              resources = detected_resources()
+              ai = AI_STACK.status()
+              desktop = {
+          '''
+          if old_status in text:
+              text = text.replace(old_status, new_status, 1)
+
+          old_hermes = '''        "hermes": {
+              "installed": hermes_binary() is not None,
+              "running": bool(HERMES_PROCESS and HERMES_PROCESS.poll() is None),
+              "install": HERMES_INSTALL_STATE,
+          },
+          "timestamp": time.time(),
+          '''
+          new_hermes = '''        "hermes": {
+              "installed": ai["hermes"]["installed"],
+              "running": ai["hermes"]["gateway_running"],
+              "skills": ai["hermes"]["skills"],
+              "plugins": ai["hermes"]["plugins"],
+          },
+          "ai": ai,
+          "timestamp": time.time(),
+          '''
+          if old_hermes in text:
+              text = text.replace(old_hermes, new_hermes, 1)
+
+          old_routes = '''@app.post("/api/hermes/install")
+          async def hermes_install(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+              authorize(x_admin_token)
+              return JSONResponse(install_hermes())
+
+
+          @app.post("/api/hermes/start")
+          async def hermes_start(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+              authorize(x_admin_token)
+              result = start_hermes_gateway()
+              return JSONResponse(result, status_code=200 if result["ok"] else 409)
+
+
+          @app.post("/api/hermes/stop")
+          async def hermes_stop(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+              authorize(x_admin_token)
+              return JSONResponse(stop_hermes_gateway())
+          '''
+          new_routes = '''@app.post("/api/hermes/install")
+          async def hermes_install(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+              authorize(x_admin_token)
+              return JSONResponse(AI_STACK.bootstrap_async())
+
+
+          @app.post("/api/hermes/start")
+          async def hermes_start(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+              authorize(x_admin_token)
+              result = AI_STACK.start_gateway()
+              return JSONResponse(result, status_code=200 if result["ok"] else 409)
+
+
+          @app.post("/api/hermes/stop")
+          async def hermes_stop(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+              authorize(x_admin_token)
+              return JSONResponse(AI_STACK.stop_gateway())
+          '''
+          if old_routes in text:
+              text = text.replace(old_routes, new_routes, 1)
+
+          ai_routes = '''
+
+          @app.get("/api/ai/status")
+          async def ai_status() -> JSONResponse:
+              return JSONResponse(AI_STACK.status())
+
+
+          @app.post("/api/ai/bootstrap")
+          async def ai_bootstrap(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+              authorize(x_admin_token)
+              return JSONResponse(AI_STACK.bootstrap_async())
+
+
+          @app.post("/api/ai/ollama/start")
+          async def ai_ollama_start(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+              authorize(x_admin_token)
+              result = await asyncio.to_thread(AI_STACK.start_ollama)
+              return JSONResponse(result, status_code=200 if result["ok"] else 409)
+
+
+          @app.post("/api/ai/ollama/stop")
+          async def ai_ollama_stop(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+              authorize(x_admin_token)
+              return JSONResponse(AI_STACK.stop_ollama())
+
+
+          @app.post("/api/ai/model/pull")
+          async def ai_model_pull(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+              authorize(x_admin_token)
+              result = await asyncio.to_thread(AI_STACK.pull_model)
+              return JSONResponse(result, status_code=200 if result["ok"] else 409)
+
+
+          @app.post("/api/ai/hermes/start")
+          async def ai_hermes_start(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+              authorize(x_admin_token)
+              result = AI_STACK.start_gateway()
+              return JSONResponse(result, status_code=200 if result["ok"] else 409)
+
+
+          @app.post("/api/ai/hermes/stop")
+          async def ai_hermes_stop(x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+              authorize(x_admin_token)
+              return JSONResponse(AI_STACK.stop_gateway())
+
+
+          @app.post("/api/ai/telegram/pair")
+          async def ai_telegram_pair(
+              payload: dict[str, Any] = Body(default_factory=dict),
+              x_admin_token: str | None = Header(default=None),
+          ) -> JSONResponse:
+              authorize(x_admin_token)
+              result = await asyncio.to_thread(AI_STACK.approve_pairing, str(payload.get("code", "")))
+              return JSONResponse(result, status_code=200 if result["ok"] else 400)
+
+
+          @app.get("/api/ai/logs/{name}")
+          async def ai_logs(name: str, x_admin_token: str | None = Header(default=None)) -> JSONResponse:
+              authorize(x_admin_token)
+              return JSONResponse({"ok": True, "name": name, "content": AI_STACK.read_log(name)})
+          '''
+          websocket_marker = '\n\n@app.websocket("/websockify")'
+          if '@app.get("/api/ai/status")' not in text:
+              text = text.replace(websocket_marker, ai_routes + websocket_marker, 1)
+
+          launch_marker = 'if os.environ.get("RIPO_SKIP_DESKTOP") != "1":\n    start_desktop()\n\napp.launch(show_error=True)'
+          replacement = '''if os.environ.get("RIPO_SKIP_DESKTOP") != "1":
+              start_desktop()
+
+          if os.environ.get("RIPO_AI_AUTOSTART", "1") != "0":
+              AI_STACK.bootstrap_async()
+
+          app.launch(show_error=True)'''
+          if launch_marker in text:
+              text = text.replace(launch_marker, replacement, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Validate integration
+        run: |
+          python -m py_compile hf-space/app.py hf-space/ai_stack.py hf-space/desktop_http.py hf-space/desktop_setup.py
+          grep -F 'AI_STACK = AIStack' hf-space/app.py
+          grep -F '@app.get("/api/ai/status")' hf-space/app.py
+          grep -F '@app.post("/api/ai/telegram/pair")' hf-space/app.py
+          grep -F 'AI_STACK.bootstrap_async()' hf-space/app.py
+
+      - name: Commit integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hf-space/app.py
+          git commit -m "Integrate Ollama Hermes AI stack"
+          git pull --rebase origin main
+          git push origin HEAD:main
