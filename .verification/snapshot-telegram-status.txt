@@ -1,1 +1,1 @@
-Verify corrected Telegram slash commands after Hermes restart on 2026-08-11T20:14+02:00.
+Verify upgraded Hermes model, browser, skills, plugins, Telegram gateway and storage saver after the 2026-08-11 performance deployment.
