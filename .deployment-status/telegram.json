@@ -1,0 +1,14 @@
+{
+  "status": "READY",
+  "token_configured": true,
+  "credential_source": "sealed-envelope",
+  "gateway_running": true,
+  "access_mode": "default-deny-pairing",
+  "model": "qwen3:4b",
+  "model_installed": true,
+  "ollama_running": true,
+  "skills": 87,
+  "plugins": 97,
+  "bootstrap_stage": "ready",
+  "last_error": null
+}
