@@ -1,0 +1,44 @@
+{
+  "verified_at": "2026-08-11T20:05:48Z",
+  "ready": true,
+  "model": {
+    "name": "qwen3:4b-instruct",
+    "installed": true,
+    "context_length": 16384
+  },
+  "ollama": {
+    "installed": true,
+    "running": true,
+    "keep_alive": "1h",
+    "max_loaded_models": 1
+  },
+  "hermes": {
+    "installed": true,
+    "gateway_running": true,
+    "skills": 97,
+    "plugins_discovered": 97,
+    "enabled_plugins": ["disk-cleanup", "security-guidance"]
+  },
+  "browser": {
+    "agent_browser": true,
+    "toolset": "browser"
+  },
+  "telegram": {
+    "access_mode": "public-safe",
+    "pairing_required": false,
+    "toolsets": ["safe", "browser"]
+  },
+  "storage_saver": {
+    "first_run_completed": true,
+    "last_error": null,
+    "cleanup_interval_hours": 6,
+    "session_retention_days": 5,
+    "high_pressure_session_retention_days": 2,
+    "critical_pressure_session_retention_days": 1,
+    "normal_log_cap_mb": 4,
+    "protects_model_store": true,
+    "protects_browser_binaries": true,
+    "protects_skills_plugins_config": true,
+    "note": "Filesystem size is a shared-host signal, not a personal Hugging Face storage quota."
+  }
+}
