@@ -1,0 +1,37 @@
+Ripo Team Local AI production verification
+Verified: 2026-08-11T07:14:00Z
+
+Status: READY
+Space health: HTTP 200
+AI status: HTTP 200
+GitHub Pages dashboard: HTTP 200
+AI dashboard CSS/service worker: HTTP 200
+
+Local model:
+- name: qwen3:4b
+- installed: true
+- Ollama installed: true
+- Ollama running: true
+- local endpoint: http://127.0.0.1:11434/v1
+- configured context length: 65536
+
+Hermes Agent:
+- installed: true
+- gateway running: false (Telegram secret not configured at verification time)
+- skills discovered: 87
+- plugins discovered: 97
+
+Telegram security:
+- token configured: false
+- allowlist configured: false
+- access mode: default-deny-pairing
+- credential values are never written to this file or public repository
+
+Bootstrap:
+- running: false
+- stage: ready
+- message: Local AI and Hermes are ready.
+- last error: none
+
+Storage:
+- AI/model storage is on the Space ephemeral filesystem and can be rebuilt automatically by the AI bootstrap.
