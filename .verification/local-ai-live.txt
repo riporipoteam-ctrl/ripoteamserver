@@ -1,0 +1,1 @@
+Verify the live Ollama + Qwen3 4B + Hermes deployment and local AI dashboard.
