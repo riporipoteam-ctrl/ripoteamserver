@@ -1,0 +1,106 @@
+name: Verify local AI Hermes deployment
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".verification/local-ai-live.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for Qwen, Ollama, Hermes and dashboard
+        run: |
+          set -u
+          HF="https://echoxr-ripoteam-cloud-pc.hf.space"
+          PAGES="https://riporipoteam-ctrl.github.io/ripoteamserver"
+          success=false
+
+          for attempt in $(seq 1 80); do
+            echo "AI verification attempt $attempt"
+            health_code=$(curl -L -sS --max-time 30 -o /tmp/health.json -w '%{http_code}' "$HF/api/health?ai_check=$attempt" || true)
+            ai_code=$(curl -L -sS --max-time 30 -o /tmp/ai.json -w '%{http_code}' "$HF/api/ai/status?ai_check=$attempt" || true)
+            index_code=$(curl -L -sS --max-time 30 -o /tmp/index.html -w '%{http_code}' "$PAGES/?ai_check=$attempt" || true)
+            app_code=$(curl -L -sS --max-time 30 -o /tmp/app.js -w '%{http_code}' "$PAGES/app.js?ai_check=$attempt" || true)
+            css_code=$(curl -L -sS --max-time 30 -o /tmp/ai.css -w '%{http_code}' "$PAGES/ai.css?ai_check=$attempt" || true)
+            sw_code=$(curl -L -sS --max-time 30 -o /tmp/sw.js -w '%{http_code}' "$PAGES/sw.js?ai_check=$attempt" || true)
+
+            echo "health=$health_code ai=$ai_code pages=$index_code app=$app_code css=$css_code sw=$sw_code"
+            if [ "$ai_code" = "200" ]; then
+              python - <<'PY'
+          import json
+          from pathlib import Path
+          try:
+              d=json.loads(Path('/tmp/ai.json').read_text())
+              safe={
+                  'model': d.get('model'),
+                  'ollama': d.get('ollama'),
+                  'hermes': d.get('hermes'),
+                  'telegram': d.get('telegram'),
+                  'bootstrap': d.get('bootstrap'),
+              }
+              print(json.dumps(safe, indent=2))
+          except Exception as exc:
+              print(f'Could not parse AI status: {exc}')
+          PY
+            fi
+
+            if [ "$ai_code" = "200" ]; then
+              stage=$(python - <<'PY'
+          import json
+          from pathlib import Path
+          try: print(json.loads(Path('/tmp/ai.json').read_text()).get('bootstrap',{}).get('stage',''))
+          except Exception: print('')
+          PY
+          )
+              if [ "$stage" = "error" ]; then
+                echo "AI bootstrap reported an error; failing early."
+                exit 1
+              fi
+            fi
+
+            if [ "$health_code" = "200" ] \
+              && [ "$ai_code" = "200" ] \
+              && [ "$index_code" = "200" ] \
+              && [ "$app_code" = "200" ] \
+              && [ "$css_code" = "200" ] \
+              && [ "$sw_code" = "200" ] \
+              && grep -q 'Local AI &amp; Hermes' /tmp/index.html \
+              && grep -q '2026-08-11-local-ai-v1' /tmp/app.js \
+              && grep -q '/api/ai/status' /tmp/app.js \
+              && grep -q '.ai-metrics' /tmp/ai.css \
+              && grep -q 'ripo-cloud-shell-ai-v1' /tmp/sw.js; then
+              if python - <<'PY'
+          import json
+          from pathlib import Path
+          health=json.loads(Path('/tmp/health.json').read_text())
+          ai=json.loads(Path('/tmp/ai.json').read_text())
+          assert 'ai' in health, health.keys()
+          assert ai.get('ollama',{}).get('installed') is True, ai
+          assert ai.get('ollama',{}).get('running') is True, ai
+          assert ai.get('model',{}).get('installed') is True, ai
+          assert ai.get('model',{}).get('name') == 'qwen3:4b', ai
+          assert ai.get('hermes',{}).get('installed') is True, ai
+          assert int(ai.get('hermes',{}).get('skills',0)) >= 8, ai
+          assert ai.get('telegram',{}).get('access_mode') in {'default-deny-pairing','allowlist'}, ai
+          assert health.get('desktop',{}).get('openbox',{}).get('running') is True, health
+          PY
+              then
+                success=true
+                break
+              fi
+            fi
+            sleep 15
+          done
+
+          echo "success=$success"
+          echo "Final public AI status (contains no credential values):"
+          python -m json.tool /tmp/ai.json 2>/dev/null || cat /tmp/ai.json || true
+          [ "$success" = "true" ]
