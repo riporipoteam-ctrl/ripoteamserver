@@ -31,6 +31,9 @@ class AIStack:
             base_dir=Path(__file__).resolve().parent,
         )
         self.sealed_secret_status = self.sealed_secrets.load_telegram_token()
+        self.sealed_allowlist_status = self.sealed_secrets.load_telegram_allowlist()
+        self.pairing_request_path = Path(__file__).resolve().parent / "pairing-request.json"
+        self.pairing_export_path = data_dir / "pairing-export.json"
         self.ollama_root = data_dir / "ollama"
         self.ollama_models = data_dir / "ollama-models"
         self.hermes_home = home / ".hermes"
@@ -327,6 +330,54 @@ class AIStack:
         output = (completed.stdout or "").strip()
         return {"ok": completed.returncode == 0, "message": output[-1000:] or ("Pairing approved." if completed.returncode == 0 else "Pairing command failed.")}
 
+    def _approved_telegram_user_ids(self, output: str = "") -> list[str]:
+        ids: set[str] = set(re.findall(r"\((\d{5,})\)", output or ""))
+        approved_path = self.hermes_home / "pairing" / "telegram-approved.json"
+        if approved_path.exists():
+            try:
+                payload = json.loads(approved_path.read_text(encoding="utf-8"))
+                def walk(value: Any) -> None:
+                    if isinstance(value, dict):
+                        for key, item in value.items():
+                            if str(key).lower() in {"user_id", "userid", "telegram_user_id"} and str(item).isdigit():
+                                ids.add(str(item))
+                            else:
+                                walk(item)
+                    elif isinstance(value, list):
+                        for item in value:
+                            walk(item)
+                walk(payload)
+            except Exception:
+                pass
+        return sorted(ids)
+
+    def process_pairing_request(self) -> dict[str, Any]:
+        if not self.pairing_request_path.exists():
+            return {"ok": True, "message": "No pending deployment pairing request."}
+        try:
+            request = json.loads(self.pairing_request_path.read_text(encoding="utf-8"))
+            code = str(request.get("code", "")).strip()
+        except Exception as exc:
+            return {"ok": False, "message": f"Could not read pairing request: {exc}"}
+        result = self.approve_pairing(code)
+        ids = self._approved_telegram_user_ids(str(result.get("message", "")))
+        if not ids:
+            return result
+        try:
+            envelope = self.sealed_secrets.seal_telegram_allowlist(ids)
+            os.environ["TELEGRAM_ALLOWED_USERS"] = ",".join(ids)
+            export = {
+                "ready": True,
+                "approved_count": len(ids),
+                "envelope": envelope,
+                "created_at": time.time(),
+            }
+            self.pairing_export_path.parent.mkdir(parents=True, exist_ok=True)
+            self.pairing_export_path.write_text(json.dumps(export, indent=2) + "\n", encoding="utf-8")
+            return {"ok": True, "message": "Telegram pairing approved and encrypted allowlist export is ready."}
+        except Exception as exc:
+            return {"ok": False, "message": f"Pairing was approved but persistence sealing failed: {exc}"}
+
     def bootstrap(self) -> dict[str, Any]:
         with self._lock:
             if self.state["running"]:
@@ -345,6 +396,7 @@ class AIStack:
             self.install_optional_skills()
             if os.environ.get("TELEGRAM_BOT_TOKEN"):
                 self.start_gateway()
+                self.process_pairing_request()
             self._set_state("ready", "Local AI and Hermes are ready.")
             return {"ok": True, "message": "Local AI and Hermes are ready."}
         except Exception as exc:
@@ -382,6 +434,7 @@ class AIStack:
                 "allowlist_configured": bool(os.environ.get("TELEGRAM_ALLOWED_USERS")),
                 "access_mode": "allowlist" if os.environ.get("TELEGRAM_ALLOWED_USERS") else "default-deny-pairing",
                 "sealing": self.sealed_secrets.status(),
+                "pairing_export": (json.loads(self.pairing_export_path.read_text(encoding="utf-8")) if self.pairing_export_path.exists() else None),
             },
             "bootstrap": dict(self.state),
             "storage": {"model_directory": str(self.ollama_models), "ephemeral": True},
