@@ -14,9 +14,10 @@ from pathlib import Path
 from typing import Any
 
 from sealed_secrets import SealedSecretManager
+from storage_saver import StorageSaver
 
 OLLAMA_API = "http://127.0.0.1:11434"
-DEFAULT_MODEL = os.environ.get("RIPO_AI_MODEL", "qwen3:4b")
+DEFAULT_MODEL = os.environ.get("RIPO_AI_MODEL", "qwen3:4b-instruct")
 SESSION_TIMEOUT_SECONDS = 1800
 
 
@@ -41,6 +42,7 @@ class AIStack:
         self.ollama_root = data_dir / "ollama"
         self.ollama_models = data_dir / "ollama-models"
         self.hermes_home = home / ".hermes"
+        self.storage_saver = StorageSaver(home=home, data_dir=data_dir, log_dir=log_dir, hermes_home=self.hermes_home)
         self._ollama_process: subprocess.Popen[Any] | None = None
         self._gateway_process: subprocess.Popen[Any] | None = None
         self._bootstrap_thread: threading.Thread | None = None
@@ -68,15 +70,18 @@ class AIStack:
                 "HERMES_HOME": str(self.hermes_home),
                 "PATH": (
                     f"{self.ollama_root / 'bin'}:"
+                    f"{self.hermes_home / 'node/bin'}:"
                     f"{self.home / '.local/bin'}:"
                     f"{env.get('PATH', '')}"
                 ),
                 "OLLAMA_HOST": "127.0.0.1:11434",
                 "OLLAMA_MODELS": str(self.ollama_models),
-                "OLLAMA_KEEP_ALIVE": env.get("OLLAMA_KEEP_ALIVE", "10m"),
+                "OLLAMA_KEEP_ALIVE": env.get("OLLAMA_KEEP_ALIVE", "1h"),
                 "OLLAMA_NUM_PARALLEL": env.get("OLLAMA_NUM_PARALLEL", "1"),
                 "OLLAMA_MAX_LOADED_MODELS": env.get("OLLAMA_MAX_LOADED_MODELS", "1"),
-                "OLLAMA_CONTEXT_LENGTH": env.get("OLLAMA_CONTEXT_LENGTH", "65536"),
+                "OLLAMA_MAX_QUEUE": env.get("OLLAMA_MAX_QUEUE", "16"),
+                "OLLAMA_CONTEXT_LENGTH": env.get("OLLAMA_CONTEXT_LENGTH", "16384"),
+                "OLLAMA_NOHISTORY": "1",
                 "HERMES_API_TIMEOUT": env.get("HERMES_API_TIMEOUT", "1800"),
                 "TELEGRAM_ALLOW_ALL_USERS": "true",
                 "HERMES_EXEC_ASK": "true",
@@ -234,6 +239,11 @@ class AIStack:
             "platform_toolsets:\n"
             "  telegram:\n"
             "    - safe\n"
+            "    - browser\n"
+            "plugins:\n"
+            "  enabled:\n"
+            "    - disk-cleanup\n"
+            "    - security-guidance\n"
             "gateway:\n"
             "  platforms:\n"
             "    telegram:\n"
@@ -250,6 +260,23 @@ class AIStack:
             "          - commands\n"
             "          - help\n"
             "          - whoami\n"
+            "          - stop\n"
+            "          - retry\n"
+            "          - undo\n"
+            "          - compress\n"
+            "          - usage\n"
+            "          - insights\n"
+            "          - personality\n"
+            "          - ripo-web-browser\n"
+            "          - ripo-fact-check\n"
+            "          - ripo-news-research\n"
+            "          - ripo-travel-research\n"
+            "          - ripo-product-research\n"
+            "          - ripo-study-helper\n"
+            "          - ripo-coding-helper\n"
+            "          - ripo-translator\n"
+            "          - ripo-summarizer\n"
+            "          - ripo-storage-saver\n"
             "        group_allow_admin_from:\n"
             '          - "0"\n'
             "        group_user_allowed_commands:\n"
@@ -257,7 +284,8 @@ class AIStack:
             encoding="utf-8",
         )
         self._install_ripo_skills()
-        return {"ok": True, "message": "Hermes configured for local Ollama and Ripo Team skills.", "model": model}
+        self._install_ripo_power_skills()
+        return {"ok": True, "message": "Hermes configured for fast local Ollama, browser tools, cleanup plugins and Ripo Team skills.", "model": model}
 
     def _install_ripo_skills(self) -> None:
         skills: dict[str, tuple[str, str]] = {
@@ -265,7 +293,7 @@ class AIStack:
             "web-dev": ("Build, debug, and deploy Ripo Team web projects.", """Use for HTML/CSS/JavaScript/Python web work.\n- Inspect the repository and existing stack first.\n- Keep mobile layouts touch-friendly and responsive.\n- Run syntax/build checks before deployment.\n- Prefer Git branches and small commits for risky changes.\n- Verify the deployed URL after changes.\n"""),
             "github-ops": ("Safe Git and GitHub workflows for Ripo Team repositories.", """Use for repository maintenance, branches, commits, PRs, and deployment debugging.\n- Never commit API keys, bot tokens, passwords, or `.env` files.\n- Check `git status` and current branch before writes.\n- Use descriptive commits.\n- Inspect CI logs when a deployment fails; do not guess.\n"""),
             "research": ("Research technical questions with source checking and concise synthesis.", """Use for technical research.\n- Prefer official documentation, source repositories, and primary research.\n- Distinguish confirmed facts from inference.\n- For changing software behavior, verify the current version.\n- Summarize findings with the most actionable details first.\n"""),
-            "security": ("Security checklist for bots, servers, and automation.", """Use before exposing a service or bot.\n- Secrets belong in environment secret stores, never public Git history.\n- Default-deny access to messaging bots with user allowlists or pairing.\n- Bind internal services to loopback unless they must be public.\n- Validate inputs to shell/tool endpoints.\n- Redact credentials from logs and status pages.\n"""),
+            "security": ("Security checklist for bots, servers, and automation.", """Use before exposing a service or bot.\n- Secrets belong in environment secret stores, never public Git history.\n- Public Telegram sessions must remain restricted to safe/browser toolsets; never expose terminal or file-write tools.\n- Bind internal services to loopback unless they must be public.\n- Validate inputs to shell/tool endpoints.\n- Redact credentials from logs and status pages.\n"""),
             "deploy": ("Deploy and verify the Ripo Team Cloud PC stack.", """Use for GitHub Pages and Hugging Face Space deployments.\n1. Validate code locally or with CI.\n2. Deploy frontend and backend independently.\n3. Poll the Space health endpoint.\n4. Verify the live frontend assets with cache-busting.\n5. Record the exact failing stage if a check does not pass.\n"""),
             "telegram-bot": ("Operate the public-safe Hermes Telegram bot.", """Use for Telegram gateway administration.\n- Telegram public access is intentionally enabled, but the Telegram platform is restricted to the read-only `safe` toolset.\n- Never echo the bot token or expose Cloud PC admin credentials.\n- Do not enable terminal, file-write, code-execution, cron, deployment, or admin toolsets for public Telegram sessions.\n- After config changes, restart `hermes gateway` and verify its log.\n"""),
             "local-ai": ("Operate Ollama and the local Qwen model efficiently.", """Use for local inference management.\n- Default model is qwen3:4b through `http://127.0.0.1:11434/v1`.\n- Check `ollama ps` and `ollama list` before pulling duplicates.\n- Keep one model loaded at a time on the Space.\n- Reduce context or switch to a smaller model when latency is too high.\n- Remember ZeroGPU does not automatically accelerate a normal Ollama background process.\n"""),
@@ -289,6 +317,37 @@ class AIStack:
                 encoding="utf-8",
             )
 
+    def _install_ripo_power_skills(self) -> None:
+        skills: dict[str, tuple[str, str]] = {
+            "web-browser": ("Use the local headless browser for interactive web research.", "Navigate pages, inspect accessible content, click and type only when necessary, and prefer read-only browsing. Never enter secrets, payments, or credentials. Cross-check important facts with multiple sources."),
+            "fact-check": ("Verify claims against reliable sources.", "Search the web, prefer primary sources, compare dates and wording, identify uncertainty, and clearly separate verified facts from inference."),
+            "news-research": ("Research current news efficiently.", "Search recent sources, compare reputable outlets, identify when an event happened, summarize what changed, and avoid presenting rumors as confirmed facts."),
+            "travel-research": ("Research travel destinations and logistics.", "Use live web research for opening hours, transport, events and official notices. Prefer official tourism, venue and transport sources when available."),
+            "product-research": ("Compare products using current web information.", "Compare specifications, compatibility, recurring costs and credible reviews. Do not invent prices or availability."),
+            "study-helper": ("Teach and explain topics clearly.", "Give a concise explanation first, then examples. Use web research only when the fact is current or needs verification."),
+            "coding-helper": ("Help with programming without host shell access.", "Explain code, debug snippets supplied in chat, research official documentation, and propose safe patches. Telegram public sessions do not have terminal or file-write access."),
+            "translator": ("Translate while preserving meaning and tone.", "Detect the source language, preserve names and formatting, and provide a natural translation rather than a word-for-word one unless requested."),
+            "summarizer": ("Summarize long text and web pages.", "Extract the key points, decisions, dates, numbers and open questions. Keep the summary proportional to the source."),
+            "storage-saver": ("Explain and monitor the Ripo Team storage-saving policy.", "The server rotates logs, expires old public chat sessions, deletes package caches and stale temporary browser files, protects the active model/browser binaries/config/skills/plugins, and becomes more aggressive only under disk pressure."),
+        }
+        base = self.hermes_home / "skills" / "ripo-team"
+        for name, (description, body) in skills.items():
+            folder = base / name
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "SKILL.md").write_text(
+                "---\n"
+                f"name: ripo-{name}\n"
+                f"description: {description}\n"
+                "version: 1.1.0\n"
+                "metadata:\n"
+                "  hermes:\n"
+                f"    tags: [ripo-team, public-safe, {name}]\n"
+                "    category: ripo-team\n"
+                "---\n\n"
+                f"# Ripo Team {name.replace('-', ' ').title()}\n\n{body}\n",
+                encoding="utf-8",
+            )
+
     def install_optional_skills(self) -> dict[str, Any]:
         binary = self.hermes_binary()
         if not binary:
@@ -302,6 +361,42 @@ class AIStack:
             except Exception:
                 failed.append(skill)
         return {"ok": not failed, "installed": installed, "failed": failed}
+
+    def install_browser_tools(self) -> dict[str, Any]:
+        if shutil.which("agent-browser", path=self._env()["PATH"]):
+            return {"ok": True, "message": "Hermes local browser tools are already installed."}
+        self._set_state("browser-install", "Installing local Chromium browser automation…")
+        command = "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --ensure browser"
+        try:
+            self._run(["bash", "-lc", command], log_name="hermes-browser", timeout=2400)
+        except Exception as exc:
+            return {"ok": False, "message": f"Browser setup failed: {exc}"}
+        available = shutil.which("agent-browser", path=self._env()["PATH"]) is not None
+        return {"ok": available, "message": "Local Chromium browser automation is ready." if available else "Browser installer finished but agent-browser was not found."}
+
+    def prewarm_model(self, model: str = DEFAULT_MODEL) -> dict[str, Any]:
+        binary = self.ollama_binary()
+        if not binary or model not in self.installed_models():
+            return {"ok": False, "message": "Model is not available to pre-warm."}
+        try:
+            self._run([str(binary), "run", model, ""], log_name="ollama-warm", timeout=600)
+            return {"ok": True, "message": f"{model} is warm and ready for fast replies."}
+        except Exception as exc:
+            return {"ok": False, "message": f"Model pre-warm failed: {exc}"}
+
+    def remove_legacy_models(self) -> dict[str, Any]:
+        binary = self.ollama_binary()
+        if not binary:
+            return {"ok": False, "removed": []}
+        removed: list[str] = []
+        for old in ("qwen3:4b",):
+            if old != DEFAULT_MODEL and old in self.installed_models():
+                try:
+                    self._run([str(binary), "rm", old], log_name="ollama-prune", timeout=300)
+                    removed.append(old)
+                except Exception:
+                    pass
+        return {"ok": True, "removed": removed}
 
     def start_gateway(self) -> dict[str, Any]:
         binary = self.hermes_binary()
@@ -471,9 +566,14 @@ class AIStack:
             pulled = self.pull_model(DEFAULT_MODEL)
             if not pulled.get("ok"):
                 raise RuntimeError(pulled.get("message", "Model pull failed."))
+            self.remove_legacy_models()
+            self.prewarm_model(DEFAULT_MODEL)
             self.install_hermes()
             self.configure_hermes(DEFAULT_MODEL)
+            self.install_browser_tools()
             self.install_optional_skills()
+            self.storage_saver.start()
+            self.storage_saver.cleanup()
             if os.environ.get("TELEGRAM_BOT_TOKEN"):
                 self.start_gateway()
                 public_telegram = str(self._env().get("TELEGRAM_ALLOW_ALL_USERS", "")).lower() in {"1", "true", "yes", "on"}
@@ -530,7 +630,8 @@ class AIStack:
                 "pairing_command": dict(self.pairing_command_status),
             },
             "bootstrap": dict(self.state),
-            "storage": {"model_directory": str(self.ollama_models), "ephemeral": True},
+            "browser": {"agent_browser": shutil.which("agent-browser", path=self._env()["PATH"]) is not None, "toolset": "browser"},
+            "storage": {"model_directory": str(self.ollama_models), "ephemeral": True, "saver": self.storage_saver.status()},
         }
 
     def read_log(self, name: str, max_bytes: int = 30000) -> str:
