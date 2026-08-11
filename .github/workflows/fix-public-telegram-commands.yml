@@ -1,0 +1,38 @@
+name: Fix public Telegram commands
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".verification/fix-public-telegram-commands.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Telegram command permissions
+        run: python .github/scripts/fix_public_telegram_commands.py
+      - name: Validate Python and command list
+        run: |
+          python -m py_compile hf-space/ai_stack.py
+          grep -F '"          - new\\n"' hf-space/ai_stack.py
+          grep -F '"          - reset\\n"' hf-space/ai_stack.py
+          grep -F '"          - commands\\n"' hf-space/ai_stack.py
+          grep -F '"          - whoami\\n"' hf-space/ai_stack.py
+          ! grep -F '"          - history\\n"' hf-space/ai_stack.py
+      - name: Commit command fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hf-space/ai_stack.py
+          if git diff --cached --quiet; then
+            echo "No changes needed"
+            exit 0
+          fi
+          git commit -m "Fix public Telegram messaging commands"
+          git push
