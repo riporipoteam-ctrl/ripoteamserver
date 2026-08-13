@@ -3,12 +3,5 @@ window.RIPO_CONFIG = {
   cloudflareProxyUrl: "",
   pollSeconds: 5,
   wakeTimeoutSeconds: 300,
-  deploymentVersion: "2026-08-13-server-tiktok-connect-1"
+  deploymentVersion: "2026-08-13-server-live-2"
 };
-
-(() => {
-  const script = document.createElement('script');
-  script.src = './tiktok-server-connect.js?v=20260813-1';
-  script.defer = true;
-  document.head.appendChild(script);
-})();
