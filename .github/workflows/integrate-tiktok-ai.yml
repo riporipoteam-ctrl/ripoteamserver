@@ -1,0 +1,80 @@
+name: Integrate TikTok AI
+
+on:
+  push:
+    branches:
+      - agent/tiktok-ai
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/tiktok-ai
+
+      - name: Wire backend and dependencies
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          app = Path('hf-space/app.py')
+          text = app.read_text(encoding='utf-8')
+          imp = 'from tiktok_ai import TikTokAI, install_tiktok_routes\n'
+          if imp not in text:
+              text = text.replace('from ai_stack import AIStack\n', 'from ai_stack import AIStack\n' + imp, 1)
+          init = 'TIKTOK_AI = TikTokAI(DATA_DIR / "tiktok-ai")\n'
+          if init not in text:
+              text = text.replace(
+                  'AI_STACK = AIStack(home=HOME, data_dir=DATA_DIR / "ai", log_dir=LOG_DIR)\n',
+                  'AI_STACK = AIStack(home=HOME, data_dir=DATA_DIR / "ai", log_dir=LOG_DIR)\n' + init,
+                  1,
+              )
+          route = 'install_tiktok_routes(app, TIKTOK_AI, authorize)\n'
+          if route not in text:
+              text = text.replace(
+                  'install_desktop_routes(app, password=VNC_PASSWORD, display=DISPLAY)\n',
+                  'install_desktop_routes(app, password=VNC_PASSWORD, display=DISPLAY)\n' + route,
+                  1,
+              )
+          app.write_text(text, encoding='utf-8')
+
+          req = Path('hf-space/requirements.txt')
+          lines = req.read_text(encoding='utf-8').splitlines()
+          for value in ['TikTokLive>=6.6,<7', 'faster-whisper>=1.1,<2', 'python-multipart>=0.0.12']:
+              if value not in lines:
+                  lines.append(value)
+          req.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+          packages = Path('hf-space/packages.txt')
+          lines = packages.read_text(encoding='utf-8').splitlines()
+          if 'espeak-ng' not in lines:
+              lines.insert(lines.index('ffmpeg') + 1 if 'ffmpeg' in lines else len(lines), 'espeak-ng')
+          packages.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+          index = Path('site/index.html')
+          text = index.read_text(encoding='utf-8')
+          marker = '<button data-window="hermes" type="button"><span class="nav-icon">✦</span><span class="nav-label">AI</span></button>'
+          addition = marker + '\n        <button type="button" onclick="window.location.href=\'./tiktok.html\'"><span class="nav-icon">♪</span><span class="nav-label">TikTok AI</span></button>'
+          if 'tiktok.html' not in text:
+              text = text.replace(marker, addition, 1)
+          index.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Validate Python
+        run: python -m py_compile hf-space/tiktok_ai.py hf-space/app.py
+
+      - name: Commit integration
+        shell: bash
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hf-space/app.py hf-space/requirements.txt hf-space/packages.txt site/index.html
+          git commit -m "Integrate TikTok LIVE AI controls"
+          git push origin HEAD:agent/tiktok-ai
