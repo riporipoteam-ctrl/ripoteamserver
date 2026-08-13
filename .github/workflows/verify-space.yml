@@ -36,22 +36,50 @@ jobs:
           echo "Space did not become healthy in time." >&2
           exit 1
 
+      - name: Verify TikTok server routes
+        id: tiktok_server
+        if: steps.health.outcome == 'success'
+        continue-on-error: true
+        env:
+          SPACE_URL: https://echoxr-ripoteam-cloud-pc.hf.space
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/server-connect/status" -o /tmp/server-connect.json
+          curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/server-live/status" -o /tmp/server-live.json
+          python -m json.tool /tmp/server-connect.json
+          python -m json.tool /tmp/server-live.json
+          python - <<'PY'
+          import json
+          connect=json.load(open('/tmp/server-connect.json'))
+          live=json.load(open('/tmp/server-live.json'))
+          assert connect.get('ok') is True, connect
+          assert connect.get('firefox_installed') is True, connect
+          assert live.get('ok') is True, live
+          assert 'phase' in live, live
+          print('TikTok server routes verified.')
+          PY
+
       - name: Record health result
         if: always()
         env:
           HEALTH_OUTCOME: ${{ steps.health.outcome }}
+          TIKTOK_SERVER_OUTCOME: ${{ steps.tiktok_server.outcome }}
         run: |
           set -euo pipefail
           mkdir -p .deployment-status
           {
             echo "Hugging Face Space health: ${HEALTH_OUTCOME}"
+            echo "TikTok server routes: ${TIKTOK_SERVER_OUTCOME}"
             echo "Space URL: https://echoxr-ripoteam-cloud-pc.hf.space"
             echo "Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "Recorded at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            if [ -s /tmp/last-health.txt ]; then
-              echo "Response:"
-              cat /tmp/last-health.txt
-            fi
+            for file in /tmp/last-health.txt /tmp/server-connect.json /tmp/server-live.json; do
+              if [ -s "$file" ]; then
+                echo
+                echo "===== $(basename "$file") ====="
+                cat "$file"
+              fi
+            done
           } > .deployment-status/space-health.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -61,5 +89,5 @@ jobs:
           git push
 
       - name: Fail if Space is unhealthy
-        if: steps.health.outcome != 'success'
+        if: steps.health.outcome != 'success' || steps.tiktok_server.outcome != 'success'
         run: exit 1
