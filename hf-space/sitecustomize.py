@@ -7,5 +7,14 @@ os.environ.setdefault(
     "TIKTOK_REDIRECT_URI",
     "https://echoxr-ripoteam-cloud-pc.hf.space/api/tiktok/oauth/callback",
 )
-os.environ.setdefault("TIKTOK_SCOPES", "user.info.basic,user.info.profile")
+# Keep Login Kit on the baseline scope unless the Space explicitly overrides it.
+os.environ.setdefault("TIKTOK_SCOPES", "user.info.basic")
 os.environ.setdefault("RIPO_PUBLIC_ORIGIN", "https://riporipoteam-ctrl.github.io")
+
+# Install background watcher / reconnect behavior before app.py instantiates
+# the TikTokAI class. This keeps the worker alive when the creator is offline
+# and lets it reconnect automatically after disconnects.
+try:
+    import tiktok_resilience  # noqa: F401
+except Exception as exc:
+    print(f"TikTok resilience patch failed to load: {exc}")
