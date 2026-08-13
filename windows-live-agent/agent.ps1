@@ -4,6 +4,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ConfigPath = Join-Path $PSScriptRoot "agent-config.json"
+$AudioPath = Join-Path $env:TEMP "ripo-live-speech.wav"
 
 function Load-Config {
   if (Test-Path $ConfigPath) {
@@ -32,8 +33,25 @@ function Send-LiveStudioHotkey([string]$Command) {
     "toggle_mic"  { $shell.SendKeys("^%m"); return "Sent microphone hotkey Ctrl+Alt+M." }
     "scene_next"  { $shell.SendKeys("^%{RIGHT}"); return "Sent next-scene hotkey Ctrl+Alt+Right." }
     "scene_prev"  { $shell.SendKeys("^%{LEFT}"); return "Sent previous-scene hotkey Ctrl+Alt+Left." }
-    default { throw "Command '$Command' needs a LIVE Studio hotkey/macro that is not configured yet." }
+    default { throw "Command '$Command' is not mapped to a LIVE Studio hotkey yet." }
   }
+}
+
+function Play-RipoSpeech {
+  $headers = @{ "x-live-agent-token" = $script:cfg.agent_token }
+  try {
+    if (Test-Path $AudioPath) { Remove-Item $AudioPath -Force }
+    $response = Invoke-WebRequest -Method Get -Uri ($script:cfg.server.TrimEnd('/') + "/api/tiktok/live-studio/agent/audio") -Headers $headers -OutFile $AudioPath -UseBasicParsing -TimeoutSec 12
+    if ($response.StatusCode -eq 200 -and (Test-Path $AudioPath) -and (Get-Item $AudioPath).Length -gt 44) {
+      $player = New-Object System.Media.SoundPlayer $AudioPath
+      $player.PlaySync()
+      Remove-Item $AudioPath -Force -ErrorAction SilentlyContinue
+      return $true
+    }
+  } catch {
+    Remove-Item $AudioPath -Force -ErrorAction SilentlyContinue
+  }
+  return $false
 }
 
 $script:cfg = Load-Config
@@ -57,6 +75,8 @@ Write-Host "  Start/Stop streaming = Ctrl+Alt+F9"
 Write-Host "  Mute/Unmute microphone = Ctrl+Alt+M"
 Write-Host "  Next scene = Ctrl+Alt+Right"
 Write-Host "  Previous scene = Ctrl+Alt+Left"
+Write-Host "Ripo Bot speech will play through the Windows default audio output."
+Write-Host "Make sure LIVE Studio captures that Windows audio output so viewers can hear the bot."
 
 while ($true) {
   try {
@@ -74,7 +94,8 @@ while ($true) {
       [void](Api-Post "/api/tiktok/live-studio/agent/result" @{ command_id = $poll.command.id; ok = $ok; message = $message } $script:cfg.agent_token)
       Write-Host ((if ($ok) { "OK: " } else { "ERROR: " }) + $message)
     }
-    Start-Sleep -Milliseconds 1200
+    [void](Play-RipoSpeech)
+    Start-Sleep -Milliseconds 900
   } catch {
     Write-Host ("Bridge reconnecting: " + $_.Exception.Message) -ForegroundColor Yellow
     Start-Sleep -Seconds 5
