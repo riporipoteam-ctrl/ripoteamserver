@@ -46,17 +46,23 @@ jobs:
           set -euo pipefail
           curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/server-connect/status" -o /tmp/server-connect.json
           curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/server-live/status" -o /tmp/server-live.json
+          curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/live-studio-linux/status" -o /tmp/wine-live-studio.json
           python -m json.tool /tmp/server-connect.json
           python -m json.tool /tmp/server-live.json
+          python -m json.tool /tmp/wine-live-studio.json
           python - <<'PY'
           import json
           connect=json.load(open('/tmp/server-connect.json'))
           live=json.load(open('/tmp/server-live.json'))
+          wine=json.load(open('/tmp/wine-live-studio.json'))
           assert connect.get('ok') is True, connect
           assert connect.get('firefox_installed') is True, connect
           assert live.get('ok') is True, live
           assert 'phase' in live, live
-          print('TikTok server routes verified.')
+          assert wine.get('ok') is True, wine
+          assert wine.get('wine_installed') is True, wine
+          assert str(wine.get('wine_version') or '').strip(), wine
+          print('TikTok server routes and 64-bit Wine runtime verified.')
           PY
 
       - name: Record health result
@@ -76,7 +82,7 @@ jobs:
             echo "Space URL: https://echoxr-ripoteam-cloud-pc.hf.space"
             echo "Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "Recorded at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            for file in /tmp/last-health.txt /tmp/server-connect.json /tmp/server-live.json; do
+            for file in /tmp/last-health.txt /tmp/server-connect.json /tmp/server-live.json /tmp/wine-live-studio.json; do
               if [ -s "$file" ]; then
                 echo
                 echo "===== $(basename "$file") ====="
