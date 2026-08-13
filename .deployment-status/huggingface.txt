@@ -2,22 +2,151 @@ Hugging Face deployment: success
 Hugging Face runtime wait: success
 Hugging Face Space health: success
 TikTok OAuth verification: success
-Source commit: 77a9ca4b2ca15c4846e2247f2fcd685981145ba1
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31742036335
-Recorded at: 2026-08-13T20:42:58Z
+Source commit: 0f5f3cf9b6b861ddbaf8d20c3289a0194c7300d9
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31742519944
+Recorded at: 2026-08-13T20:50:29Z
 
 ===== space-info.txt =====
-[1m[31mError: Server error '503 Service Unavailable' for url 'https://run-actions-1-azure-eastus.actions.githubusercontent.com/38//idtoken/0a1d8bb9-612a-400d-8204-c75dca343829/2a1ee507-2dfa-5efb-b7ee-c0e9b0cc154a?audience=https%3A%2F%2Fhuggingface.co'
-For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/503
-
-upstream connect error or disconnect/reset before headers. retried and the latest reset reason: connection timeout[0m
-[90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
+{
+  "id": "Echoxr/ripoteam-cloud-pc",
+  "author": "Echoxr",
+  "card_data": {},
+  "created_at": "2026-08-02T20:55:52+00:00",
+  "disabled": false,
+  "gated": false,
+  "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
+  "last_modified": "2026-08-13T20:48:53+00:00",
+  "likes": 0,
+  "models": [
+    "Salesforce/ctrl"
+  ],
+  "private": false,
+  "region": "us",
+  "runtime": {
+    "stage": "RUNNING",
+    "hardware": "zero-a10g",
+    "requested_hardware": "zero-a10g",
+    "sleep_time": 172800,
+    "dev_mode": false,
+    "raw": {
+      "stage": "RUNNING",
+      "hardware": {
+        "current": "zero-a10g",
+        "requested": "zero-a10g"
+      },
+      "gcTimeout": 172800,
+      "replicas": {
+        "current": 1,
+        "requested": 1
+      },
+      "devMode": false,
+      "domains": [
+        {
+          "domain": "echoxr-ripoteam-cloud-pc.hf.space",
+          "stage": "READY"
+        }
+      ],
+      "sha": "3db43f2637e79d551113cc9d8e9b989a7e3196c0",
+      "pySpacesVersion": "0.51.1"
+    }
+  },
+  "sdk": "gradio",
+  "sha": "3db43f2637e79d551113cc9d8e9b989a7e3196c0",
+  "siblings": [
+    {
+      "rfilename": ".deploy-trigger"
+    },
+    {
+      "rfilename": ".gitattributes"
+    },
+    {
+      "rfilename": "README.md"
+    },
+    {
+      "rfilename": "ai_stack.py"
+    },
+    {
+      "rfilename": "app.py"
+    },
+    {
+      "rfilename": "app_live.py"
+    },
+    {
+      "rfilename": "app_server.py"
+    },
+    {
+      "rfilename": "app_server_v2.py"
+    },
+    {
+      "rfilename": "desktop_http.py"
+    },
+    {
+      "rfilename": "desktop_setup.py"
+    },
+    {
+      "rfilename": "flux_askai.py"
+    },
+    {
+      "rfilename": "live_studio_bridge.py"
+    },
+    {
+      "rfilename": "live_studio_wine.py"
+    },
+    {
+      "rfilename": "live_studio_wine_download_fix.py"
+    },
+    {
+      "rfilename": "live_studio_wine_runtime_fix.py"
+    },
+    {
+      "rfilename": "packages.txt"
+    },
+    {
+      "rfilename": "requirements.txt"
+    },
+    {
+      "rfilename": "sealed/telegram.json"
+    },
+    {
+      "rfilename": "sealed/tiktok-oauth.json"
+    },
+    {
+      "rfilename": "sealed_secrets.py"
+    },
+    {
+      "rfilename": "server_live_broadcaster.py"
+    },
+    {
+      "rfilename": "server_tiktok_connect.py"
+    },
+    {
+      "rfilename": "sitecustomize.py"
+    },
+    {
+      "rfilename": "spaces.py"
+    },
+    {
+      "rfilename": "storage_saver.py"
+    },
+    {
+      "rfilename": "tiktok_ai.py"
+    },
+    {
+      "rfilename": "tiktok_resilience.py"
+    }
+  ],
+  "subdomain": "echoxr-ripoteam-cloud-pc",
+  "tags": [
+    "gradio",
+    "region:us"
+  ],
+  "used_storage": 0
+}
 
 ===== build-logs.txt =====
-[1m[31mError: Server error '503 Service Unavailable' for url 'https://run-actions-1-azure-eastus.actions.githubusercontent.com/38//idtoken/0a1d8bb9-612a-400d-8204-c75dca343829/2a1ee507-2dfa-5efb-b7ee-c0e9b0cc154a?audience=https%3A%2F%2Fhuggingface.co'
-For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/503
-
-upstream connect error or disconnect/reset before headers. retried and the latest reset reason: connection timeout[0m
+[1m[31mError: Space 'Echoxr/ripoteam-cloud-pc' not found.
+If the repo is private, make sure you are authenticated and your token has the required permissions.
+If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-cloud-pc --type space[0m
 [90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
 
 ===== runtime-logs.txt =====
@@ -27,6 +156,6 @@ If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-clou
 [90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
 
 ===== last-health.txt =====
-{"ok":true,"name":"Ripo Team Cloud PC","platform":"Hugging Face Gradio Space","architecture":"x86_64","cpu_count":16,"cpu_source":"container-cgroup","memory_total":104000000000,"memory_available":92744364032,"memory_source":"container-cgroup","disk_total":null,"disk_free":null,"disk_note":"Ephemeral Hugging Face Space storage; the shared host filesystem size is not your personal disk quota.","desktop":{"xvfb":{"pid":223,"running":true,"returncode":null},"openbox":{"pid":226,"running":true,"returncode":null},"pcmanfm":{"pid":227,"running":true,"returncode":null},"lxpanel":{"pid":228,"running":true,"returncode":null},"x11vnc":{"pid":230,"running":true,"returncode":null}},"security":{"custom_vnc_password":true,"admin_token_configured":true},"hermes":{"installed":false,"running":false,"skills":0,"plugins":0},"ai":{"ok":true,"model":{"name":"qwen3:4b-instruct","installed":true,"available_models":["qwen3:4b-instruct"],"endpoint":"http://127.0.0.1:11434/v1","context_length":16384},"ollama":{"installed":true,"running":true},"hermes":{"installed":false,"gateway_running":false,"skills":0,"plugins":0},"telegram":{"token_configured":true,"allowlist_configured":false,"access_mode":"public-safe","pairing_required":false,"tool_profile":"safe","sealing":{"available":true,"key_id":"8c9b4481631b0177","public_key":"-HmtCMJZ7gxwBCgFS1XRRMrE1YAiG4YEmupzfBnWbFg","algorithm":"X25519-HKDF-SHA256-ChaCha20Poly1305","loaded":true,"source":"environment","message":"Telegram token is configured through the Space environment.","envelope_present":true,"allowlist":{"loaded":false,"source":"none","message":"No sealed Telegram allowlist is deployed yet.","envelope_present":false}},"pairing_export":null,"pairing_command":{"watching":false,"last_request_id":null,"last_ok":null,"message":"Waiting for a live pairing command."}},"bootstrap":{"running":true,"stage":"model-pull","message":"Downloading local model qwen3:4b-instruct…","started_at":1786653753.2071776,"finished_at":null,"last_error":null},"browser":{"agent_browser":false,"toolset":"browser"},"storage":{"model_directory":"/home/user/.ripo-cloud-pc/ai/ollama-models","ephemeral":true,"saver":{"running":false,"last_run":null,"last_saved_bytes":0,"total_saved_bytes":0,"deleted_files":0,"pressure":"normal","last_error":null,"filesystem_total":8589854879744,"filesystem_used":4879711391744,"filesystem_free":3710143488000,"filesystem_used_ratio":0.5681,"policy":{"session_retention_days":5,"pressure_session_retention_days":2,"critical_session_retention_days":1,"cleanup_interval_hours":6,"normal_log_cap_mb":4,"protects_model_store":true,"protects_browser_binaries":true,"protects_skills_plugins_config":true}}}},"timestamp":1786653777.2569065}
+{"ok":true,"name":"Ripo Team Cloud PC","platform":"Hugging Face Gradio Space","architecture":"x86_64","cpu_count":16,"cpu_source":"container-cgroup","memory_total":104000000000,"memory_available":100288700416,"memory_source":"container-cgroup","disk_total":null,"disk_free":null,"disk_note":"Ephemeral Hugging Face Space storage; the shared host filesystem size is not your personal disk quota.","desktop":{"xvfb":{"pid":223,"running":true,"returncode":null},"openbox":{"pid":226,"running":true,"returncode":null},"pcmanfm":{"pid":227,"running":true,"returncode":null},"lxpanel":{"pid":228,"running":true,"returncode":null},"x11vnc":{"pid":232,"running":true,"returncode":null}},"security":{"custom_vnc_password":true,"admin_token_configured":true},"hermes":{"installed":false,"running":false,"skills":0,"plugins":0},"ai":{"ok":true,"model":{"name":"qwen3:4b-instruct","installed":false,"available_models":[],"endpoint":"http://127.0.0.1:11434/v1","context_length":16384},"ollama":{"installed":true,"running":false},"hermes":{"installed":false,"gateway_running":false,"skills":0,"plugins":0},"telegram":{"token_configured":true,"allowlist_configured":false,"access_mode":"public-safe","pairing_required":false,"tool_profile":"safe","sealing":{"available":true,"key_id":"8c9b4481631b0177","public_key":"-HmtCMJZ7gxwBCgFS1XRRMrE1YAiG4YEmupzfBnWbFg","algorithm":"X25519-HKDF-SHA256-ChaCha20Poly1305","loaded":true,"source":"environment","message":"Telegram token is configured through the Space environment.","envelope_present":true,"allowlist":{"loaded":false,"source":"none","message":"No sealed Telegram allowlist is deployed yet.","envelope_present":false}},"pairing_export":null,"pairing_command":{"watching":false,"last_request_id":null,"last_ok":null,"message":"Waiting for a live pairing command."}},"bootstrap":{"running":true,"stage":"ollama-install","message":"Installing Ollama in user space…","started_at":1786654223.1419497,"finished_at":null,"last_error":null},"browser":{"agent_browser":false,"toolset":"browser"},"storage":{"model_directory":"/home/user/.ripo-cloud-pc/ai/ollama-models","ephemeral":true,"saver":{"running":false,"last_run":null,"last_saved_bytes":0,"total_saved_bytes":0,"deleted_files":0,"pressure":"normal","last_error":null,"filesystem_total":8589854879744,"filesystem_used":4749458669568,"filesystem_free":3840396210176,"filesystem_used_ratio":0.5529,"policy":{"session_retention_days":5,"pressure_session_retention_days":2,"critical_session_retention_days":1,"cleanup_interval_hours":6,"normal_log_cap_mb":4,"protects_model_store":true,"protects_browser_binaries":true,"protects_skills_plugins_config":true}}}},"timestamp":1786654229.1155338}
 ===== tiktok-status.json =====
 {"ok":true,"running":false,"connected":false,"started_at":null,"ends_at":null,"remaining_seconds":null,"room_id":"","last_error":"","unique_id":"","oauth_configured":true,"oauth_account":{},"audio_queue":0,"like_total":0,"tts_ready":true,"phase":"stopped","watching":false,"retry_count":0,"next_retry_seconds":null,"last_connected_at":null,"last_disconnected_at":null,"background_worker":true,"auto_reconnect":true,"starts_tiktok_broadcast":false,"audio_delivery":"browser"}
