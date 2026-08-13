@@ -14,19 +14,25 @@ os.environ.setdefault(
 os.environ.setdefault("TIKTOK_SCOPES", "user.info.basic")
 os.environ.setdefault("RIPO_PUBLIC_ORIGIN", "https://riporipoteam-ctrl.github.io")
 os.environ.setdefault("RIPO_SPACE_ORIGIN", "https://echoxr-ripoteam-cloud-pc.hf.space")
-os.environ.setdefault("RIPO_WINE_AUTOPROBE", "1")
+# Do not open Firefox / initialize Wine on every Space boot. That was racing
+# TikTok Connect and repeatedly touching the disposable browser profile.
+os.environ.setdefault("RIPO_WINE_AUTOPROBE", "0")
 
 try:
     import tiktok_resilience  # noqa: F401
 except Exception as exc:
     print(f"TikTok resilience patch failed to load: {exc}")
 
+try:
+    import tiktok_session_stability  # noqa: F401
+except Exception as exc:
+    print(f"TikTok session stability patch failed to load: {exc}")
+
 
 def _auto_probe_live_studio(connector, wine_runner) -> None:
-    if os.environ.get("RIPO_WINE_AUTOPROBE", "1").strip().lower() not in {"1", "true", "yes", "on"}:
+    if os.environ.get("RIPO_WINE_AUTOPROBE", "0").strip().lower() not in {"1", "true", "yes", "on"}:
         return
     try:
-        # Give Xvfb/Openbox/x11vnc time to become usable before opening Firefox.
         time.sleep(8)
         if not connector.status().get("browser_running"):
             connector._write_profile_prefs()
@@ -75,6 +81,7 @@ def _mount_server_tiktok_routes() -> None:
             from live_studio_wine import LiveStudioWine, install_live_studio_wine_routes
             import live_studio_wine_download_fix  # noqa: F401
             import live_studio_wine_runtime_fix  # noqa: F401
+            import live_studio_wine_candidate_fix  # noqa: F401
 
             connector = getattr(module, "RIPO_SERVER_TIKTOK_CONNECT", None)
             if connector is None:
@@ -120,7 +127,7 @@ def _mount_server_tiktok_routes() -> None:
                 daemon=True,
             ).start()
 
-            print("TikTok server routes and 64-bit Wine LIVE Studio probe mounted on the running Space app.")
+            print("TikTok server routes, restart-safe sessions, and Wine LIVE Studio routes mounted.")
             return
         except Exception as exc:
             print(f"TikTok server route mount failed: {exc}")
