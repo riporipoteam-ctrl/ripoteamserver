@@ -1,10 +1,10 @@
-Hugging Face deployment: skipped
-Hugging Face runtime wait: skipped
+Hugging Face deployment: success
+Hugging Face runtime wait: cancelled
 Hugging Face Space health: skipped
 TikTok OAuth verification: skipped
-Source commit: b2cabdc121deffe0411d31afb6abed2d17972294
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31743829850
-Recorded at: 2026-08-13T21:03:13Z
+Source commit: 9fa1b22296da34e20f3cb43c624d2d584ec8c2fa
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31743854933
+Recorded at: 2026-08-13T21:03:53Z
 
 ===== space-info.txt =====
 {
@@ -15,7 +15,7 @@ Recorded at: 2026-08-13T21:03:13Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-13T21:02:52+00:00",
+  "last_modified": "2026-08-13T21:03:33+00:00",
   "likes": 0,
   "models": [
     "Salesforce/ctrl"
@@ -51,7 +51,7 @@ Recorded at: 2026-08-13T21:03:13Z
     }
   },
   "sdk": "gradio",
-  "sha": "3376f021b430f04f3d4c3130b6f99ca85854e805",
+  "sha": "e37de021499578a57fbcdfbd6fc24505359634b2",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
@@ -91,6 +91,9 @@ Recorded at: 2026-08-13T21:03:13Z
     },
     {
       "rfilename": "live_studio_wine.py"
+    },
+    {
+      "rfilename": "live_studio_wine_candidate_fix.py"
     },
     {
       "rfilename": "live_studio_wine_download_fix.py"
