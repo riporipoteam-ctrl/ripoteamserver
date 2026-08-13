@@ -1,9 +1,9 @@
 Hugging Face deployment: success
-Hugging Face runtime wait: cancelled
-Hugging Face Space health: skipped
-Source commit: 022a6aa3e24fcfc26953d55ecbed9ef7222df48b
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31728368459
-Recorded at: 2026-08-13T17:59:45Z
+Hugging Face runtime wait: success
+Hugging Face Space health: success
+Source commit: 546ce631ad5ffadc5607f8bc7db7fd202610cc86
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31728471437
+Recorded at: 2026-08-13T18:01:35Z
 
 ===== space-info.txt =====
 {
@@ -14,7 +14,7 @@ Recorded at: 2026-08-13T17:59:45Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-13T17:58:31+00:00",
+  "last_modified": "2026-08-13T18:00:08+00:00",
   "likes": 0,
   "models": [
     "Salesforce/ctrl"
@@ -22,13 +22,13 @@ Recorded at: 2026-08-13T17:59:45Z
   "private": false,
   "region": "us",
   "runtime": {
-    "stage": "RUNNING_APP_STARTING",
+    "stage": "RUNNING",
     "hardware": "zero-a10g",
     "requested_hardware": "zero-a10g",
     "sleep_time": 172800,
     "dev_mode": false,
     "raw": {
-      "stage": "RUNNING_APP_STARTING",
+      "stage": "RUNNING",
       "hardware": {
         "current": "zero-a10g",
         "requested": "zero-a10g"
@@ -45,12 +45,12 @@ Recorded at: 2026-08-13T17:59:45Z
           "stage": "READY"
         }
       ],
-      "sha": "367b8f016957434fb5621f364bbe7ddf2c483692",
+      "sha": "9cb953434b77b3e74e83f839323a160c6d66e7f4",
       "pySpacesVersion": "0.51.1"
     }
   },
   "sdk": "gradio",
-  "sha": "68d5d040a7e6830ad9a0b1e5cd0c1fdedafe2331",
+  "sha": "9cb953434b77b3e74e83f839323a160c6d66e7f4",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
@@ -95,6 +95,9 @@ Recorded at: 2026-08-13T17:59:45Z
       "rfilename": "sitecustomize.py"
     },
     {
+      "rfilename": "spaces.py"
+    },
+    {
       "rfilename": "storage_saver.py"
     },
     {
@@ -120,3 +123,6 @@ If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-clou
 If the repo is private, make sure you are authenticated and your token has the required permissions.
 If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-cloud-pc --type space[0m
 [90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
+
+===== last-health.txt =====
+{"ok":true,"name":"Ripo Team Cloud PC","platform":"Hugging Face Gradio Space","architecture":"x86_64","cpu_count":16,"cpu_source":"container-cgroup","memory_total":104000000000,"memory_available":101414461440,"memory_source":"container-cgroup","disk_total":null,"disk_free":null,"disk_note":"Ephemeral Hugging Face Space storage; the shared host filesystem size is not your personal disk quota.","desktop":{"xvfb":{"pid":221,"running":true,"returncode":null},"openbox":{"pid":224,"running":true,"returncode":null},"pcmanfm":{"pid":225,"running":true,"returncode":null},"lxpanel":{"pid":226,"running":true,"returncode":null},"x11vnc":{"pid":228,"running":true,"returncode":null}},"security":{"custom_vnc_password":true,"admin_token_configured":true},"hermes":{"installed":false,"running":false,"skills":0,"plugins":0},"ai":{"ok":true,"model":{"name":"qwen3:4b-instruct","installed":false,"available_models":[],"endpoint":"http://127.0.0.1:11434/v1","context_length":16384},"ollama":{"installed":true,"running":false},"hermes":{"installed":false,"gateway_running":false,"skills":0,"plugins":0},"telegram":{"token_configured":true,"allowlist_configured":false,"access_mode":"public-safe","pairing_required":false,"tool_profile":"safe","sealing":{"available":true,"key_id":"8c9b4481631b0177","public_key":"-HmtCMJZ7gxwBCgFS1XRRMrE1YAiG4YEmupzfBnWbFg","algorithm":"X25519-HKDF-SHA256-ChaCha20Poly1305","loaded":true,"source":"environment","message":"Telegram token is configured through the Space environment.","envelope_present":true,"allowlist":{"loaded":false,"source":"none","message":"No sealed Telegram allowlist is deployed yet.","envelope_present":false}},"pairing_export":null,"pairing_command":{"watching":false,"last_request_id":null,"last_ok":null,"message":"Waiting for a live pairing command."}},"bootstrap":{"running":true,"stage":"ollama-install","message":"Installing Ollama in user space…","started_at":1786644088.4294827,"finished_at":null,"last_error":null},"browser":{"agent_browser":false,"toolset":"browser"},"storage":{"model_directory":"/home/user/.ripo-cloud-pc/ai/ollama-models","ephemeral":true,"saver":{"running":false,"last_run":null,"last_saved_bytes":0,"total_saved_bytes":0,"deleted_files":0,"pressure":"normal","last_error":null,"filesystem_total":8589854879744,"filesystem_used":5293423177728,"filesystem_free":3296431702016,"filesystem_used_ratio":0.6162,"policy":{"session_retention_days":5,"pressure_session_retention_days":2,"critical_session_retention_days":1,"cleanup_interval_hours":6,"normal_log_cap_mb":4,"protects_model_store":true,"protects_browser_binaries":true,"protects_skills_plugins_config":true}}}},"timestamp":1786644094.4440384}
