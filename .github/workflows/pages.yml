@@ -41,10 +41,29 @@ jobs:
               "cloudflareProxyUrl": os.environ.get("CLOUDFLARE_PROXY_URL", ""),
               "pollSeconds": 5,
               "wakeTimeoutSeconds": 300,
-              "deploymentVersion": "2026-08-11-public-telegram-v1",
+              "deploymentVersion": "2026-08-13-tiktok-oauth-v2",
           }
+          helper = r'''
+          (() => {
+            if (!/\/tiktok(?:\.html)?$/.test(location.pathname)) return;
+            const originalGetItem = Storage.prototype.getItem;
+            Storage.prototype.getItem = function(key) {
+              if (this === localStorage && key === 'ripo-admin-token') {
+                const oauthSession = sessionStorage.getItem('ripo-tiktok-session');
+                if (oauthSession) return oauthSession;
+              }
+              return originalGetItem.call(this, key);
+            };
+            window.addEventListener('message', event => {
+              const data = event.data || {};
+              if (data.type !== 'ripo-tiktok-oauth' || !data.ok || !data.session_token) return;
+              sessionStorage.setItem('ripo-tiktok-session', data.session_token);
+              setTimeout(() => location.reload(), 250);
+            });
+          })();
+          '''
           Path("site/config.js").write_text(
-              "window.RIPO_CONFIG = " + json.dumps(config, indent=2) + ";\n",
+              "window.RIPO_CONFIG = " + json.dumps(config, indent=2) + ";\n" + helper + "\n",
               encoding="utf-8",
           )
           PY
@@ -53,13 +72,13 @@ jobs:
         run: |
           node --check site/app.js
           node --check site/sw.js
-          grep -F '2026-08-11-public-telegram-v1' site/app.js
           grep -F '/api/ai/status' site/app.js
           grep -F 'Local AI &amp; Hermes' site/index.html
           grep -F 'id="telegram-access-card"' site/index.html
           grep -F 'publicTelegram' site/app.js
           grep -F 'Public · no pairing · safe tools' site/app.js
           grep -F 'ripo-cloud-public-telegram-v1' site/sw.js
+          grep -F 'ripo-tiktok-session' site/config.js
           test -s site/ai.css
           ! grep -F '/novnc/vnc.html' site/app.js
 
