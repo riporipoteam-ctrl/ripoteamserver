@@ -1,5 +1,6 @@
 build-essential
 ca-certificates
+cabextract
 curl
 dbus-x11
 desktop-file-utils
@@ -24,6 +25,8 @@ tmux
 tree
 unzip
 websockify
+wine
+wine64
 x11vnc
 xdg-utils
 xdotool
