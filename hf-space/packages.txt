@@ -4,6 +4,7 @@ curl
 dbus-x11
 desktop-file-utils
 ffmpeg
+espeak-ng
 firefox-esr
 fonts-dejavu-core
 git

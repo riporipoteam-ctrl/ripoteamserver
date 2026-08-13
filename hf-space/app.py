@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from ai_stack import AIStack
+from tiktok_ai import TikTokAI, install_tiktok_routes
 from desktop_http import install_desktop_routes
 from desktop_setup import configure_full_desktop, detected_resources
 from gradio import Server
@@ -35,6 +36,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 AI_STACK = AIStack(home=HOME, data_dir=DATA_DIR / "ai", log_dir=LOG_DIR)
+TIKTOK_AI = TikTokAI(DATA_DIR / "tiktok-ai")
 
 PROCESSES: dict[str, subprocess.Popen[Any]] = {}
 HERMES_PROCESS: subprocess.Popen[Any] | None = None
@@ -304,6 +306,7 @@ app.add_middleware(
 
 
 install_desktop_routes(app, password=VNC_PASSWORD, display=DISPLAY)
+install_tiktok_routes(app, TIKTOK_AI, authorize)
 
 
 @app.get("/api/health")
