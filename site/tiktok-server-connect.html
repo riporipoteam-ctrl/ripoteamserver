@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#080910">
+<title>Connect TikTok to Ripo Server</title>
+<style>
+:root{font-family:Inter,system-ui,-apple-system,sans-serif;color:#fff;background:#080910;--line:#ffffff1a;--muted:#a8aec3;--cyan:#25f4ee;--red:#fe2c55}*{box-sizing:border-box}body{margin:0;background:#080910}.top{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:center}.top strong{font-size:.9rem}.status{font-size:.78rem;color:var(--muted)}.stage{position:relative;width:100vw;height:calc(100vh - 132px);display:grid;place-items:center;background:#111}.stage img{max-width:100%;max-height:100%;display:block;touch-action:none;user-select:none;-webkit-user-drag:none}.bar{position:fixed;left:0;right:0;bottom:0;padding:10px max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));background:#0d0f18;border-top:1px solid var(--line)}.row{display:flex;gap:7px}.row input{flex:1;min-width:0;background:#171a27;border:1px solid var(--line);border-radius:10px;padding:10px;color:#fff}.row button{border:1px solid var(--line);background:#1d2130;color:#fff;border-radius:10px;padding:10px 12px;font-weight:800}.primary{background:var(--cyan)!important;color:#04110f!important;border:0!important}.hint{font-size:.72rem;color:var(--muted);margin-top:6px}.done{position:fixed;inset:0;display:none;place-items:center;background:#080910ee;z-index:20;padding:22px;text-align:center}.done.show{display:grid}.done h1{font-size:2rem;margin:0 0 8px}.done p{color:var(--muted)}
+</style>
+</head>
+<body>
+<header class="top"><strong>Ripo Server · TikTok login</strong><span id="status" class="status">Opening TikTok on server…</span></header>
+<main class="stage"><img id="screen" alt="TikTok running on Ripo server"></main>
+<section class="bar"><div class="row"><input id="text" autocomplete="off" autocapitalize="none" placeholder="Type into TikTok on the server"><button id="send" class="primary">Send</button><button id="back">⌫</button><button id="enter">Enter</button></div><div class="hint">Tap the server screen to click. You are signing into TikTok on the Ripo server computer; the browser profile stays there for future LIVE control.</div></section>
+<section id="done" class="done"><div><h1>Connected ✅</h1><p>TikTok is now connected to the Ripo server computer. Returning to the LIVE dashboard…</p></div></section>
+<script>
+'use strict';
+const p=new URLSearchParams(location.hash.slice(1));
+const server=decodeURIComponent(p.get('server')||'').replace(/\/+$/,'');
+const token=p.get('token')||'';
+const flow=p.get('flow')||'';
+const screen=document.querySelector('#screen'),statusEl=document.querySelector('#status'),done=document.querySelector('#done');
+let running=true,lastUrl='';
+async function api(path,opt={}){const r=await fetch(server+path,{cache:'no-store',...opt,headers:{'content-type':'application/json',...(opt.headers||{})}});const ct=r.headers.get('content-type')||'';if(ct.includes('json')){const x=await r.json();if(!r.ok)throw Error(x.detail||x.message||`HTTP ${r.status}`);return x}if(!r.ok)throw Error(`HTTP ${r.status}`);return r}
+async function frame(){if(!running)return;try{const r=await fetch(server+`/api/desktop/frame?token=${encodeURIComponent(token)}&width=1100&quality=70`,{cache:'no-store'});if(!r.ok)throw Error(`Desktop HTTP ${r.status}`);const blob=await r.blob();const u=URL.createObjectURL(blob);screen.src=u;if(lastUrl)URL.revokeObjectURL(lastUrl);lastUrl=u;statusEl.textContent='TikTok is open on the server computer';}catch(e){statusEl.textContent=e.message}finally{if(running)setTimeout(frame,320)}}
+function pos(ev){const r=screen.getBoundingClientRect();const point=ev.touches?.[0]||ev.changedTouches?.[0]||ev;return{x:Math.max(0,Math.min(1365,Math.round((point.clientX-r.left)*1366/r.width))),y:Math.max(0,Math.min(767,Math.round((point.clientY-r.top)*768/r.height)))}}
+async function click(ev){ev.preventDefault();const c=pos(ev);try{await api(`/api/desktop/input?token=${encodeURIComponent(token)}`,{method:'POST',body:JSON.stringify({action:'click',x:c.x,y:c.y,button:1})})}catch(e){statusEl.textContent=e.message}}
+screen.addEventListener('click',click);screen.addEventListener('touchend',click,{passive:false});
+async function key(k){try{await api(`/api/desktop/input?token=${encodeURIComponent(token)}`,{method:'POST',body:JSON.stringify({action:'key',key:k,modifiers:[]})})}catch(e){statusEl.textContent=e.message}}
+document.querySelector('#send').onclick=async()=>{const t=document.querySelector('#text');if(!t.value)return;try{await api(`/api/desktop/input?token=${encodeURIComponent(token)}`,{method:'POST',body:JSON.stringify({action:'text',text:t.value})});t.value=''}catch(e){statusEl.textContent=e.message}};
+document.querySelector('#back').onclick=()=>key('Backspace');document.querySelector('#enter').onclick=()=>key('Enter');
+async function poll(){if(!running)return;try{const x=await api(`/api/tiktok/server-connect/poll?flow_id=${encodeURIComponent(flow)}`);if(x.connected&&x.session_token){running=false;localStorage.setItem('ripo-tiktok-session',x.session_token);done.classList.add('show');window.opener?.postMessage({type:'ripo-server-tiktok-connected',session_token:x.session_token,oauth_account:x.oauth_account||{},unique_id:x.unique_id||''},location.origin);setTimeout(()=>{try{window.close()}catch{}},1200);return}statusEl.textContent=x.message||'Waiting for TikTok login…'}catch(e){statusEl.textContent=e.message}setTimeout(poll,1300)}
+if(!server||!token||!flow){statusEl.textContent='Missing server connection details.';running=false}else{frame();poll()}
+</script>
+</body></html>
