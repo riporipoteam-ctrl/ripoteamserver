@@ -77,6 +77,7 @@ def _mount_server_tiktok_routes() -> None:
             existing = {getattr(route, "path", None) for route in getattr(application, "routes", [])}
 
             from server_tiktok_connect import ServerTikTokConnect, install_server_tiktok_connect_routes
+            import server_tiktok_connect_stability  # noqa: F401
             from server_live_broadcaster import ServerLiveBroadcaster, install_server_live_routes
             from live_studio_wine import LiveStudioWine, install_live_studio_wine_routes
             import live_studio_wine_download_fix  # noqa: F401
@@ -127,7 +128,7 @@ def _mount_server_tiktok_routes() -> None:
                 daemon=True,
             ).start()
 
-            print("TikTok server routes, restart-safe sessions, and Wine LIVE Studio routes mounted.")
+            print("TikTok server routes, restart-safe sessions, reusable Firefox, and Wine routes mounted.")
             return
         except Exception as exc:
             print(f"TikTok server route mount failed: {exc}")
