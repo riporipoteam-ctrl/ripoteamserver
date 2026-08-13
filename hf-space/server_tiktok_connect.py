@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import json
 import os
 import secrets
 import shutil
@@ -25,11 +26,30 @@ class ServerTikTokConnect:
         self.data_dir = data_dir
         self.display = display
         self.profile_dir = data_dir / "tiktok-firefox-profile"
+        self.download_dir = data_dir / "downloads"
         self.profile_dir.mkdir(parents=True, exist_ok=True)
+        self.download_dir.mkdir(parents=True, exist_ok=True)
+        self._write_profile_prefs()
         self.flows: dict[str, dict[str, Any]] = {}
         self.lock = threading.Lock()
         self.browser: subprocess.Popen[Any] | None = None
         self.last_start = 0.0
+
+    def _write_profile_prefs(self) -> None:
+        """Keep downloads predictable so LIVE Studio can be picked up by Wine."""
+        prefs = [
+            'user_pref("browser.download.folderList", 2);',
+            f'user_pref("browser.download.dir", {json.dumps(str(self.download_dir))});',
+            'user_pref("browser.download.useDownloadDir", true);',
+            'user_pref("browser.download.alwaysOpenPanel", false);',
+            'user_pref("browser.download.manager.showWhenStarting", false);',
+            'user_pref("browser.download.always_ask_before_handling_new_types", false);',
+            'user_pref("browser.helperApps.neverAsk.saveToDisk", "application/octet-stream,application/x-msdownload,application/x-msdos-program,application/vnd.microsoft.portable-executable");',
+        ]
+        try:
+            (self.profile_dir / "user.js").write_text("\n".join(prefs) + "\n", encoding="utf-8")
+        except Exception:
+            pass
 
     def _env(self) -> dict[str, str]:
         env = os.environ.copy()
@@ -58,6 +78,7 @@ class ServerTikTokConnect:
             "oauth_configured": bool(self.ai.client_key and self.ai.client_secret and self.ai.redirect_uri),
             "account": self.ai.status().get("oauth_account", {}),
             "active_flows": sum(1 for row in self.flows.values() if float(row.get("expires", 0)) > time.time()),
+            "download_dir": str(self.download_dir),
         }
 
     def start(self) -> dict[str, Any]:
@@ -72,6 +93,7 @@ class ServerTikTokConnect:
         except RuntimeError as exc:
             raise HTTPException(409, str(exc)) from exc
 
+        self._write_profile_prefs()
         if self.browser and self.browser.poll() is None:
             try:
                 self.browser.terminate()
