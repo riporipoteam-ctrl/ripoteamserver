@@ -14,7 +14,6 @@ os.environ.setdefault("TIKTOK_SCOPES", "user.info.basic")
 os.environ.setdefault("RIPO_PUBLIC_ORIGIN", "https://riporipoteam-ctrl.github.io")
 os.environ.setdefault("RIPO_SPACE_ORIGIN", "https://echoxr-ripoteam-cloud-pc.hf.space")
 
-# Keep the resilient LIVE event listener patch available for the AI event side.
 try:
     import tiktok_resilience  # noqa: F401
 except Exception as exc:
@@ -22,12 +21,6 @@ except Exception as exc:
 
 
 def _mount_server_tiktok_routes() -> None:
-    """Mount server-browser + server-broadcast routes on whichever module owns app.py.
-
-    Hugging Face is currently launching app.py directly even when an alternate
-    app_file is present in the Space card, so this attaches the new routes to
-    the real running Server instance instead of relying on a wrapper entrypoint.
-    """
     for _ in range(240):
         module = sys.modules.get("app") or sys.modules.get("__main__")
         if module is None:
@@ -39,38 +32,53 @@ def _mount_server_tiktok_routes() -> None:
             time.sleep(0.25)
             continue
 
-        # Give app.py a moment to finish installing its normal routes first.
         time.sleep(0.75)
         try:
             application = module.app
             existing = {getattr(route, "path", None) for route in getattr(application, "routes", [])}
-            if "/api/tiktok/server-connect/status" in existing and "/api/tiktok/server-live/status" in existing:
-                print("TikTok server routes already mounted.")
-                return
 
             from server_tiktok_connect import ServerTikTokConnect, install_server_tiktok_connect_routes
             from server_live_broadcaster import ServerLiveBroadcaster, install_server_live_routes
+            from live_studio_wine import LiveStudioWine, install_live_studio_wine_routes
 
-            connector = ServerTikTokConnect(
-                module.TIKTOK_AI,
-                module.DATA_DIR / "tiktok-server-browser",
-                module.DISPLAY,
-            )
-            install_server_tiktok_connect_routes(application, connector)
+            connector = getattr(module, "RIPO_SERVER_TIKTOK_CONNECT", None)
+            if connector is None:
+                connector = ServerTikTokConnect(
+                    module.TIKTOK_AI,
+                    module.DATA_DIR / "tiktok-server-browser",
+                    module.DISPLAY,
+                )
+                if "/api/tiktok/server-connect/status" not in existing:
+                    install_server_tiktok_connect_routes(application, connector)
+                module.RIPO_SERVER_TIKTOK_CONNECT = connector
 
-            broadcaster = ServerLiveBroadcaster(
-                module.TIKTOK_AI,
-                connector,
-                module.DATA_DIR / "tiktok-server-live",
-                module.authorize,
-                module.DISPLAY,
-            )
-            install_server_live_routes(application, broadcaster)
+            broadcaster = getattr(module, "RIPO_SERVER_LIVE_BROADCASTER", None)
+            if broadcaster is None:
+                broadcaster = ServerLiveBroadcaster(
+                    module.TIKTOK_AI,
+                    connector,
+                    module.DATA_DIR / "tiktok-server-live",
+                    module.authorize,
+                    module.DISPLAY,
+                )
+                if "/api/tiktok/server-live/status" not in existing:
+                    install_server_live_routes(application, broadcaster)
+                module.RIPO_SERVER_LIVE_BROADCASTER = broadcaster
 
-            # Keep strong references for the lifetime of the Space process.
-            module.RIPO_SERVER_TIKTOK_CONNECT = connector
-            module.RIPO_SERVER_LIVE_BROADCASTER = broadcaster
-            print("TikTok server-browser and server-LIVE routes mounted on the running Space app.")
+            wine_runner = getattr(module, "RIPO_LIVE_STUDIO_WINE", None)
+            if wine_runner is None:
+                wine_runner = LiveStudioWine(
+                    module.TIKTOK_AI,
+                    connector,
+                    module.DATA_DIR / "tiktok-live-studio-wine",
+                    module.authorize,
+                    module.DISPLAY,
+                )
+                if "/api/tiktok/live-studio-linux/status" not in existing:
+                    install_live_studio_wine_routes(application, wine_runner)
+                module.RIPO_LIVE_STUDIO_WINE = wine_runner
+
+            print("TikTok server routes and 64-bit Wine LIVE Studio probe mounted on the running Space app.")
             return
         except Exception as exc:
             print(f"TikTok server route mount failed: {exc}")
