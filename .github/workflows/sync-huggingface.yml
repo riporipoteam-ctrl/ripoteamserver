@@ -116,12 +116,32 @@ jobs:
             -o /tmp/last-health.txt
           python -m json.tool /tmp/last-health.txt
 
+      - name: Test TikTok OAuth endpoint
+        id: tiktok
+        if: steps.upload.outcome == 'success' && steps.runtime.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 30 \
+            "$SPACE_URL/api/tiktok/status" \
+            -o /tmp/tiktok-status.json
+          python -m json.tool /tmp/tiktok-status.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('/tmp/tiktok-status.json').read_text())
+          assert data.get('ok') is True, data
+          assert data.get('oauth_configured') is True, data
+          print('TikTok OAuth is configured on the live backend.')
+          PY
+
       - name: Record deployment result
         if: always()
         env:
           UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
           RUNTIME_OUTCOME: ${{ steps.runtime.outcome }}
           HEALTH_OUTCOME: ${{ steps.health.outcome }}
+          TIKTOK_OUTCOME: ${{ steps.tiktok.outcome }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -132,10 +152,11 @@ jobs:
             echo "Hugging Face deployment: ${UPLOAD_OUTCOME}"
             echo "Hugging Face runtime wait: ${RUNTIME_OUTCOME}"
             echo "Hugging Face Space health: ${HEALTH_OUTCOME}"
+            echo "TikTok OAuth verification: ${TIKTOK_OUTCOME}"
             echo "Source commit: ${GITHUB_SHA}"
             echo "Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "Recorded at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            for file in /tmp/space-info.txt /tmp/build-logs.txt /tmp/runtime-logs.txt /tmp/last-health.txt; do
+            for file in /tmp/space-info.txt /tmp/build-logs.txt /tmp/runtime-logs.txt /tmp/last-health.txt /tmp/tiktok-status.json; do
               if [ -s "$file" ]; then
                 echo
                 echo "===== $(basename "$file") ====="
@@ -148,5 +169,5 @@ jobs:
           git push
 
       - name: Fail if deployment is not healthy
-        if: steps.upload.outcome != 'success' || steps.runtime.outcome != 'success' || steps.health.outcome != 'success'
+        if: steps.upload.outcome != 'success' || steps.runtime.outcome != 'success' || steps.health.outcome != 'success' || steps.tiktok.outcome != 'success'
         run: exit 1
