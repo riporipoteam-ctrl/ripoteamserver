@@ -1,10 +1,10 @@
 Hugging Face deployment: success
-Hugging Face runtime wait: success
-Hugging Face Space health: success
-TikTok OAuth verification: success
-Source commit: c03129f1237c9808d54f133716f5b3c5fc04a3ea
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31728991098
-Recorded at: 2026-08-13T18:05:55Z
+Hugging Face runtime wait: cancelled
+Hugging Face Space health: skipped
+TikTok OAuth verification: skipped
+Source commit: ba70cb237bba476b9cf15b0bb7fd9753ca7603ac
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31733121214
+Recorded at: 2026-08-13T18:54:46Z
 
 ===== space-info.txt =====
 {
@@ -15,7 +15,7 @@ Recorded at: 2026-08-13T18:05:55Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-13T18:00:08+00:00",
+  "last_modified": "2026-08-13T18:54:23+00:00",
   "likes": 0,
   "models": [
     "Salesforce/ctrl"
@@ -23,13 +23,13 @@ Recorded at: 2026-08-13T18:05:55Z
   "private": false,
   "region": "us",
   "runtime": {
-    "stage": "RUNNING",
+    "stage": "RUNNING_BUILDING",
     "hardware": "zero-a10g",
     "requested_hardware": "zero-a10g",
     "sleep_time": 172800,
     "dev_mode": false,
     "raw": {
-      "stage": "RUNNING",
+      "stage": "RUNNING_BUILDING",
       "hardware": {
         "current": "zero-a10g",
         "requested": "zero-a10g"
@@ -51,7 +51,7 @@ Recorded at: 2026-08-13T18:05:55Z
     }
   },
   "sdk": "gradio",
-  "sha": "9cb953434b77b3e74e83f839323a160c6d66e7f4",
+  "sha": "1af5d79cb236093e88b3c849a0438cc6ef3a462a",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
@@ -103,6 +103,9 @@ Recorded at: 2026-08-13T18:05:55Z
     },
     {
       "rfilename": "tiktok_ai.py"
+    },
+    {
+      "rfilename": "tiktok_resilience.py"
     }
   ],
   "subdomain": "echoxr-ripoteam-cloud-pc",
@@ -124,8 +127,3 @@ If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-clou
 If the repo is private, make sure you are authenticated and your token has the required permissions.
 If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-cloud-pc --type space[0m
 [90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
-
-===== last-health.txt =====
-{"ok":true,"name":"Ripo Team Cloud PC","platform":"Hugging Face Gradio Space","architecture":"x86_64","cpu_count":16,"cpu_source":"container-cgroup","memory_total":104000000000,"memory_available":89807486976,"memory_source":"container-cgroup","disk_total":null,"disk_free":null,"disk_note":"Ephemeral Hugging Face Space storage; the shared host filesystem size is not your personal disk quota.","desktop":{"xvfb":{"pid":221,"running":true,"returncode":null},"openbox":{"pid":224,"running":true,"returncode":null},"pcmanfm":{"pid":225,"running":true,"returncode":null},"lxpanel":{"pid":226,"running":true,"returncode":null},"x11vnc":{"pid":228,"running":true,"returncode":null}},"security":{"custom_vnc_password":true,"admin_token_configured":true},"hermes":{"installed":true,"running":true,"skills":99,"plugins":97},"ai":{"ok":true,"model":{"name":"qwen3:4b-instruct","installed":true,"available_models":["qwen3:4b-instruct"],"endpoint":"http://127.0.0.1:11434/v1","context_length":16384},"ollama":{"installed":true,"running":true},"hermes":{"installed":true,"gateway_running":true,"skills":99,"plugins":97},"telegram":{"token_configured":true,"allowlist_configured":false,"access_mode":"public-safe","pairing_required":false,"tool_profile":"safe","sealing":{"available":true,"key_id":"8c9b4481631b0177","public_key":"-HmtCMJZ7gxwBCgFS1XRRMrE1YAiG4YEmupzfBnWbFg","algorithm":"X25519-HKDF-SHA256-ChaCha20Poly1305","loaded":true,"source":"environment","message":"Telegram token is configured through the Space environment.","envelope_present":true,"allowlist":{"loaded":false,"source":"none","message":"No sealed Telegram allowlist is deployed yet.","envelope_present":false}},"pairing_export":null,"pairing_command":{"watching":false,"last_request_id":null,"last_ok":true,"message":"Pairing disabled because Telegram is running in public-safe mode."}},"bootstrap":{"running":false,"stage":"ready","message":"Local AI and Hermes are ready.","started_at":1786644088.4294827,"finished_at":1786644164.1559846,"last_error":null},"browser":{"agent_browser":false,"toolset":"browser"},"storage":{"model_directory":"/home/user/.ripo-cloud-pc/ai/ollama-models","ephemeral":true,"saver":{"running":false,"last_run":1786644282.6523836,"last_saved_bytes":0,"total_saved_bytes":0,"deleted_files":0,"pressure":"normal","last_error":null,"filesystem_total":8589854879744,"filesystem_used":5285528121344,"filesystem_free":3304326758400,"filesystem_used_ratio":0.6153,"policy":{"session_retention_days":5,"pressure_session_retention_days":2,"critical_session_retention_days":1,"cleanup_interval_hours":6,"normal_log_cap_mb":4,"protects_model_store":true,"protects_browser_binaries":true,"protects_skills_plugins_config":true}}}},"timestamp":1786644354.9878502}
-===== tiktok-status.json =====
-{"ok":true,"running":false,"connected":false,"started_at":null,"ends_at":null,"remaining_seconds":null,"room_id":"","last_error":"","unique_id":"","oauth_configured":true,"oauth_account":{},"audio_queue":0,"like_total":0,"tts_ready":true}
