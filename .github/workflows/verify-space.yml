@@ -66,6 +66,9 @@ jobs:
           TIKTOK_SERVER_OUTCOME: ${{ steps.tiktok_server.outcome }}
         run: |
           set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
           mkdir -p .deployment-status
           {
             echo "Hugging Face Space health: ${HEALTH_OUTCOME}"
@@ -81,9 +84,6 @@ jobs:
               fi
             done
           } > .deployment-status/space-health.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main
           git add .deployment-status/space-health.txt
           git commit -m "Record Hugging Face Space health ${HEALTH_OUTCOME}" || true
           git push
