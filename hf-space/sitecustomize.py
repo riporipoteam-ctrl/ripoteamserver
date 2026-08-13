@@ -18,3 +18,9 @@ try:
     import tiktok_resilience  # noqa: F401
 except Exception as exc:
     print(f"TikTok resilience patch failed to load: {exc}")
+
+# Load the optional Windows LIVE Studio remote-control bridge bootstrap.
+try:
+    import live_studio_bridge  # noqa: F401
+except Exception as exc:
+    print(f"TikTok LIVE Studio bridge failed to load: {exc}")
