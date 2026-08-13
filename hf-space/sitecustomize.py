@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -13,11 +14,43 @@ os.environ.setdefault(
 os.environ.setdefault("TIKTOK_SCOPES", "user.info.basic")
 os.environ.setdefault("RIPO_PUBLIC_ORIGIN", "https://riporipoteam-ctrl.github.io")
 os.environ.setdefault("RIPO_SPACE_ORIGIN", "https://echoxr-ripoteam-cloud-pc.hf.space")
+os.environ.setdefault("RIPO_WINE_AUTOPROBE", "1")
 
 try:
     import tiktok_resilience  # noqa: F401
 except Exception as exc:
     print(f"TikTok resilience patch failed to load: {exc}")
+
+
+def _auto_probe_live_studio(connector, wine_runner) -> None:
+    if os.environ.get("RIPO_WINE_AUTOPROBE", "1").strip().lower() not in {"1", "true", "yes", "on"}:
+        return
+    try:
+        # Give Xvfb/Openbox/x11vnc time to become usable before opening Firefox.
+        time.sleep(8)
+        if not connector.status().get("browser_running"):
+            connector._write_profile_prefs()
+            connector.browser = subprocess.Popen(
+                [
+                    connector._firefox(),
+                    "--no-remote",
+                    "--profile",
+                    str(connector.profile_dir),
+                    "--new-window",
+                    wine_runner.DOWNLOAD_PAGE,
+                ],
+                env=connector._env(),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            time.sleep(5)
+        result = wine_runner.try_start()
+        print(f"TikTok LIVE Studio Wine auto-probe started: {result.get('message', '')}")
+    except Exception as exc:
+        wine_runner.phase = "wine-failed"
+        wine_runner.last_error = f"Auto-probe failed before installer test: {exc}"
+        print(wine_runner.last_error)
 
 
 def _mount_server_tiktok_routes() -> None:
@@ -77,6 +110,13 @@ def _mount_server_tiktok_routes() -> None:
                 if "/api/tiktok/live-studio-linux/status" not in existing:
                     install_live_studio_wine_routes(application, wine_runner)
                 module.RIPO_LIVE_STUDIO_WINE = wine_runner
+
+            threading.Thread(
+                target=_auto_probe_live_studio,
+                args=(connector, wine_runner),
+                name="ripo-live-studio-wine-autoprobe",
+                daemon=True,
+            ).start()
 
             print("TikTok server routes and 64-bit Wine LIVE Studio probe mounted on the running Space app.")
             return
