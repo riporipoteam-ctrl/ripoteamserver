@@ -16,6 +16,7 @@ from typing import Any
 from ai_stack import AIStack
 from desktop_http import install_desktop_routes
 from desktop_setup import configure_full_desktop, detected_resources
+from flux_askai import install_flux_askai_routes
 from gradio import Server
 import psutil
 from fastapi import Body, Header, HTTPException, WebSocket, WebSocketDisconnect
@@ -299,11 +300,12 @@ app.add_middleware(
     ],
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["content-type", "x-admin-token"],
+    allow_headers=["content-type", "x-admin-token", "x-flux-askai-token"],
 )
 
 
 install_desktop_routes(app, password=VNC_PASSWORD, display=DISPLAY)
+install_flux_askai_routes(app, AI_STACK)
 
 
 @app.get("/api/health")
