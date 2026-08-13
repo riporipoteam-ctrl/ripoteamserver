@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from ai_stack import AIStack
+from flux_askai import install_flux_askai_routes
 from tiktok_ai import TikTokAI, install_tiktok_routes
 from desktop_http import install_desktop_routes
 from desktop_setup import configure_full_desktop, detected_resources
@@ -301,11 +302,12 @@ app.add_middleware(
     ],
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["content-type", "x-admin-token"],
+    allow_headers=["content-type", "authorization", "x-admin-token"],
 )
 
 
 install_desktop_routes(app, password=VNC_PASSWORD, display=DISPLAY)
+install_flux_askai_routes(app, AI_STACK)
 install_tiktok_routes(app, TIKTOK_AI, authorize)
 
 
