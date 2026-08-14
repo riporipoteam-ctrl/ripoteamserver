@@ -1,6 +1,6 @@
 name: Probe LIVE Studio Wine once
 
-# Launcher-first runtime probe #4
+# Stable-visible-window probe #5
 on:
   push:
     branches: [main]
@@ -40,4 +40,7 @@ jobs:
           import json
           x=json.load(open('/tmp/wine.json'))
           assert x.get('phase') in ('running-wine','wine-failed'), x
+          if x.get('phase') == 'running-wine':
+              assert x.get('live_studio_running') is True, x
+              assert x.get('usable_live_studio_windows'), x
           PY
