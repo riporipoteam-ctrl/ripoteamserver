@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <pdh.h>
+#include <pdhmsg.h>
 #include <stdint.h>
 #include <string.h>
 #include <wchar.h>
