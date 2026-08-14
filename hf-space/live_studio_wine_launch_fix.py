@@ -90,7 +90,7 @@ def _process_rows(self: LiveStudioWine) -> list[str]:
         except Exception:
             continue
         low = text.lower()
-        if "tiktok live studio" in low or ("wine" in low and "tiktok" in low):
+        if "tiktok live studio" in low or ("wine" in low and "tiktok" in low) or "ripotiktok" in low:
             rows.append(f"{proc_dir.name}: {text[:500]}")
     return rows[:20]
 
@@ -118,7 +118,7 @@ def _window_rows(self: LiveStudioWine) -> list[str]:
         low = (title + " " + cmd).lower()
         if "firefox" in low:
             continue
-        if any(x in low for x in ("tiktok live studio", "livestudio", "wine", "explorer.exe")):
+        if any(x in low for x in ("tiktok live studio", "livestudio", "wine", "explorer.exe", "ripotiktok")):
             rows.append(f"{wid} pid={pid} title={title!r} cmd={cmd[:350]}")
     return rows[:20]
 
@@ -128,7 +128,10 @@ def _usable_windows(self: LiveStudioWine) -> list[str]:
     usable: list[str] = []
     for row in rows:
         low = row.lower()
-        # Do not count Wine's desktop/explorer shell as LIVE Studio UI.
+        if "ripotiktok" in low:
+            # Wine virtual desktop counts only while the TikTok app process is also alive.
+            usable.append(row)
+            continue
         if "explorer.exe" in low and "tiktok" not in low and "live studio" not in low and "livestudio" not in low:
             continue
         if "tiktok" in low or "live studio" in low or "livestudio" in low:
@@ -153,11 +156,15 @@ def _launch_one(self: LiveStudioWine, wine: str, exe: Path, flags: list[str], la
     env.setdefault("MESA_LOADER_DRIVER_OVERRIDE", "llvmpipe")
     env.setdefault("ELECTRON_OZONE_PLATFORM_HINT", "x11")
     env.setdefault("QT_X11_NO_MITSHM", "1")
+    if label.startswith("virtual-desktop"):
+        command = [wine, "explorer", "/desktop=RipoTikTok,1366x768", str(exe), *flags]
+    else:
+        command = [wine, str(exe), *flags]
     self.logs.parent.mkdir(parents=True, exist_ok=True)
     with self.logs.open("ab", buffering=0) as log:
-        log.write((f"\n\n===== RIPO launch attempt: {label} | {exe} | flags={flags} =====\n").encode())
+        log.write((f"\n\n===== RIPO launch attempt: {label} | {exe} | command={command} =====\n").encode())
         proc = subprocess.Popen(
-            [wine, str(exe), *flags],
+            command,
             cwd=str(exe.parent),
             env=env,
             stdout=log,
@@ -165,22 +172,23 @@ def _launch_one(self: LiveStudioWine, wine: str, exe: Path, flags: list[str], la
             start_new_session=True,
         )
         self.process = proc
-        deadline = time.time() + 42
+        deadline = time.time() + 48
         visible_since: float | None = None
         while time.time() < deadline:
             time.sleep(2)
             windows = _usable_windows(self)
-            if windows:
+            app_processes = [row for row in _process_rows(self) if "tiktok live studio" in row.lower()]
+            if windows and app_processes:
                 if visible_since is None:
                     visible_since = time.time()
-                # Require the real app window to remain visible for 12 seconds.
-                if time.time() - visible_since >= 12:
+                if time.time() - visible_since >= 14:
                     return True
             else:
                 visible_since = None
-            if proc.poll() is not None and not _process_rows(self):
+            if proc.poll() is not None and not app_processes:
                 break
-    return bool(_usable_windows(self)) and bool(_process_rows(self) or (proc.poll() is None))
+    app_processes = [row for row in _process_rows(self) if "tiktok live studio" in row.lower()]
+    return bool(_usable_windows(self)) and bool(app_processes)
 
 
 def _worker(self: LiveStudioWine) -> None:
@@ -200,10 +208,13 @@ def _worker(self: LiveStudioWine) -> None:
         if not candidates:
             raise RuntimeError("TikTok package was extracted but no plausible LIVE Studio launcher/application EXE could be found.")
 
+        software_flags = ["--disable-gpu", "--disable-gpu-compositing", "--disable-gpu-sandbox", "--use-gl=swiftshader"]
         modes = [
             ("normal", []),
-            ("software-gpu", ["--disable-gpu", "--disable-gpu-compositing", "--disable-gpu-sandbox", "--use-gl=swiftshader"]),
-            ("software-no-sandbox", ["--disable-gpu", "--disable-gpu-compositing", "--disable-gpu-sandbox", "--no-sandbox", "--use-gl=swiftshader"]),
+            ("virtual-desktop", []),
+            ("software-gpu", software_flags),
+            ("virtual-desktop-software", software_flags),
+            ("software-no-sandbox", [*software_flags, "--no-sandbox"]),
         ]
 
         self.phase = "launching-live-studio"
@@ -215,14 +226,14 @@ def _worker(self: LiveStudioWine) -> None:
                 if _launch_one(self, wine, exe, flags, label):
                     self.phase = "running-wine"
                     self.last_error = ""
-                    self.last_note = f"TikTok LIVE Studio has a stable visible window under Wine using {exe.name} ({label})."
+                    self.last_note = f"TikTok LIVE Studio has a stable visible Windows surface under Wine using {exe.name} ({label})."
                     return
                 failures.append(f"{exe.name}/{label}")
                 _kill_prefix(self)
 
         tail = ""
         try:
-            tail = self.logs.read_text(errors="replace")[-6500:]
+            tail = self.logs.read_text(errors="replace")[-7500:]
         except Exception:
             pass
         processes = _process_rows(self)
@@ -235,7 +246,7 @@ def _worker(self: LiveStudioWine) -> None:
         )
     except Exception as exc:
         self.phase = "wine-failed"
-        self.last_error = str(exc)[:10000]
+        self.last_error = str(exc)[:11000]
         probe = self._vm_probe()
         if probe.get("kvm_access"):
             self.last_note = "Wine failed. KVM is available for a Windows VM fallback."
@@ -248,16 +259,17 @@ def _status(self: LiveStudioWine) -> dict[str, Any]:
     processes = _process_rows(self)
     windows = _window_rows(self)
     usable = _usable_windows(self)
+    app_processes = [row for row in processes if "tiktok live studio" in row.lower()]
     data["launch_attempts"] = list(getattr(self, "launch_attempts", []))[-20:]
     data["live_studio_processes"] = processes
     data["live_studio_windows"] = windows
     data["usable_live_studio_windows"] = usable
-    data["live_studio_running"] = bool(usable and (processes or (self.process and self.process.poll() is None)))
+    data["live_studio_running"] = bool(usable and app_processes)
     candidates = _all_extracted_candidates(self)
     data["extracted_candidates"] = [p.name for p in candidates[:8]]
     if data.get("phase") == "running-wine" and not data["live_studio_running"]:
         data["phase"] = "wine-failed"
-        data["last_error"] = data.get("last_error") or "LIVE Studio launch was not stable: no surviving visible TikTok LIVE Studio window."
+        data["last_error"] = data.get("last_error") or "LIVE Studio launch was not stable: no surviving TikTok LIVE Studio process/window."
     return data
 
 
