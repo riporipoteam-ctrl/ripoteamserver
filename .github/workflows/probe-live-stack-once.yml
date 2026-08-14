@@ -1,6 +1,6 @@
 name: Probe TikTok LIVE stack once
 
-# PDH-shim diagnostic snapshot #8
+# Headless CDP snapshot #9
 on:
   push:
     branches: [main]
@@ -15,16 +15,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Snapshot PDH shim and LIVE Studio status
+      - name: Snapshot headless LIVE Studio control readiness
         env:
           SPACE_URL: https://echoxr-ripoteam-cloud-pc.hf.space
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --max-time 30 "$SPACE_URL/api/tiktok/live-studio-linux/status" -o /tmp/wine.json
-          python -m json.tool /tmp/wine.json
+          curl --fail --silent --show-error --max-time 30 "$SPACE_URL/api/tiktok/live-studio-linux/ui-capabilities" -o /tmp/ui.json
+          echo '===== WINE ====='; python -m json.tool /tmp/wine.json
+          echo '===== UI ====='; python -m json.tool /tmp/ui.json
           python - <<'PY'
           import json
-          x=json.load(open('/tmp/wine.json'))
-          print('phase=', x.get('phase'))
-          print('pdh_shim=', json.dumps(x.get('pdh_shim', {}), indent=2))
+          w=json.load(open('/tmp/wine.json')); u=json.load(open('/tmp/ui.json'))
+          print('phase=', w.get('phase'))
+          print('cdp_ready=', u.get('cdp_ready'))
+          print('target_count=', u.get('target_count'))
+          print('go_live_available=', u.get('go_live_available'))
+          print('login_required=', u.get('login_required'))
+          print('safe_action_labels=', u.get('safe_action_labels'))
           PY
