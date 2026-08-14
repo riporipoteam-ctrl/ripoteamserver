@@ -69,7 +69,7 @@ jobs:
           assert str(wine.get('wine_version') or '').strip(), wine
           valid={
               'idle','starting','starting-server-browser','initializing-wine','resolving-live-studio',
-              'downloading-live-studio','installing-live-studio','launching-live-studio',
+              'downloading-live-studio','extracting-live-studio','installing-live-studio','launching-live-studio',
               'running-wine','wine-failed'
           }
           assert wine.get('phase') in valid, wine
