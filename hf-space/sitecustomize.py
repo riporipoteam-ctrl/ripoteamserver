@@ -14,9 +14,9 @@ os.environ.setdefault(
 os.environ.setdefault("TIKTOK_SCOPES", "user.info.basic")
 os.environ.setdefault("RIPO_PUBLIC_ORIGIN", "https://riporipoteam-ctrl.github.io")
 os.environ.setdefault("RIPO_SPACE_ORIGIN", "https://echoxr-ripoteam-cloud-pc.hf.space")
-# Do not open Firefox / initialize Wine on every Space boot. That was racing
-# TikTok Connect and repeatedly touching the disposable browser profile.
-os.environ.setdefault("RIPO_WINE_AUTOPROBE", "0")
+# Temporary compatibility probe for this deployment. It opens only the server
+# Firefox profile and tests the official LIVE Studio Windows installer in Wine.
+os.environ.setdefault("RIPO_WINE_AUTOPROBE", "1")
 
 try:
     import tiktok_resilience  # noqa: F401
