@@ -1,6 +1,6 @@
 name: Probe TikTok LIVE stack once
 
-# Headless CDP snapshot #9
+# Final live snapshot #10
 on:
   push:
     branches: [main]
@@ -28,6 +28,8 @@ jobs:
           import json
           w=json.load(open('/tmp/wine.json')); u=json.load(open('/tmp/ui.json'))
           print('phase=', w.get('phase'))
+          print('live_studio_running=', w.get('live_studio_running'))
+          print('pdh_shim=', w.get('pdh_shim'))
           print('cdp_ready=', u.get('cdp_ready'))
           print('target_count=', u.get('target_count'))
           print('go_live_available=', u.get('go_live_available'))
