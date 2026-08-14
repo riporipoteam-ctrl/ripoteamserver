@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 import threading
@@ -12,7 +11,16 @@ import live_studio_wine_launch_fix as launch_fix
 
 _LOCK = threading.RLock()
 _OLD_ENV = LiveStudioWine._env
+_OLD_STATUS = LiveStudioWine.status
 _OLD_LAUNCH_ONE = launch_fix._launch_one
+_STATE: dict[str, Any] = {
+    "build_attempted": False,
+    "built": False,
+    "path": "",
+    "size": 0,
+    "last_error": "",
+    "last_label": "",
+}
 
 
 def _patched_env(self: LiveStudioWine) -> dict[str, str]:
@@ -39,11 +47,22 @@ def _shim_path(exe: Path) -> Path:
     return exe.parent / "pdh.dll"
 
 
+def _record_target(target: Path) -> None:
+    _STATE["path"] = str(target)
+    try:
+        _STATE["size"] = int(target.stat().st_size)
+    except OSError:
+        _STATE["size"] = 0
+    _STATE["built"] = bool(target.exists() and _STATE["size"] > 10_000)
+
+
 def _ensure_shim(exe: Path) -> Path:
     with _LOCK:
+        _STATE["build_attempted"] = True
         target = _shim_path(exe)
         marker = exe.parent / ".ripo-pdh-shim-v1"
         if target.exists() and marker.exists() and target.stat().st_size > 10_000:
+            _record_target(target)
             return target
 
         compiler = _compiler()
@@ -56,6 +75,7 @@ def _ensure_shim(exe: Path) -> Path:
         # Do not overwrite a vendor-supplied pdh.dll. LIVE Studio normally does
         # not ship one; if TikTok starts shipping its own, prefer theirs.
         if target.exists() and not marker.exists():
+            _record_target(target)
             return target
 
         temp = target.with_suffix(".ripo.tmp.dll")
@@ -82,18 +102,23 @@ def _ensure_shim(exe: Path) -> Path:
             raise RuntimeError("PDH shim compilation failed: " + (proc.stdout or "unknown compiler error")[-2500:])
         temp.replace(target)
         marker.write_text("Ripo PDH GPU-counter compatibility shim v1\n", encoding="utf-8")
+        _record_target(target)
+        _STATE["last_error"] = ""
         return target
 
 
 def _launch_one(self: LiveStudioWine, wine: str, exe: Path, flags: list[str], label: str) -> bool:
+    _STATE["last_label"] = label
     try:
         shim = _ensure_shim(exe)
+        _STATE["last_error"] = ""
         try:
             with self.logs.open("ab", buffering=0) as log:
-                log.write((f"\n===== RIPO PDH shim active: {shim} | WINEDLLOVERRIDES=pdh=n,b =====\n").encode())
+                log.write((f"\n===== RIPO PDH shim active: {shim} | WINEDLLOVERRIDES={self._env().get('WINEDLLOVERRIDES')} =====\n").encode())
         except Exception:
             pass
     except Exception as exc:
+        _STATE["last_error"] = str(exc)[:2500]
         try:
             with self.logs.open("ab", buffering=0) as log:
                 log.write((f"\n===== RIPO PDH shim setup failed: {exc} =====\n").encode())
@@ -103,5 +128,23 @@ def _launch_one(self: LiveStudioWine, wine: str, exe: Path, flags: list[str], la
     return _OLD_LAUNCH_ONE(self, wine, exe, flags, label)
 
 
+def _status(self: LiveStudioWine) -> dict[str, Any]:
+    data = _OLD_STATUS(self)
+    data["pdh_shim"] = {
+        "compiler_present": bool(_compiler()),
+        "compiler": _compiler() or "",
+        "source_present": _source().exists(),
+        "build_attempted": bool(_STATE.get("build_attempted")),
+        "built": bool(_STATE.get("built")),
+        "path": str(_STATE.get("path") or ""),
+        "size": int(_STATE.get("size") or 0),
+        "last_error": str(_STATE.get("last_error") or ""),
+        "last_label": str(_STATE.get("last_label") or ""),
+        "override": self._env().get("WINEDLLOVERRIDES", ""),
+    }
+    return data
+
+
 LiveStudioWine._env = _patched_env
+LiveStudioWine.status = _status
 launch_fix._launch_one = _launch_one
