@@ -1,6 +1,6 @@
 name: Probe TikTok LIVE stack once
 
-# Visible-control snapshot #3
+# Stable visible-control snapshot #4
 on:
   push:
     branches: [main]
@@ -15,33 +15,35 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - name: Wait for LIVE Studio visible UI and virtual mic
+      - name: Wait for stable LIVE Studio then read safe visible controls
         env:
           SPACE_URL: https://echoxr-ripoteam-cloud-pc.hf.space
         run: |
           set -euo pipefail
           for attempt in $(seq 1 80); do
             curl --fail --silent --show-error --max-time 25 "$SPACE_URL/api/tiktok/live-studio-linux/status" -o /tmp/wine.json
-            curl --fail --silent --show-error --max-time 35 "$SPACE_URL/api/tiktok/live-studio-linux/ui-capabilities" -o /tmp/ui.json
-            curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/server-audio/status" -o /tmp/audio.json
-            READY=$(python - <<'PY'
+            PHASE=$(python - <<'PY'
           import json
-          w=json.load(open('/tmp/wine.json')); u=json.load(open('/tmp/ui.json')); a=json.load(open('/tmp/audio.json'))
-          print('1' if w.get('live_studio_running') and u.get('ocr_ready') and u.get('visible_ui_ready') and a.get('ready') else '0')
-          print('phase=',w.get('phase'),'studio=',w.get('live_studio_running'),'visible=',u.get('visible_ui_ready'),'go_live=',u.get('go_live_available'),'login=',u.get('login_required'),'actions=',u.get('safe_action_labels'),'audio=',a.get('ready'), file=__import__('sys').stderr)
+          x=json.load(open('/tmp/wine.json'))
+          print(x.get('phase',''))
           PY
             )
-            if [ "$READY" = "1" ]; then break; fi
+            echo "phase=$PHASE attempt=$attempt"
+            if [ "$PHASE" = "running-wine" ]; then break; fi
+            if [ "$PHASE" = "wine-failed" ]; then python -m json.tool /tmp/wine.json; exit 1; fi
             sleep 5
           done
+          sleep 8
+          curl --fail --silent --show-error --max-time 35 "$SPACE_URL/api/tiktok/live-studio-linux/ui-capabilities" -o /tmp/ui.json
+          curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/server-audio/status" -o /tmp/audio.json
           echo '===== LIVE STUDIO ====='; python -m json.tool /tmp/wine.json
           echo '===== SAFE VISIBLE CONTROLS ====='; python -m json.tool /tmp/ui.json
           echo '===== SERVER AUDIO ====='; python -m json.tool /tmp/audio.json
           python - <<'PY'
           import json
           w=json.load(open('/tmp/wine.json')); u=json.load(open('/tmp/ui.json')); a=json.load(open('/tmp/audio.json'))
-          assert w.get('live_studio_running') is True, w
+          assert w.get('phase') == 'running-wine' and w.get('live_studio_running') is True, w
           assert u.get('ocr_ready') is True and u.get('visible_ui_ready') is True, u
           assert a.get('ready') is True, a
-          print('VISIBLE STACK READY')
+          print('STABLE VISIBLE STACK READY')
           PY
