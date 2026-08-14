@@ -1,10 +1,10 @@
-Hugging Face deployment: skipped
+Hugging Face deployment: cancelled
 Hugging Face runtime wait: skipped
 Hugging Face Space health: skipped
 TikTok OAuth verification: skipped
-Source commit: 9d0b2d153e2e5463f10a3b7b49a4f6e088a84f8c
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31784777071
-Recorded at: 2026-08-14T08:39:39Z
+Source commit: 51d450fcdeb104fcd3d1552c4de48aad374cb8c9
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31784809025
+Recorded at: 2026-08-14T08:40:00Z
 
 ===== space-info.txt =====
 {
@@ -15,7 +15,7 @@ Recorded at: 2026-08-14T08:39:39Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-14T08:37:46+00:00",
+  "last_modified": "2026-08-14T08:39:58+00:00",
   "likes": 0,
   "models": [
     "Salesforce/ctrl"
@@ -23,13 +23,13 @@ Recorded at: 2026-08-14T08:39:39Z
   "private": false,
   "region": "us",
   "runtime": {
-    "stage": "RUNNING_APP_STARTING",
+    "stage": "RUNNING_BUILDING",
     "hardware": "zero-a10g",
     "requested_hardware": "zero-a10g",
     "sleep_time": 172800,
     "dev_mode": false,
     "raw": {
-      "stage": "RUNNING_APP_STARTING",
+      "stage": "RUNNING_BUILDING",
       "hardware": {
         "current": "zero-a10g",
         "requested": "zero-a10g"
@@ -46,12 +46,12 @@ Recorded at: 2026-08-14T08:39:39Z
           "stage": "READY"
         }
       ],
-      "sha": "f38bab82de1bbff49a7ee29d68ee066c071d35f2",
+      "sha": "28e9476fab289180d7fb0915b041a5a099813c58",
       "pySpacesVersion": "0.51.1"
     }
   },
   "sdk": "gradio",
-  "sha": "28e9476fab289180d7fb0915b041a5a099813c58",
+  "sha": "bc7791cc85c2c7f72437de067421b4995723c1ca",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
@@ -130,6 +130,9 @@ Recorded at: 2026-08-14T08:39:39Z
     },
     {
       "rfilename": "sealed_secrets.py"
+    },
+    {
+      "rfilename": "server_audio_bridge.py"
     },
     {
       "rfilename": "server_live_broadcaster.py"
