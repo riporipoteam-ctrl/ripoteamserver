@@ -1,0 +1,51 @@
+name: Probe TikTok LIVE stack once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/probe-live-stack-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for LIVE Studio UI bridge and virtual mic
+        env:
+          SPACE_URL: https://echoxr-ripoteam-cloud-pc.hf.space
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 120); do
+            curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/live-studio-linux/status" -o /tmp/wine.json || true
+            curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/live-studio-linux/ui-capabilities" -o /tmp/ui.json || true
+            curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/server-audio/status" -o /tmp/audio.json || true
+            RESULT=$(python - <<'PY'
+          import json
+          def read(p):
+              try: return json.load(open(p))
+              except Exception: return {}
+          w=read('/tmp/wine.json'); u=read('/tmp/ui.json'); a=read('/tmp/audio.json')
+          print('1' if w.get('live_studio_running') and u.get('cdp_ready') and a.get('ready') else '0')
+          print('wine=',w.get('phase'),'studio=',w.get('live_studio_running'),'cdp=',u.get('cdp_ready'),'targets=',u.get('target_count'),'audio=',a.get('ready'), file=__import__('sys').stderr)
+          PY
+            )
+            if [ "$RESULT" = "1" ]; then break; fi
+            sleep 5
+          done
+          echo '===== LIVE STUDIO ====='; python -m json.tool /tmp/wine.json
+          echo '===== UI BRIDGE ====='; python -m json.tool /tmp/ui.json
+          echo '===== SERVER AUDIO ====='; python -m json.tool /tmp/audio.json
+          python - <<'PY'
+          import json
+          w=json.load(open('/tmp/wine.json')); u=json.load(open('/tmp/ui.json')); a=json.load(open('/tmp/audio.json'))
+          assert w.get('live_studio_running') is True, w
+          assert u.get('cdp_ready') is True and int(u.get('target_count') or 0)>0, u
+          assert u.get('localhost_only') is True, u
+          assert a.get('ready') is True, a
+          assert a.get('pulseaudio_installed') is True and a.get('paplay_installed') is True, a
+          print('FINAL STACK READY')
+          PY
