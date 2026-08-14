@@ -1,6 +1,6 @@
 name: Probe LIVE Studio Wine once
 
-# Stable-visible-window probe #5
+# Virtual-desktop probe #6
 on:
   push:
     branches: [main]
