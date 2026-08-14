@@ -26,11 +26,20 @@ def _app_pids() -> list[int]:
         if not proc.name.isdigit():
             continue
         try:
-            cmd = (proc / 'cmdline').read_bytes().replace(b'\x00', b' ').decode('utf-8', errors='ignore').lower()
+            raw = (proc / 'cmdline').read_bytes()
+            args = [part.decode('utf-8', errors='ignore') for part in raw.split(b'\x00') if part]
         except Exception:
             continue
-        if 'tiktok live studio.exe' in cmd and '--type=' not in cmd:
-            rows.append(int(proc.name))
+        if not args:
+            continue
+        first = args[0].replace('\\', '/').lower().rstrip('/')
+        first_name = first.rsplit('/', 1)[-1]
+        rest = ' '.join(args[1:]).lower()
+        # Explorer/start.exe include the TikTok EXE path as an argument. Only
+        # argv[0] being TikTok LIVE Studio.exe counts as the actual app process.
+        if first_name != 'tiktok live studio.exe' or '--type=' in rest:
+            continue
+        rows.append(int(proc.name))
     return rows
 
 
@@ -49,6 +58,8 @@ def _window_candidates(bridge: Any) -> list[tuple[str, bool, int]]:
                     ids[wid] = True
         except Exception:
             pass
+    # Keep the Wine desktop only as a diagnostic fallback. It never outranks a
+    # real app-owned window and is never considered proof of LIVE Studio UI.
     for pattern in ('RipoTikTok - Wine Desktop', 'RipoTikTok', 'Wine Desktop'):
         try:
             out = subprocess.check_output([xdotool, 'search', '--onlyvisible', '--name', pattern], env=env, text=True, timeout=4)
@@ -72,9 +83,10 @@ def _window_candidates(bridge: Any) -> list[tuple[str, bool, int]]:
 
 def _wine_window(bridge: Any) -> str:
     choices = _window_candidates(bridge)
-    if choices:
-        return choices[0][0]
-    raise RuntimeError('No visible TikTok LIVE Studio/Wine desktop window is mapped yet.')
+    app_owned = [row for row in choices if row[1] and row[2] >= 80_000]
+    if app_owned:
+        return app_owned[0][0]
+    raise RuntimeError('TikTok LIVE Studio process is running but has not mapped a usable app-owned window.')
 
 
 def _capture(bridge: Any) -> tuple[Image.Image, tuple[int, int, int, int], dict[str, Any]]:
@@ -98,7 +110,7 @@ def _capture(bridge: Any) -> tuple[Image.Image, tuple[int, int, int, int], dict[
         'capture_height': h,
         'screen_mean': round(float(stat.mean[0]), 2),
         'screen_stddev': round(float(stat.stddev[0]), 2),
-        'app_window_candidates': sum(1 for _, owned, _ in _window_candidates(bridge) if owned),
+        'app_window_candidates': sum(1 for _, owned, area in _window_candidates(bridge) if owned and area >= 80_000),
     }
     return image, (x, y, w, h), signal
 
@@ -144,8 +156,6 @@ def _ocr_lines(bridge: Any) -> list[visible.Hit]:
         for words in groups.values():
             words.sort(key=lambda item: item[1])
             count = len(words)
-            # Add compact 1-4 word boxes first. This makes clicks land on the
-            # actual 'Go LIVE' / 'Log in' words, not on a whole help sentence.
             for size in range(1, min(4, count) + 1):
                 for start in range(0, count - size + 1):
                     subset = words[start:start+size]
@@ -217,15 +227,17 @@ def _visible_capabilities(bridge: Any) -> dict[str, Any]:
             'screen_stddev': signal.get('screen_stddev'),
         }
     except Exception as exc:
+        choices = _window_candidates(bridge)
         return {
             'ok': True, 'visible_ui_ready': False, 'ocr_ready': bool(shutil.which('tesseract')),
             'go_live_available': False, 'login_required': False, 'confirm_available': False,
             'continue_available': False, 'guest_controls_visible': False, 'microphone_controls_visible': False,
             'safe_action_labels': [], 'visible_ui_error': str(exc)[:500], 'ocr_hit_count': 0,
-            'app_window_candidates': len(_window_candidates(bridge)),
+            'app_window_candidates': sum(1 for _, owned, area in choices if owned and area >= 80_000),
         }
 
 
+visible._app_pids = _app_pids
 visible._window_candidates = _window_candidates
 visible._wine_window = _wine_window
 visible._capture = _capture
