@@ -21,6 +21,8 @@ openbox
 pcmanfm
 procps
 psmisc
+pulseaudio
+pulseaudio-utils
 tmux
 tree
 unzip
