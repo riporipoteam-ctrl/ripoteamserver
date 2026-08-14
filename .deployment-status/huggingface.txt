@@ -1,10 +1,10 @@
-Hugging Face deployment: skipped
-Hugging Face runtime wait: skipped
+Hugging Face deployment: success
+Hugging Face runtime wait: cancelled
 Hugging Face Space health: skipped
 TikTok OAuth verification: skipped
-Source commit: 8a0edab830917d2998279ddfce59dce64319ebea
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31781153793
-Recorded at: 2026-08-14T07:45:48Z
+Source commit: 6fb133e547634de8b0e708fdc635d096642a1cd0
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31781184902
+Recorded at: 2026-08-14T07:46:25Z
 
 ===== space-info.txt =====
 {
@@ -15,7 +15,7 @@ Recorded at: 2026-08-14T07:45:48Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-14T07:45:02+00:00",
+  "last_modified": "2026-08-14T07:46:06+00:00",
   "likes": 0,
   "models": [
     "Salesforce/ctrl"
@@ -51,7 +51,7 @@ Recorded at: 2026-08-14T07:45:48Z
     }
   },
   "sdk": "gradio",
-  "sha": "50758c58160db5c83347c2e615dfc2b7bde6f700",
+  "sha": "3dd67e4c9ea2242149d123e119e63126616284d9",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
@@ -139,6 +139,9 @@ Recorded at: 2026-08-14T07:45:48Z
     },
     {
       "rfilename": "tiktok_profile_backup.py"
+    },
+    {
+      "rfilename": "tiktok_profile_backup_routes.py"
     },
     {
       "rfilename": "tiktok_resilience.py"
