@@ -23,6 +23,7 @@ procps
 psmisc
 pulseaudio
 pulseaudio-utils
+tesseract-ocr
 tmux
 tree
 unzip
