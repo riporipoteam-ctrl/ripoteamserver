@@ -1,6 +1,6 @@
 name: Probe TikTok LIVE stack once
 
-# Stable visible-control snapshot #4
+# Strict TikTok-owned-window snapshot #5
 on:
   push:
     branches: [main]
@@ -13,14 +13,14 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
-      - name: Wait for stable LIVE Studio then read safe visible controls
+      - name: Wait for strict LIVE Studio result then read safe visible controls
         env:
           SPACE_URL: https://echoxr-ripoteam-cloud-pc.hf.space
         run: |
           set -euo pipefail
-          for attempt in $(seq 1 80); do
+          for attempt in $(seq 1 100); do
             curl --fail --silent --show-error --max-time 25 "$SPACE_URL/api/tiktok/live-studio-linux/status" -o /tmp/wine.json
             PHASE=$(python - <<'PY'
           import json
@@ -30,11 +30,11 @@ jobs:
             )
             echo "phase=$PHASE attempt=$attempt"
             if [ "$PHASE" = "running-wine" ]; then break; fi
-            if [ "$PHASE" = "wine-failed" ]; then python -m json.tool /tmp/wine.json; exit 1; fi
+            if [ "$PHASE" = "wine-failed" ]; then echo '===== WINE FAILURE ====='; python -m json.tool /tmp/wine.json; exit 1; fi
             sleep 5
           done
           sleep 8
-          curl --fail --silent --show-error --max-time 35 "$SPACE_URL/api/tiktok/live-studio-linux/ui-capabilities" -o /tmp/ui.json
+          curl --fail --silent --show-error --max-time 40 "$SPACE_URL/api/tiktok/live-studio-linux/ui-capabilities" -o /tmp/ui.json
           curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/server-audio/status" -o /tmp/audio.json
           echo '===== LIVE STUDIO ====='; python -m json.tool /tmp/wine.json
           echo '===== SAFE VISIBLE CONTROLS ====='; python -m json.tool /tmp/ui.json
@@ -43,7 +43,8 @@ jobs:
           import json
           w=json.load(open('/tmp/wine.json')); u=json.load(open('/tmp/ui.json')); a=json.load(open('/tmp/audio.json'))
           assert w.get('phase') == 'running-wine' and w.get('live_studio_running') is True, w
+          assert w.get('usable_live_studio_windows'), w
           assert u.get('ocr_ready') is True and u.get('visible_ui_ready') is True, u
           assert a.get('ready') is True, a
-          print('STABLE VISIBLE STACK READY')
+          print('STRICT VISIBLE STACK READY')
           PY
