@@ -16,8 +16,8 @@ concurrency:
 
 jobs:
   test-live-studio:
-    runs-on: windows-latest
-    timeout-minutes: 12
+    runs-on: windows-2022
+    timeout-minutes: 10
     steps:
       - name: Resolve and download official TikTok LIVE Studio
         shell: pwsh
@@ -38,78 +38,50 @@ jobs:
           "INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host "Verified TikTok LIVE Studio $version ($([math]::Round((Get-Item $installer).Length/1MB,1)) MB)"
 
-      - name: Install LIVE Studio normally on Windows
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Continue'
-          $args = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'
-          $p = Start-Process -FilePath $env:INSTALLER -ArgumentList $args -PassThru
-          if (-not $p.WaitForExit(120000)) {
-            Write-Host 'Installer still running after 120 seconds; continuing to inspect the installation.'
-          } else {
-            Write-Host "Installer exit code: $($p.ExitCode)"
-          }
-
-          $paths = @()
-          foreach ($key in @(
-            'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
-            'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
-            'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
-          )) {
-            Get-ItemProperty $key -ErrorAction SilentlyContinue | Where-Object {
-              $_.DisplayName -match 'TikTok.*LIVE.*Studio|LIVE.*Studio'
-            } | ForEach-Object {
-              Write-Host "Uninstall entry: $($_.DisplayName) Location=$($_.InstallLocation)"
-              if ($_.InstallLocation) { $paths += $_.InstallLocation }
-            }
-          }
-
-          $paths += @(
-            (Join-Path $env:LOCALAPPDATA 'Programs'),
-            (Join-Path $env:LOCALAPPDATA 'TikTok LIVE Studio'),
-            (Join-Path $env:APPDATA 'TikTok LIVE Studio'),
-            (Join-Path $env:ProgramFiles 'TikTok LIVE Studio'),
-            (Join-Path ${env:ProgramFiles(x86)} 'TikTok LIVE Studio')
-          )
-          $paths = $paths | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
-
-          $candidates = @()
-          foreach ($root in $paths) {
-            Write-Host "Searching: $root"
-            $candidates += Get-ChildItem -Path $root -Filter '*.exe' -Recurse -Depth 5 -ErrorAction SilentlyContinue |
-              Where-Object { $_.Name -match 'TikTok.*LIVE.*Studio|LIVE.*Studio' }
-          }
-          $candidates = $candidates | Sort-Object Length -Descending | Select-Object -Unique FullName,Length,LastWriteTime
-          $candidates | Format-Table -AutoSize
-          $exe = ($candidates | Where-Object { (Split-Path $_.FullName -Leaf) -ieq 'TikTok LIVE Studio.exe' } | Select-Object -First 1).FullName
-          if (-not $exe) { $exe = ($candidates | Select-Object -First 1).FullName }
-          if (-not $exe) { throw 'TikTok LIVE Studio executable was not installed on the Windows runner.' }
-          "LIVE_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "LIVE Studio executable: $exe"
-
-      - name: Launch and verify a real Windows process/window
+      - name: Extract verified x64 package directly
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $proc = Start-Process -FilePath $env:LIVE_EXE -PassThru
+          $seven = 'C:\Program Files\7-Zip\7z.exe'
+          if (-not (Test-Path $seven)) { throw '7-Zip is not installed on this Windows runner.' }
+          $root = Join-Path $env:RUNNER_TEMP 'live-studio-extracted'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          & $seven x -y "-o$root" $env:INSTALLER | Out-Host
+          if ($LASTEXITCODE -gt 1) { throw "7-Zip extraction failed with exit $LASTEXITCODE" }
+          $candidates = Get-ChildItem -Path $root -Filter '*.exe' -Recurse -ErrorAction Stop |
+            Where-Object { $_.Name -ieq 'TikTok LIVE Studio.exe' } |
+            Sort-Object Length -Descending
+          $exe = ($candidates | Select-Object -First 1).FullName
+          if (-not $exe) { throw 'TikTok LIVE Studio.exe was not found inside the verified package.' }
+          "LIVE_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Extracted LIVE Studio executable: $exe"
+
+      - name: Launch extracted LIVE Studio on native Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = $env:LIVE_EXE
+          $proc = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe -Parent) -ArgumentList '--remote-debugging-port=9223 --remote-debugging-address=127.0.0.1' -PassThru
           Write-Host "Started PID $($proc.Id)"
           $deadline = (Get-Date).AddMinutes(2)
           $best = $null
           while ((Get-Date) -lt $deadline) {
             Start-Sleep -Seconds 3
-            $all = Get-Process -ErrorAction SilentlyContinue | Where-Object {
-              $_.ProcessName -match 'TikTok|LIVEStudio|LiveStudio'
-            }
+            $all = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match 'TikTok|LIVEStudio|LiveStudio' }
             foreach ($row in $all) {
               try { $row.Refresh() } catch {}
               Write-Host ("PID={0} Name={1} Window={2} Title={3}" -f $row.Id,$row.ProcessName,$row.MainWindowHandle,$row.MainWindowTitle)
               if ($row.MainWindowHandle -ne 0) { $best = $row; break }
             }
+            try {
+              $cdp = Invoke-RestMethod -Uri 'http://127.0.0.1:9223/json/list' -TimeoutSec 2 -ErrorAction Stop
+              if ($cdp) { Write-Host "CDP_READY=true TARGETS=$($cdp.Count)" }
+            } catch {}
             if ($best) { break }
             if ($proc.HasExited -and -not $all) { break }
           }
           if (-not $best) {
             Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match 'TikTok|LIVEStudio|LiveStudio' } | Format-List Id,ProcessName,MainWindowHandle,MainWindowTitle,Path
-            throw 'TikTok LIVE Studio did not create a usable Windows window on this runner.'
+            throw 'TikTok LIVE Studio did not create a usable Windows window on the native Windows runner.'
           }
           Write-Host "WINDOW_READY=true PID=$($best.Id) TITLE=$($best.MainWindowTitle)"
