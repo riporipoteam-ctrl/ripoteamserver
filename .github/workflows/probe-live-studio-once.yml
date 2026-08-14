@@ -1,5 +1,6 @@
 name: Probe LIVE Studio Wine once
 
+# Direct-package resolver probe #2
 on:
   push:
     branches: [main]
@@ -12,7 +13,7 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 8
     steps:
       - name: Wait for Wine compatibility result
         env:
@@ -20,15 +21,14 @@ jobs:
         run: |
           set -euo pipefail
           : > /tmp/wine.json
-          for attempt in $(seq 1 45); do
-            curl --fail --silent --show-error --max-time 20 \
-              "$SPACE_URL/api/tiktok/live-studio-linux/status" -o /tmp/wine.json
+          for attempt in $(seq 1 75); do
+            curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/live-studio-linux/status" -o /tmp/wine.json
             PHASE=$(python - <<'PY'
           import json
           print(json.load(open('/tmp/wine.json')).get('phase',''))
           PY
             )
-            echo "LIVE Studio Wine phase: $PHASE ($attempt/45)"
+            echo "LIVE Studio Wine phase: $PHASE ($attempt/75)"
             case "$PHASE" in
               running-wine|wine-failed) break ;;
             esac
