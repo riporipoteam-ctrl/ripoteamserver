@@ -8,6 +8,7 @@ ffmpeg
 espeak-ng
 firefox-esr
 fonts-dejavu-core
+gcc-mingw-w64-x86-64-win32
 git
 htop
 jq
