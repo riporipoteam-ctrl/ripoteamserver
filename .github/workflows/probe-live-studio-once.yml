@@ -1,0 +1,43 @@
+name: Probe LIVE Studio Wine once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/probe-live-studio-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Wait for Wine compatibility result
+        env:
+          SPACE_URL: https://echoxr-ripoteam-cloud-pc.hf.space
+        run: |
+          set -euo pipefail
+          : > /tmp/wine.json
+          for attempt in $(seq 1 45); do
+            curl --fail --silent --show-error --max-time 20 \
+              "$SPACE_URL/api/tiktok/live-studio-linux/status" -o /tmp/wine.json
+            PHASE=$(python - <<'PY'
+          import json
+          print(json.load(open('/tmp/wine.json')).get('phase',''))
+          PY
+            )
+            echo "LIVE Studio Wine phase: $PHASE ($attempt/45)"
+            case "$PHASE" in
+              running-wine|wine-failed) break ;;
+            esac
+            sleep 5
+          done
+          echo '===== FINAL STATUS ====='
+          python -m json.tool /tmp/wine.json
+          python - <<'PY'
+          import json
+          x=json.load(open('/tmp/wine.json'))
+          assert x.get('phase') in ('running-wine','wine-failed'), x
+          PY
