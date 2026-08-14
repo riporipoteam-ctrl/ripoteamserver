@@ -32,8 +32,6 @@ unzip
 websockify
 wine
 wine64
-wine32:i386
-libwine:i386
 x11vnc
 xdg-utils
 xdotool
