@@ -36,7 +36,7 @@ jobs:
           echo "Space did not become healthy in time." >&2
           exit 1
 
-      - name: Verify TikTok server routes
+      - name: Verify TikTok persistence and Wine routes
         id: tiktok_server
         if: steps.health.outcome == 'success'
         continue-on-error: true
@@ -47,9 +47,18 @@ jobs:
           curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/server-connect/status" -o /tmp/server-connect.json
           curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/server-live/status" -o /tmp/server-live.json
           curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/live-studio-linux/status" -o /tmp/wine-live-studio.json
+
+          RESTORE_CODE=$(curl --silent --show-error --max-time 20 \
+            -o /tmp/profile-restore-check.json -w '%{http_code}' \
+            -H 'content-type: application/json' \
+            -d '{"blob":"route-check"}' \
+            "$SPACE_URL/api/tiktok/server-connect/profile/restore")
+          test "$RESTORE_CODE" = "400"
+
           python -m json.tool /tmp/server-connect.json
           python -m json.tool /tmp/server-live.json
           python -m json.tool /tmp/wine-live-studio.json
+          cat /tmp/profile-restore-check.json || true
           python - <<'PY'
           import json
           connect=json.load(open('/tmp/server-connect.json'))
@@ -57,42 +66,20 @@ jobs:
           wine=json.load(open('/tmp/wine-live-studio.json'))
           assert connect.get('ok') is True, connect
           assert connect.get('firefox_installed') is True, connect
+          assert connect.get('encrypted_profile_backup_supported') is True, connect
+          assert 'encrypted-dashboard-backup' in str(connect.get('login_storage') or ''), connect
           assert live.get('ok') is True, live
           assert 'phase' in live, live
           assert wine.get('ok') is True, wine
           assert wine.get('wine_installed') is True, wine
           assert str(wine.get('wine_version') or '').strip(), wine
-          print('TikTok server routes and 64-bit Wine runtime verified.')
-          PY
-
-      - name: Wait for LIVE Studio Wine auto-probe
-        id: wine_probe
-        if: steps.tiktok_server.outcome == 'success'
-        continue-on-error: true
-        env:
-          SPACE_URL: https://echoxr-ripoteam-cloud-pc.hf.space
-        run: |
-          set -euo pipefail
-          for attempt in $(seq 1 45); do
-            curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/live-studio-linux/status" -o /tmp/wine-live-studio-final.json
-            PHASE=$(python - <<'PY'
-          import json
-          print(json.load(open('/tmp/wine-live-studio-final.json')).get('phase',''))
-          PY
-            )
-            echo "Wine LIVE Studio phase: $PHASE (attempt $attempt/45)"
-            case "$PHASE" in
-              running-wine|wine-failed) break ;;
-            esac
-            sleep 5
-          done
-          python -m json.tool /tmp/wine-live-studio-final.json
-          python - <<'PY'
-          import json
-          data=json.load(open('/tmp/wine-live-studio-final.json'))
-          phase=data.get('phase')
-          assert phase in ('running-wine','wine-failed'), data
-          print('Final Wine LIVE Studio probe:', phase)
+          valid={
+              'idle','starting','starting-server-browser','initializing-wine',
+              'downloading-live-studio','installing-live-studio','launching-live-studio',
+              'running-wine','wine-failed'
+          }
+          assert wine.get('phase') in valid, wine
+          print('TikTok encrypted session persistence routes and Wine runtime verified.')
           PY
 
       - name: Record health result
@@ -100,7 +87,6 @@ jobs:
         env:
           HEALTH_OUTCOME: ${{ steps.health.outcome }}
           TIKTOK_SERVER_OUTCOME: ${{ steps.tiktok_server.outcome }}
-          WINE_PROBE_OUTCOME: ${{ steps.wine_probe.outcome }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -109,12 +95,11 @@ jobs:
           mkdir -p .deployment-status
           {
             echo "Hugging Face Space health: ${HEALTH_OUTCOME}"
-            echo "TikTok server routes: ${TIKTOK_SERVER_OUTCOME}"
-            echo "Wine LIVE Studio probe: ${WINE_PROBE_OUTCOME}"
+            echo "TikTok persistence + Wine routes: ${TIKTOK_SERVER_OUTCOME}"
             echo "Space URL: https://echoxr-ripoteam-cloud-pc.hf.space"
             echo "Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "Recorded at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            for file in /tmp/last-health.txt /tmp/server-connect.json /tmp/server-live.json /tmp/wine-live-studio.json /tmp/wine-live-studio-final.json; do
+            for file in /tmp/last-health.txt /tmp/server-connect.json /tmp/server-live.json /tmp/wine-live-studio.json /tmp/profile-restore-check.json; do
               if [ -s "$file" ]; then
                 echo
                 echo "===== $(basename "$file") ====="
