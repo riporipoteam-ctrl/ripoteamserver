@@ -47,14 +47,8 @@ jobs:
           curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/server-connect/status" -o /tmp/server-connect.json
           curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/server-live/status" -o /tmp/server-live.json
           curl --fail --silent --show-error --max-time 20 "$SPACE_URL/api/tiktok/live-studio-linux/status" -o /tmp/wine-live-studio.json
-
-          RESTORE_CODE=$(curl --silent --show-error --max-time 20 \
-            -o /tmp/profile-restore-check.json -w '%{http_code}' \
-            -H 'content-type: application/json' \
-            -d '{"blob":"route-check"}' \
-            "$SPACE_URL/api/tiktok/server-connect/profile/restore")
+          RESTORE_CODE=$(curl --silent --show-error --max-time 20 -o /tmp/profile-restore-check.json -w '%{http_code}' -H 'content-type: application/json' -d '{"blob":"route-check"}' "$SPACE_URL/api/tiktok/server-connect/profile/restore")
           test "$RESTORE_CODE" = "400"
-
           python -m json.tool /tmp/server-connect.json
           python -m json.tool /tmp/server-live.json
           python -m json.tool /tmp/wine-live-studio.json
@@ -74,7 +68,7 @@ jobs:
           assert wine.get('wine_installed') is True, wine
           assert str(wine.get('wine_version') or '').strip(), wine
           valid={
-              'idle','starting','starting-server-browser','initializing-wine',
+              'idle','starting','starting-server-browser','initializing-wine','resolving-live-studio',
               'downloading-live-studio','installing-live-studio','launching-live-studio',
               'running-wine','wine-failed'
           }
