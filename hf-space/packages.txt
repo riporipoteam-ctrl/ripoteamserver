@@ -24,6 +24,7 @@ psmisc
 tmux
 tree
 unzip
+7zip
 websockify
 wine
 wine64
