@@ -1,6 +1,6 @@
 name: Probe TikTok LIVE stack once
 
-# Correct-main-process snapshot #6
+# PDH-shim strict snapshot #7
 on:
   push:
     branches: [main]
