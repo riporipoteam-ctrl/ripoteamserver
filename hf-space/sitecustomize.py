@@ -65,6 +65,7 @@ def _mount_server_tiktok_routes() -> None:
             import live_studio_wine_launch_fix  # noqa: F401
             from live_studio_cdp import LiveStudioCDP, install_live_studio_cdp_routes
             import live_studio_visible  # noqa: F401 - replaces blocked CDP control with local OCR/xdotool
+            import live_studio_visible_precision  # noqa: F401 - targets app windows by PID and improves OCR
             from live_studio_cdp_health import install_live_studio_cdp_health_route
             from server_audio_bridge import ServerAudioBridge, install_server_audio_routes
 
@@ -110,7 +111,7 @@ def _mount_server_tiktok_routes() -> None:
                 module.RIPO_SERVER_AUDIO = audio_bridge
 
             threading.Thread(target=_auto_probe_live_studio, args=(connector, wine_runner), name="ripo-live-studio-wine-autoprobe", daemon=True).start()
-            print("TikTok persistence, Wine LIVE Studio, visible UI automation, and server audio routes mounted.")
+            print("TikTok persistence, Wine LIVE Studio, precise visible UI automation, and server audio routes mounted.")
             return
         except Exception as exc:
             print(f"TikTok server route mount failed: {exc}")
