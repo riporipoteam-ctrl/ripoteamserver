@@ -10,10 +10,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: windows-live-studio-probe
+  cancel-in-progress: true
+
 jobs:
   test-live-studio:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 12
     steps:
       - name: Resolve and download official TikTok LIVE Studio
         shell: pwsh
@@ -29,7 +33,7 @@ jobs:
           $installer = Join-Path $env:RUNNER_TEMP 'tiktok-live-studio.exe'
           Invoke-WebRequest -Uri $url -OutFile $installer -MaximumRedirection 10
           $actual = (Get-FileHash -Algorithm MD5 $installer).Hash.ToLowerInvariant()
-          if ($expected -and $actual -ne $expected) { throw "TikTok package checksum mismatch" }
+          if ($expected -and $actual -ne $expected) { throw 'TikTok package checksum mismatch' }
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host "Verified TikTok LIVE Studio $version ($([math]::Round((Get-Item $installer).Length/1MB,1)) MB)"
@@ -38,25 +42,42 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
-          $before = Get-Date
-          $p = Start-Process -FilePath $env:INSTALLER -ArgumentList '/S' -PassThru
-          if (-not $p.WaitForExit(180000)) {
-            Write-Host 'Silent installer still running after 180 seconds; continuing to inspect installed files.'
+          $args = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'
+          $p = Start-Process -FilePath $env:INSTALLER -ArgumentList $args -PassThru
+          if (-not $p.WaitForExit(120000)) {
+            Write-Host 'Installer still running after 120 seconds; continuing to inspect the installation.'
           } else {
             Write-Host "Installer exit code: $($p.ExitCode)"
           }
 
-          $roots = @(
-            $env:LOCALAPPDATA,
-            $env:APPDATA,
-            $env:ProgramFiles,
-            ${env:ProgramFiles(x86)}
-          ) | Where-Object { $_ -and (Test-Path $_) }
+          $paths = @()
+          foreach ($key in @(
+            'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+          )) {
+            Get-ItemProperty $key -ErrorAction SilentlyContinue | Where-Object {
+              $_.DisplayName -match 'TikTok.*LIVE.*Studio|LIVE.*Studio'
+            } | ForEach-Object {
+              Write-Host "Uninstall entry: $($_.DisplayName) Location=$($_.InstallLocation)"
+              if ($_.InstallLocation) { $paths += $_.InstallLocation }
+            }
+          }
+
+          $paths += @(
+            (Join-Path $env:LOCALAPPDATA 'Programs'),
+            (Join-Path $env:LOCALAPPDATA 'TikTok LIVE Studio'),
+            (Join-Path $env:APPDATA 'TikTok LIVE Studio'),
+            (Join-Path $env:ProgramFiles 'TikTok LIVE Studio'),
+            (Join-Path ${env:ProgramFiles(x86)} 'TikTok LIVE Studio')
+          )
+          $paths = $paths | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
 
           $candidates = @()
-          foreach ($root in $roots) {
-            $candidates += Get-ChildItem -Path $root -Filter '*.exe' -Recurse -ErrorAction SilentlyContinue |
-              Where-Object { $_.FullName -match 'TikTok.*LIVE.*Studio|LIVE.*Studio.*TikTok' }
+          foreach ($root in $paths) {
+            Write-Host "Searching: $root"
+            $candidates += Get-ChildItem -Path $root -Filter '*.exe' -Recurse -Depth 5 -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -match 'TikTok.*LIVE.*Studio|LIVE.*Studio' }
           }
           $candidates = $candidates | Sort-Object Length -Descending | Select-Object -Unique FullName,Length,LastWriteTime
           $candidates | Format-Table -AutoSize
@@ -70,15 +91,14 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $exe = $env:LIVE_EXE
-          $proc = Start-Process -FilePath $exe -PassThru
+          $proc = Start-Process -FilePath $env:LIVE_EXE -PassThru
           Write-Host "Started PID $($proc.Id)"
-          $deadline = (Get-Date).AddMinutes(3)
+          $deadline = (Get-Date).AddMinutes(2)
           $best = $null
           while ((Get-Date) -lt $deadline) {
             Start-Sleep -Seconds 3
             $all = Get-Process -ErrorAction SilentlyContinue | Where-Object {
-              $_.ProcessName -match 'TikTok|LIVEStudio|LiveStudio' -or $_.Path -match 'TikTok.*LIVE.*Studio'
+              $_.ProcessName -match 'TikTok|LIVEStudio|LiveStudio'
             }
             foreach ($row in $all) {
               try { $row.Refresh() } catch {}
@@ -89,7 +109,6 @@ jobs:
             if ($proc.HasExited -and -not $all) { break }
           }
           if (-not $best) {
-            Write-Host 'No visible LIVE Studio window was detected on the Windows runner.'
             Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match 'TikTok|LIVEStudio|LiveStudio' } | Format-List Id,ProcessName,MainWindowHandle,MainWindowTitle,Path
             throw 'TikTok LIVE Studio did not create a usable Windows window on this runner.'
           }
