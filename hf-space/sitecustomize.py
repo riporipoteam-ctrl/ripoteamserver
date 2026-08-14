@@ -64,6 +64,7 @@ def _mount_server_tiktok_routes() -> None:
             import live_studio_wine_resolver_fix  # noqa: F401
             import live_studio_wine_launch_fix  # noqa: F401
             from live_studio_cdp import LiveStudioCDP, install_live_studio_cdp_routes
+            from live_studio_cdp_health import install_live_studio_cdp_health_route
 
             connector = getattr(module, "RIPO_SERVER_TIKTOK_CONNECT", None)
             if connector is None:
@@ -93,10 +94,11 @@ def _mount_server_tiktok_routes() -> None:
             if cdp_bridge is None:
                 cdp_bridge = LiveStudioCDP(module.TIKTOK_AI, connector, wine_runner)
                 if "/api/tiktok/live-studio-linux/ui-status" not in existing:
-                    # Reuse the Wine runner's auth wrapper: TikTok Connect browser
-                    # sessions are accepted, with ADMIN_TOKEN as the fallback.
                     install_live_studio_cdp_routes(application, cdp_bridge, wine_runner._auth)
                 module.RIPO_LIVE_STUDIO_CDP = cdp_bridge
+
+            if "/api/tiktok/live-studio-linux/ui-capabilities" not in existing:
+                install_live_studio_cdp_health_route(application)
 
             threading.Thread(target=_auto_probe_live_studio, args=(connector, wine_runner), name="ripo-live-studio-wine-autoprobe", daemon=True).start()
             print("TikTok persistence, Wine LIVE Studio, and localhost UI automation routes mounted.")
