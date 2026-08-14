@@ -9,7 +9,7 @@ os.environ.setdefault("TIKTOK_REDIRECT_URI", "https://echoxr-ripoteam-cloud-pc.h
 os.environ.setdefault("TIKTOK_SCOPES", "user.info.basic")
 os.environ.setdefault("RIPO_PUBLIC_ORIGIN", "https://riporipoteam-ctrl.github.io")
 os.environ.setdefault("RIPO_SPACE_ORIGIN", "https://echoxr-ripoteam-cloud-pc.hf.space")
-# Temporary one-time compatibility probe. Revert to 0 after the result is captured.
+# Kept on only while the localhost LIVE Studio UI bridge is being verified.
 os.environ.setdefault("RIPO_WINE_AUTOPROBE", "1")
 
 try:
@@ -63,6 +63,7 @@ def _mount_server_tiktok_routes() -> None:
             import live_studio_wine_browser_fix  # noqa: F401
             import live_studio_wine_resolver_fix  # noqa: F401
             import live_studio_wine_launch_fix  # noqa: F401
+            from live_studio_cdp import LiveStudioCDP, install_live_studio_cdp_routes
 
             connector = getattr(module, "RIPO_SERVER_TIKTOK_CONNECT", None)
             if connector is None:
@@ -88,8 +89,15 @@ def _mount_server_tiktok_routes() -> None:
                     install_live_studio_wine_routes(application, wine_runner)
                 module.RIPO_LIVE_STUDIO_WINE = wine_runner
 
+            cdp_bridge = getattr(module, "RIPO_LIVE_STUDIO_CDP", None)
+            if cdp_bridge is None:
+                cdp_bridge = LiveStudioCDP(module.TIKTOK_AI, connector, wine_runner)
+                if "/api/tiktok/live-studio-linux/ui-status" not in existing:
+                    install_live_studio_cdp_routes(application, cdp_bridge, module.authorize)
+                module.RIPO_LIVE_STUDIO_CDP = cdp_bridge
+
             threading.Thread(target=_auto_probe_live_studio, args=(connector, wine_runner), name="ripo-live-studio-wine-autoprobe", daemon=True).start()
-            print("TikTok persistence and robust direct-package Wine LIVE Studio routes mounted.")
+            print("TikTok persistence, Wine LIVE Studio, and localhost UI automation routes mounted.")
             return
         except Exception as exc:
             print(f"TikTok server route mount failed: {exc}")
