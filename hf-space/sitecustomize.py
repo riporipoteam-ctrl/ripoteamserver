@@ -85,6 +85,7 @@ def _mount_server_tiktok_routes() -> None:
             import live_studio_wine_download_fix  # noqa: F401
             import live_studio_wine_runtime_fix  # noqa: F401
             import live_studio_wine_candidate_fix  # noqa: F401
+            import live_studio_wine_browser_fix  # noqa: F401
 
             connector = getattr(module, "RIPO_SERVER_TIKTOK_CONNECT", None)
             if connector is None:
