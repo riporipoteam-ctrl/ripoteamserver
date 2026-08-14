@@ -62,6 +62,7 @@ def _mount_server_tiktok_routes() -> None:
             import live_studio_wine_candidate_fix  # noqa: F401
             import live_studio_wine_browser_fix  # noqa: F401
             import live_studio_wine_resolver_fix  # noqa: F401
+            import live_studio_wine_launch_fix  # noqa: F401
 
             connector = getattr(module, "RIPO_SERVER_TIKTOK_CONNECT", None)
             if connector is None:
@@ -88,7 +89,7 @@ def _mount_server_tiktok_routes() -> None:
                 module.RIPO_LIVE_STUDIO_WINE = wine_runner
 
             threading.Thread(target=_auto_probe_live_studio, args=(connector, wine_runner), name="ripo-live-studio-wine-autoprobe", daemon=True).start()
-            print("TikTok persistence and direct-package Wine LIVE Studio routes mounted.")
+            print("TikTok persistence and robust direct-package Wine LIVE Studio routes mounted.")
             return
         except Exception as exc:
             print(f"TikTok server route mount failed: {exc}")
