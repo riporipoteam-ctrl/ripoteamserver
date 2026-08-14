@@ -1,0 +1,32 @@
+name: Probe TikTok LIVE Studio updater
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/probe-tiktok-live-studio-updater.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Resolve current LIVE Studio package
+        run: |
+          set -euo pipefail
+          URL='https://tron-sg.bytelemon.com/api/sdk/check_update?pid=7393277106664249610&uid=&branch=studio/release/stable&buildId='
+          curl --fail --silent --show-error --max-time 20 "$URL" -o /tmp/update.json
+          python -m json.tool /tmp/update.json
+          python - <<'PY'
+          import json,re,sys
+          x=json.load(open('/tmp/update.json'))
+          text=json.dumps(x)
+          urls=re.findall(r'https://[^"\\ ]+',text)
+          allowed=[u for u in urls if u.startswith('https://www.tiktok.com/tos-live-studio/releases/') and u.lower().endswith('.exe')]
+          print('ALLOWED_TIKTOK_EXE_URLS=',allowed)
+          if not allowed:
+              raise SystemExit('No TikTok-domain LIVE Studio exe URL found')
+          PY
