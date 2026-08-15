@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import os
 import sys
 import threading
@@ -10,6 +12,10 @@ from typing import Any
 
 _MOUNT_LOCK = threading.Lock()
 _MOUNTED = False
+
+
+def _derived_key(root_secret: str, purpose: bytes) -> str:
+    return hmac.new(root_secret.encode("utf-8"), purpose, hashlib.sha256).hexdigest()
 
 
 def install_into_live_app(application: Any, data_dir: Path | None = None) -> dict[str, Any]:
@@ -26,12 +32,20 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         public_url = os.environ.get("RECROOM_PUBLIC_BASE_URL", "https://echoxr-ripoteam-cloud-pc.hf.space").rstrip("/")
         os.environ.setdefault("RECROOM_GATEWAY_URL", public_url)
 
-        # The Space already has ADMIN_TOKEN configured. Reuse it as the private
-        # Windows-host/broker key unless dedicated Rec Room keys are provided.
+        # The Space already has ADMIN_TOKEN configured. If dedicated Rec Room
+        # secrets were not supplied, derive purpose-separated Rec Room keys from
+        # it rather than reusing the raw admin token itself. This means a paired
+        # Windows host never needs (or learns) the broader Cloud PC admin secret.
         admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
         if admin_token:
-            os.environ.setdefault("RECROOM_BROKER_KEY", admin_token)
-            os.environ.setdefault("RECROOM_HOST_KEY", admin_token)
+            os.environ.setdefault(
+                "RECROOM_BROKER_KEY",
+                _derived_key(admin_token, b"ripo-recroom-broker-v1"),
+            )
+            os.environ.setdefault(
+                "RECROOM_HOST_KEY",
+                _derived_key(admin_token, b"ripo-recroom-host-v1"),
+            )
 
         from recroom_gateway import RecRoomGateway, install_recroom_gateway_routes
         from recroom_broker import install_recroom_broker_routes
