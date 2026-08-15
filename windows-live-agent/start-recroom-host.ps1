@@ -5,8 +5,38 @@ param(
 $ErrorActionPreference = "Stop"
 $env:RECROOM_AGENT_DIR = $PSScriptRoot
 
+function Refresh-Path {
+  $machine = [Environment]::GetEnvironmentVariable("Path", "Machine")
+  $user = [Environment]::GetEnvironmentVariable("Path", "User")
+  $env:Path = @($machine, $user, $env:Path) -join ";"
+}
+
+function Ensure-WindowsRuntime([string]$CommandName, [string]$WingetId, [string]$Label) {
+  if (Get-Command $CommandName -ErrorAction SilentlyContinue) { return }
+  $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
+  if (-not $winget) { throw "$Label is required. Install it, or install App Installer/winget so Flux can do it automatically." }
+  Write-Host "Installing $Label for the Rec Room host..." -ForegroundColor DarkCyan
+  $process = Start-Process -FilePath $winget.Source -ArgumentList @(
+    "install", "--id", $WingetId, "-e", "--silent",
+    "--accept-package-agreements", "--accept-source-agreements"
+  ) -Wait -PassThru -NoNewWindow
+  if ($process.ExitCode -ne 0) { throw "winget could not install $Label (exit $($process.ExitCode))." }
+  Refresh-Path
+  if (-not (Get-Command $CommandName -ErrorAction SilentlyContinue)) { throw "$Label installed but is not visible in this shell yet. Reopen PowerShell once." }
+}
+
 if (-not (Test-Path $Config)) {
-  throw "Missing $Config. Copy recroom-agent-config.example.json to recroom-agent-config.json and edit it locally."
+  $bootstrap = Join-Path $PSScriptRoot "bootstrap-recroom-host.ps1"
+  if (-not (Test-Path $bootstrap)) { throw "Missing $Config and $bootstrap." }
+  Write-Host "No Rec Room host config found; bootstrapping automatically..." -ForegroundColor Cyan
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $bootstrap -Config $Config
+  if ($LASTEXITCODE -ne 0 -or -not (Test-Path $Config)) { throw "Rec Room host bootstrap did not create a valid config." }
+}
+
+Ensure-WindowsRuntime "node.exe" "OpenJS.NodeJS.LTS" "Node.js LTS"
+$hasPython = (Get-Command py.exe -ErrorAction SilentlyContinue) -or (Get-Command python.exe -ErrorAction SilentlyContinue)
+if (-not $hasPython) {
+  Ensure-WindowsRuntime "python.exe" "Python.Python.3.12" "Python 3.12"
 }
 
 function Load-HostConfig {
@@ -119,4 +149,6 @@ try {
 } finally {
   Stop-Worker $workers.Main
   Stop-Worker $workers.Capture
+  $stopStream = Join-Path $PSScriptRoot "stop-recroom-browser-stream.ps1"
+  if (Test-Path $stopStream) { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stopStream 2>$null | Out-Null }
 }
