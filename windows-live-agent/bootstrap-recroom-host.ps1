@@ -1,6 +1,7 @@
 param(
   [string]$Config = (Join-Path $PSScriptRoot "recroom-agent-config.json"),
   [string]$SteamUsername = "",
+  [string]$PairingCode = "",
   [switch]$TrySteamDownload,
   [switch]$Start
 )
@@ -90,9 +91,9 @@ if (-not $clientDir) {
   throw "May 19 2022 Rec Room client not found. Put your legally obtained build 8751857 folder/ZIP in Downloads/Desktop, set FLUX_RECROOM_CLIENT_DIR, or rerun bootstrap with -TrySteamDownload and your Steam username."
 }
 
-$hostKey = if ($env:RECROOM_HOST_KEY) { [string]$env:RECROOM_HOST_KEY } else { "" }
 $server = if ($env:RECROOM_BROKER_URL) { [string]$env:RECROOM_BROKER_URL } else { "https://echoxr-ripoteam-cloud-pc.hf.space" }
 $hostId = "ripo-" + $env:COMPUTERNAME.ToLowerInvariant().Replace('_','-')
+$hostKey = if ($env:RECROOM_HOST_KEY) { [string]$env:RECROOM_HOST_KEY } else { "" }
 
 if (Test-Path $Config) {
   $cfg = Get-Content $Config -Raw | ConvertFrom-Json
@@ -102,6 +103,17 @@ if (Test-Path $Config) {
 function Set-Property([string]$Name, $Value) {
   if ($cfg.PSObject.Properties[$Name]) { $cfg.$Name = $Value }
   else { $cfg | Add-Member -NotePropertyName $Name -NotePropertyValue $Value }
+}
+
+if (-not $hostKey -and $cfg.hostKey -and ([string]$cfg.hostKey) -notmatch '^SET_') {
+  $hostKey = [string]$cfg.hostKey
+}
+if (-not $hostKey -and $PairingCode) {
+  Write-Host "Claiming one-time Flux Windows host pairing code..." -ForegroundColor DarkCyan
+  $pair = Invoke-RestMethod -Method Post -Uri ($server.TrimEnd('/') + "/api/recroom-public/host-pairing/claim") -ContentType "application/json" -Body (@{ pairingCode = $PairingCode } | ConvertTo-Json) -TimeoutSec 30
+  if (-not $pair.ok -or -not $pair.hostKey) { throw "Flux host pairing did not return a host credential." }
+  $hostKey = [string]$pair.hostKey
+  Write-Host "Windows host paired with Flux." -ForegroundColor Green
 }
 
 Set-Property "server" $server
@@ -127,7 +139,7 @@ Write-Host "Rec Room host configured." -ForegroundColor Green
 Write-Host "Client: $clientDir"
 Write-Host "Config: $Config"
 if (-not $hostKey -and ([string]$cfg.hostKey) -match '^SET_') {
-  Write-Host "Set RECROOM_HOST_KEY in this Windows account before starting the host." -ForegroundColor Yellow
+  Write-Host "Generate a one-time Windows host pairing code from Flux Rec Room, then rerun this bootstrap with -PairingCode <code>." -ForegroundColor Yellow
 }
 
 if ($Start) {
