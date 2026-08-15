@@ -8,5 +8,11 @@
   "capacity": 1,
   "streamUrl": "https://YOUR-HTTPS-GAME-STREAM.example.com/",
   "adapterCommand": "",
-  "streamStartCommand": ""
+  "streamStartCommand": "",
+  "autoUpdate": true,
+  "updateIntervalMinutes": 15,
+  "updateRepository": "riporipoteam-ctrl/ripoteamserver",
+  "updateRef": "feat/recroom-session-broker",
+  "toolsRepository": "riporipoteam-ctrl/recroomfluxgame",
+  "toolsRef": "main"
 }
