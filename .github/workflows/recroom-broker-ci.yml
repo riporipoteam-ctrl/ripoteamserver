@@ -7,6 +7,7 @@ on:
       - feat/recroom-session-broker
     paths:
       - "hf-space/recroom_autoload.py"
+      - "hf-space/recroom_compat.py"
       - "hf-space/recroom_broker.py"
       - "hf-space/recroom_capture.py"
       - "hf-space/recroom_gateway.py"
@@ -18,6 +19,7 @@ on:
   pull_request:
     paths:
       - "hf-space/recroom_autoload.py"
+      - "hf-space/recroom_compat.py"
       - "hf-space/recroom_broker.py"
       - "hf-space/recroom_capture.py"
       - "hf-space/recroom_gateway.py"
@@ -43,6 +45,7 @@ jobs:
         run: >-
           python -m py_compile
           hf-space/recroom_autoload.py
+          hf-space/recroom_compat.py
           hf-space/recroom_broker.py
           hf-space/recroom_capture.py
           hf-space/recroom_gateway.py
@@ -50,6 +53,13 @@ jobs:
           hf-space/sitecustomize.py
           hf-space/app_server_v2.py
           windows-live-agent/recroom-web-stream.py
+      - name: Validate compatibility route source invariants
+        run: |
+          grep -q 'VersionStatus' hf-space/recroom_compat.py
+          grep -q 'Screens.ForceVerification' hf-space/recroom_compat.py
+          grep -q 'openid-configuration/jwks' hf-space/recroom_compat.py
+          grep -q 'Matchmaking/player/qos' hf-space/recroom_compat.py
+          grep -q 'Room_server/rooms/{room_id}' hf-space/recroom_compat.py
       - name: Validate Windows agent PowerShell syntax
         shell: pwsh
         run: |
