@@ -10,8 +10,7 @@ param(
 $ErrorActionPreference = "Stop"
 $startedAt = [DateTimeOffset]::UtcNow
 if (-not $OutputDir) {
-  $stamp = $startedAt.ToString("yyyyMMdd-HHmmss")
-  $OutputDir = Join-Path $env:TEMP "FluxRecRoomPlaytest-$stamp"
+  $OutputDir = Join-Path $env:TEMP ("FluxRecRoomPlaytest-" + $startedAt.ToString("yyyyMMdd-HHmmss"))
 }
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 
@@ -61,7 +60,7 @@ function Require-Layout([string]$Root) {
   return [pscustomobject]@{ Root = $resolved; Exe = $exe; Data = $data; Metadata = $metadata }
 }
 
-function Invoke-NodeJson([string]$Script, [string[]]$Arguments) {
+function Run-NodeJson([string]$Script, [string[]]$Arguments) {
   $node = Get-Command node.exe -ErrorAction SilentlyContinue
   if (-not $node) { $node = Get-Command node -ErrorAction SilentlyContinue }
   if (-not $node) { throw "Node.js is required for the Rec Room playtest." }
@@ -80,8 +79,7 @@ function Invoke-NodeJson([string]$Script, [string[]]$Arguments) {
   try { return $stdout | ConvertFrom-Json } catch { throw "Node helper returned invalid JSON: $stdout" }
 }
 
-function Start-Proxy {
-  param([string]$ProxyScript, [string]$Gateway, [string]$Token)
+function Start-Proxy([string]$ProxyScript, [string]$Gateway, [string]$Token) {
   if (-not $Gateway) { throw "GatewayUrl / FLUX_RECROOM_GATEWAY_URL is required for a full Rec Room playtest." }
   if (-not $Token) { throw "SessionToken / FLUX_RECROOM_SESSION_TOKEN is required for a full Rec Room playtest." }
   $node = Get-Command node.exe -ErrorAction SilentlyContinue
@@ -127,23 +125,32 @@ function Capture-Checkpoint([string]$FrameUrl, [string]$Name) {
   $path = Join-Path $OutputDir "$Name.jpg"
   Invoke-WebRequest -UseBasicParsing -Uri ($FrameUrl + "&t=" + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()) -OutFile $path -TimeoutSec 15
   $hash = (Get-FileHash -Path $path -Algorithm SHA256).Hash.ToLowerInvariant()
-  $bytes = (Get-Item $path).Length
-  $report.checkpoints += [ordered]@{ name = $Name; at = [DateTimeOffset]::UtcNow.ToString("o"); file = $path; bytes = $bytes; sha256 = $hash }
-  return $path
+  $report.checkpoints += [ordered]@{
+    name = $Name
+    at = [DateTimeOffset]::UtcNow.ToString("o")
+    file = $path
+    bytes = (Get-Item $path).Length
+    sha256 = $hash
+  }
 }
 
 function Collect-UnityLogs([DateTimeOffset]$Since) {
+  # Avoid recursive scans of all AppData/Temp. Those can take minutes on a busy
+  # Windows host. Only inspect known Rec Room/Unity-style locations plus the
+  # client directory itself.
   $roots = @(
-    (Join-Path $env:USERPROFILE "AppData\LocalLow"),
-    (Join-Path $env:LOCALAPPDATA "Temp")
-  ) | Where-Object { Test-Path $_ }
+    (Join-Path $env:USERPROFILE "AppData\LocalLow\Against Gravity\Rec Room"),
+    (Join-Path $env:USERPROFILE "AppData\LocalLow\Against Gravity Corp\Rec Room"),
+    (Join-Path $env:USERPROFILE "AppData\LocalLow\Rec Room"),
+    (Join-Path $env:LOCALAPPDATA "Rec Room"),
+    $report.clientDir
+  ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
   $matches = @()
   foreach ($root in $roots) {
-    $files = Get-ChildItem -Path $root -Filter "Player.log" -File -Recurse -ErrorAction SilentlyContinue |
+    $matches += Get-ChildItem -Path $root -Filter "Player.log" -File -Recurse -ErrorAction SilentlyContinue |
       Where-Object { $_.LastWriteTimeUtc -ge $Since.UtcDateTime.AddMinutes(-2) } |
       Sort-Object LastWriteTimeUtc -Descending |
-      Select-Object -First 8
-    $matches += $files
+      Select-Object -First 4
   }
   $copied = @()
   $index = 0
@@ -160,7 +167,6 @@ try {
   $layout = Require-Layout $ClientDir
   $report.clientDir = $layout.Root
   $report.executable = $layout.Exe
-
   $tools = Join-Path $PSScriptRoot "recroom-tools"
   $redirectTool = Join-Path $tools "redirect-client-urls.mjs"
   $proxyTool = Join-Path $tools "host-proxy.mjs"
@@ -168,26 +174,25 @@ try {
   if (-not (Test-Path $proxyTool)) { throw "Missing $proxyTool. Run update-recroom-host.ps1 first." }
 
   $env:FLUX_RECROOM_LOCAL_BASE = "http://127.0.0.1:81"
-  $redirect = Invoke-NodeJson $redirectTool @("--root", $layout.Root)
+  $redirect = Run-NodeJson $redirectTool @("--root", $layout.Root)
   if (-not $redirect.ok -or [int]$redirect.preparedOccurrences -le 0) { throw "Client redirect could not be verified." }
   $report.redirectOccurrences = [int]$redirect.preparedOccurrences
 
-  $proxyProcess = Start-Proxy -ProxyScript $proxyTool -Gateway $GatewayUrl -Token $SessionToken
+  $proxyProcess = Start-Proxy $proxyTool $GatewayUrl $SessionToken
   $report.proxyReady = $true
-
   $env:FLUX_RECNET_URL = "http://127.0.0.1:81"
   $env:FLUX_RECNET = "http://127.0.0.1:81"
   $env:FLUX_RECROOM_BUILD = "recroom-2022-05-19"
-  $args = @("-screen-fullscreen", "0", "-screen-width", "1280", "-screen-height", "720", "-force-d3d11")
-  $gameProcess = Start-Process -FilePath $layout.Exe -WorkingDirectory $layout.Root -ArgumentList $args -PassThru
+
+  $gameProcess = Start-Process -FilePath $layout.Exe -WorkingDirectory $layout.Root -ArgumentList @(
+    "-screen-fullscreen", "0", "-screen-width", "1280", "-screen-height", "720", "-force-d3d11"
+  ) -PassThru
   $report.gamePid = $gameProcess.Id
   $env:FLUX_RECROOM_GAME_PID = [string]$gameProcess.Id
-
   Start-Sleep -Seconds 2
   if ($gameProcess.HasExited) { throw "Rec Room exited immediately with code $($gameProcess.ExitCode)." }
 
   $streamScript = Join-Path $PSScriptRoot "start-recroom-browser-stream.ps1"
-  if (-not (Test-Path $streamScript)) { throw "Missing $streamScript" }
   $streamLines = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $streamScript)
   if ($LASTEXITCODE -ne 0) { throw "Browser stream launcher failed." }
   $publicUrl = [string]($streamLines | Where-Object { $_ -match '^https://' } | Select-Object -Last 1)
@@ -203,10 +208,9 @@ try {
   $frameUrl = "http://127.0.0.1:6081/frame.jpg?token=$encoded"
   $inputUrl = "http://127.0.0.1:6081/input?token=$encoded"
 
-  Capture-Checkpoint $frameUrl "00-launch" | Out-Null
+  Capture-Checkpoint $frameUrl "00-launch"
   Start-Sleep -Seconds 4
-  Capture-Checkpoint $frameUrl "01-after-4s" | Out-Null
-
+  Capture-Checkpoint $frameUrl "01-after-4s"
   Send-Input $inputUrl @{ type = "button"; button = "left"; down = $true; x = 0.5; y = 0.5 }
   Send-Input $inputUrl @{ type = "button"; button = "left"; down = $false }
   Send-Input $inputUrl @{ type = "key"; key = "w"; down = $true }
@@ -223,17 +227,16 @@ try {
   Start-Sleep -Milliseconds 120
   Send-Input $inputUrl @{ type = "button"; button = "left"; down = $false }
   Send-Input $inputUrl @{ type = "release" }
+  Capture-Checkpoint $frameUrl "02-after-input"
 
-  Capture-Checkpoint $frameUrl "02-after-input" | Out-Null
   $remaining = [Math]::Max(0, $DurationSeconds - 10)
   if ($remaining -gt 0) { Start-Sleep -Seconds $remaining }
-
   $gameProcess.Refresh()
   if ($gameProcess.HasExited) {
     $report.processExited = $true
     $report.processExitCode = $gameProcess.ExitCode
   } else {
-    Capture-Checkpoint $frameUrl "03-final" | Out-Null
+    Capture-Checkpoint $frameUrl "03-final"
   }
 
   $uniqueHashes = @($report.checkpoints | ForEach-Object { $_.sha256 } | Select-Object -Unique)
