@@ -40,12 +40,12 @@ $bootstrap = Join-Path $InstallDir "bootstrap-recroom-host.ps1"
 $config = Join-Path $InstallDir "recroom-agent-config.json"
 $arguments = @(
   "-NoProfile", "-ExecutionPolicy", "Bypass",
-  "-File", "`"$bootstrap`"",
-  "-Config", "`"$config`""
+  "-File", $bootstrap,
+  "-Config", $config
 )
 if ($TrySteamDownload) { $arguments += "-TrySteamDownload" }
-if ($SteamUsername) { $arguments += @("-SteamUsername", "`"$SteamUsername`"") }
-if ($PairingCode) { $arguments += @("-PairingCode", "`"$PairingCode`"") }
+if ($SteamUsername) { $arguments += @("-SteamUsername", $SteamUsername) }
+if ($PairingCode) { $arguments += @("-PairingCode", $PairingCode) }
 
 & powershell.exe @arguments
 if ($LASTEXITCODE -ne 0) { throw "Rec Room host bootstrap failed." }
