@@ -13,11 +13,7 @@ on:
       - "hf-space/recroom_public.py"
       - "hf-space/sitecustomize.py"
       - "hf-space/app_server_v2.py"
-      - "windows-live-agent/recroom-agent.ps1"
-      - "windows-live-agent/recroom-capture-agent.ps1"
-      - "windows-live-agent/start-recroom-host.ps1"
-      - "windows-live-agent/update-recroom-host.ps1"
-      - "windows-live-agent/recroom-agent-config.example.json"
+      - "windows-live-agent/**"
       - ".github/workflows/recroom-broker-ci.yml"
   pull_request:
     paths:
@@ -28,11 +24,7 @@ on:
       - "hf-space/recroom_public.py"
       - "hf-space/sitecustomize.py"
       - "hf-space/app_server_v2.py"
-      - "windows-live-agent/recroom-agent.ps1"
-      - "windows-live-agent/recroom-capture-agent.ps1"
-      - "windows-live-agent/start-recroom-host.ps1"
-      - "windows-live-agent/update-recroom-host.ps1"
-      - "windows-live-agent/recroom-agent-config.example.json"
+      - "windows-live-agent/**"
       - ".github/workflows/recroom-broker-ci.yml"
 
 permissions:
@@ -57,6 +49,7 @@ jobs:
           hf-space/recroom_public.py
           hf-space/sitecustomize.py
           hf-space/app_server_v2.py
+          windows-live-agent/recroom-web-stream.py
       - name: Validate Windows agent PowerShell syntax
         shell: pwsh
         run: |
@@ -64,7 +57,10 @@ jobs:
             "windows-live-agent/recroom-agent.ps1",
             "windows-live-agent/recroom-capture-agent.ps1",
             "windows-live-agent/start-recroom-host.ps1",
-            "windows-live-agent/update-recroom-host.ps1"
+            "windows-live-agent/update-recroom-host.ps1",
+            "windows-live-agent/bootstrap-recroom-host.ps1",
+            "windows-live-agent/start-recroom-browser-stream.ps1",
+            "windows-live-agent/stop-recroom-browser-stream.ps1"
           )) {
             $tokens = $null
             $errors = $null
@@ -78,7 +74,16 @@ jobs:
               exit 1
             }
           }
-      - name: Validate host config JSON
+      - name: Validate host config JSON and stable update branch
         shell: pwsh
         run: |
-          Get-Content "windows-live-agent/recroom-agent-config.example.json" -Raw | ConvertFrom-Json | Out-Null
+          $cfg = Get-Content "windows-live-agent/recroom-agent-config.example.json" -Raw | ConvertFrom-Json
+          if ($cfg.updateRef -ne "main") { throw "Rec Room hosts must auto-update from main." }
+          if (-not $cfg.streamStartCommand -or -not $cfg.streamStopCommand) { throw "Built-in browser stream commands are required." }
+      - name: Verify automatic host assets are present
+        run: |
+          test -f windows-live-agent/recroom-web-stream.py
+          test -f windows-live-agent/bootstrap-recroom-host.ps1
+          test -f windows-live-agent/start-recroom-browser-stream.ps1
+          test -f windows-live-agent/stop-recroom-browser-stream.ps1
+          grep -q 'Pillow' windows-live-agent/requirements.txt
