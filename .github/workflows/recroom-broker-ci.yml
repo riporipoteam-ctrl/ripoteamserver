@@ -59,6 +59,7 @@ jobs:
             "windows-live-agent/start-recroom-host.ps1",
             "windows-live-agent/update-recroom-host.ps1",
             "windows-live-agent/bootstrap-recroom-host.ps1",
+            "windows-live-agent/download-recroom-client.ps1",
             "windows-live-agent/start-recroom-browser-stream.ps1",
             "windows-live-agent/stop-recroom-browser-stream.ps1"
           )) {
@@ -84,6 +85,8 @@ jobs:
         run: |
           test -f windows-live-agent/recroom-web-stream.py
           test -f windows-live-agent/bootstrap-recroom-host.ps1
+          test -f windows-live-agent/download-recroom-client.ps1
           test -f windows-live-agent/start-recroom-browser-stream.ps1
           test -f windows-live-agent/stop-recroom-browser-stream.ps1
           grep -q 'Pillow' windows-live-agent/requirements.txt
+          grep -q '6337851004861751095' windows-live-agent/download-recroom-client.ps1
