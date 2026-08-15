@@ -1,0 +1,51 @@
+name: Rec Room Live Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/recroom-live-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify live compatibility gateway
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 8 --retry-delay 4 \
+            "https://echoxr-ripoteam-cloud-pc.hf.space/flux/health" \
+            -o /tmp/recroom-health.json
+          cat /tmp/recroom-health.json
+          python - <<'PY'
+          import json
+          data=json.load(open('/tmp/recroom-health.json'))
+          assert data.get('ok') is True, data
+          assert data.get('buildId') == '8751857', data
+          assert data.get('buildDate') == '2022-05-19', data
+          assert data.get('photon', {}).get('configured') is True, data
+          print('May 19 2022 gateway and Photon config are live.')
+          PY
+
+      - name: Verify live browser session broker
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 4 --retry-delay 3 \
+            "https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/status" \
+            -o /tmp/recroom-status.json
+          cat /tmp/recroom-status.json
+          python - <<'PY'
+          import json
+          data=json.load(open('/tmp/recroom-status.json'))
+          assert data.get('ok') is True, data
+          assert data.get('targetBuild') == 'recroom-2022-05-19', data
+          assert data.get('configured') is True, data
+          hosts=int(data.get('onlineHosts') or 0)
+          print(f'RECROOM_ONLINE_HOSTS={hosts}')
+          print('Broker is live and configured.')
+          PY
