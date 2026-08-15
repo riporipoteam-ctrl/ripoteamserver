@@ -7,7 +7,7 @@
   "buildId": "recroom-2022-05-19",
   "capacity": 1,
   "streamUrl": "https://YOUR-HTTPS-GAME-STREAM.example.com/",
-  "adapterCommand": "",
+  "adapterCommand": "node \"%RECROOM_AGENT_DIR%\\recroom-tools\\host-proxy.mjs\"",
   "streamStartCommand": "",
   "autoUpdate": true,
   "updateIntervalMinutes": 15,
