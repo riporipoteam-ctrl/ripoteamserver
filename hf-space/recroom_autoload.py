@@ -48,12 +48,16 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
             )
 
         from recroom_gateway import RecRoomGateway, install_recroom_gateway_routes
+        from recroom_compat import install_recroom_compat_routes
         from recroom_broker import install_recroom_broker_routes
         from recroom_capture import install_recroom_capture_routes
         from recroom_public import install_recroom_public_routes
 
         gateway = RecRoomGateway(root / "recroom-gateway")
         install_recroom_gateway_routes(application, gateway)
+        # Fix typed RecNet DTO shapes and add the known May-2022 startup routes
+        # only after the core gateway has mounted its identity/state endpoints.
+        install_recroom_compat_routes(application, gateway)
         broker = install_recroom_broker_routes(application, root / "recroom-broker")
         capture = install_recroom_capture_routes(application, broker, root / "recroom-captures")
         install_recroom_public_routes(application, broker, capture)
