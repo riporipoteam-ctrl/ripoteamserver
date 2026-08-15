@@ -16,43 +16,28 @@ function Set-CfgProperty($cfg, [string]$Name, $Value) {
 }
 
 function Load-Config {
-  if (-not (Test-Path $Config)) {
-    throw "Missing $Config. Run bootstrap-recroom-host.ps1 first."
-  }
+  if (-not (Test-Path $Config)) { throw "Missing $Config. Run bootstrap-recroom-host.ps1 first." }
   $cfg = Get-Content $Config -Raw | ConvertFrom-Json
   if ($env:RECROOM_HOST_KEY) { Set-CfgProperty $cfg "hostKey" $env:RECROOM_HOST_KEY }
   if ($env:RECROOM_BROKER_URL) { Set-CfgProperty $cfg "server" $env:RECROOM_BROKER_URL }
   if ($env:FLUX_RECROOM_CLIENT_DIR) { Set-CfgProperty $cfg "clientDir" $env:FLUX_RECROOM_CLIENT_DIR }
   if ($env:FLUX_RECROOM_STREAM_URL) { Set-CfgProperty $cfg "streamUrl" $env:FLUX_RECROOM_STREAM_URL }
-  if (-not $cfg.adapterCommand) {
-    Set-CfgProperty $cfg "adapterCommand" 'node "%RECROOM_AGENT_DIR%\recroom-tools\host-proxy.mjs"'
-  }
-  if (-not $cfg.streamStartCommand -and -not $cfg.streamUrl) {
-    Set-CfgProperty $cfg "streamStartCommand" 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%RECROOM_AGENT_DIR%\start-recroom-browser-stream.ps1"'
-  }
-  if (-not $cfg.streamStopCommand) {
-    Set-CfgProperty $cfg "streamStopCommand" 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%RECROOM_AGENT_DIR%\stop-recroom-browser-stream.ps1"'
-  }
+  if (-not $cfg.adapterCommand) { Set-CfgProperty $cfg "adapterCommand" 'node "%RECROOM_AGENT_DIR%\recroom-tools\host-proxy.mjs"' }
+  if (-not $cfg.streamStartCommand -and -not $cfg.streamUrl) { Set-CfgProperty $cfg "streamStartCommand" 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%RECROOM_AGENT_DIR%\start-recroom-browser-stream.ps1"' }
+  if (-not $cfg.streamStopCommand) { Set-CfgProperty $cfg "streamStopCommand" 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%RECROOM_AGENT_DIR%\stop-recroom-browser-stream.ps1"' }
   return $cfg
 }
 
 function Require-Config($cfg) {
-  foreach ($name in @("server", "hostId", "hostKey")) {
-    if (-not $cfg.$name) { throw "Rec Room agent config '$name' is required." }
-  }
-  if ([string]$cfg.hostKey -match '^SET_') {
-    throw "RECROOM_HOST_KEY is not configured on this Windows host."
-  }
-  if (($cfg.buildId) -and ([string]$cfg.buildId -ne $TargetBuild)) {
-    throw "This agent currently targets $TargetBuild only."
-  }
+  foreach ($name in @("server", "hostId", "hostKey")) { if (-not $cfg.$name) { throw "Rec Room agent config '$name' is required." } }
+  if ([string]$cfg.hostKey -match '^SET_') { throw "RECROOM_HOST_KEY is not configured on this Windows host." }
+  if (($cfg.buildId) -and ([string]$cfg.buildId -ne $TargetBuild)) { throw "This agent currently targets $TargetBuild only." }
 }
 
 function Test-ClientLayoutAt([string]$Root) {
   if (-not $Root -or -not (Test-Path $Root)) { return $false }
   $exe = @("RecRoom.exe", "Recroom_Release.exe") | ForEach-Object { Join-Path $Root $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
-  if (-not $exe) { return $false }
-  if (-not (Test-Path (Join-Path $Root "GameAssembly.dll"))) { return $false }
+  if (-not $exe -or -not (Test-Path (Join-Path $Root "GameAssembly.dll"))) { return $false }
   $data = @("RecRoom_Data", "Recroom_Release_Data") | ForEach-Object { Join-Path $Root $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
   if (-not $data) { return $false }
   return Test-Path (Join-Path $data "il2cpp_data\Metadata\global-metadata.dat")
@@ -64,7 +49,6 @@ function Resolve-ClientDir {
   if ($script:cfg.clientDir) { $candidates.Add([string]$script:cfg.clientDir) }
   if ($env:LOCALAPPDATA) { $candidates.Add((Join-Path $env:LOCALAPPDATA "FluxRecRoom\May 19 2022")) }
   $candidates.Add("C:\Games\FluxRecRoom\May 19 2022")
-
   foreach ($candidate in $candidates | Select-Object -Unique) {
     if (Test-ClientLayoutAt $candidate) {
       $resolved = (Resolve-Path $candidate).Path
@@ -72,21 +56,15 @@ function Resolve-ClientDir {
       return $resolved
     }
   }
-
   foreach ($root in @((Join-Path $env:USERPROFILE "Downloads"), (Join-Path $env:USERPROFILE "Desktop"))) {
     if (-not (Test-Path $root)) { continue }
-    $exe = Get-ChildItem -Path $root -File -Recurse -ErrorAction SilentlyContinue |
-      Where-Object {
-        $_.Name -in @("RecRoom.exe", "Recroom_Release.exe") -and
-        $_.DirectoryName -match '(?i)(8751857|2022|May.?19|Rec.?Room)'
-      } | Select-Object -First 1
+    $exe = Get-ChildItem -Path $root -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -in @("RecRoom.exe", "Recroom_Release.exe") -and $_.DirectoryName -match '(?i)(8751857|2022|May.?19|Rec.?Room)' } | Select-Object -First 1
     if ($exe -and (Test-ClientLayoutAt $exe.Directory.FullName)) {
       $resolved = $exe.Directory.FullName
       Set-CfgProperty $script:cfg "clientDir" $resolved
       return $resolved
     }
   }
-
   throw "May 19 2022 Rec Room client was not found. Run bootstrap-recroom-host.ps1 or set FLUX_RECROOM_CLIENT_DIR to your legally obtained build 8751857 folder."
 }
 
@@ -114,22 +92,11 @@ function Verify-ClientLayout {
   $exe = Find-RecRoomExe
   $assembly = Join-Path $root "GameAssembly.dll"
   if (-not (Test-Path $assembly)) { throw "GameAssembly.dll is missing from $root" }
-
-  $dataCandidates = @(
-    (Join-Path $root "RecRoom_Data"),
-    (Join-Path $root "Recroom_Release_Data")
-  )
-  $data = $dataCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+  $data = @((Join-Path $root "RecRoom_Data"), (Join-Path $root "Recroom_Release_Data")) | Where-Object { Test-Path $_ } | Select-Object -First 1
   if (-not $data) { throw "RecRoom_Data / Recroom_Release_Data is missing from $root" }
-
   $metadata = Join-Path $data "il2cpp_data\Metadata\global-metadata.dat"
   if (-not (Test-Path $metadata)) { throw "IL2CPP global-metadata.dat is missing from $data" }
-
-  return [pscustomobject]@{
-    exe = $exe
-    data = $data
-    metadata = $metadata
-  }
+  return [pscustomobject]@{ exe = $exe; data = $data; metadata = $metadata }
 }
 
 function Invoke-ConfiguredCommand([string]$Command) {
@@ -141,41 +108,37 @@ function Invoke-ConfiguredCommand([string]$Command) {
   $psi.UseShellExecute = $false
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true
-  $process = [System.Diagnostics.Process]::Start($psi)
-  return $process
+  return [System.Diagnostics.Process]::Start($psi)
+}
+
+function Stop-ProcessTree($Process) {
+  if (-not $Process) { return }
+  try { $Process.Refresh() } catch {}
+  if ($Process.HasExited) { return }
+  try {
+    $taskkill = Get-Command taskkill.exe -ErrorAction SilentlyContinue
+    if ($taskkill) {
+      & $taskkill.Source /PID ([string]$Process.Id) /T /F 2>$null | Out-Null
+    } else {
+      Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+    }
+  } catch {
+    try { Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue } catch {}
+  }
 }
 
 function Prepare-ClientRedirect {
   $root = Resolve-ClientDir
   $tool = Join-Path $PSScriptRoot "recroom-tools\redirect-client-urls.mjs"
-  if (-not (Test-Path $tool)) {
-    throw "Missing Rec Room client redirect tool: $tool. Run update-recroom-host.ps1."
-  }
-  $node = Get-Command node.exe -ErrorAction SilentlyContinue
-  if (-not $node) { $node = Get-Command node -ErrorAction SilentlyContinue }
-  if (-not $node) { throw "Node.js is required to prepare the Rec Room client redirect." }
-
+  if (-not (Test-Path $tool)) { throw "Missing Rec Room client redirect tool: $tool. Run update-recroom-host.ps1." }
+  if (-not (Get-Command node.exe -ErrorAction SilentlyContinue) -and -not (Get-Command node -ErrorAction SilentlyContinue)) { throw "Node.js is required to prepare the Rec Room client redirect." }
   $env:FLUX_RECROOM_LOCAL_BASE = "http://127.0.0.1:81"
-  $command = "node `"$tool`" --root `"$root`""
-  $process = Invoke-ConfiguredCommand $command
-  if (-not $process) { throw "Could not start the Rec Room client redirect tool." }
-  if (-not $process.WaitForExit(120000)) {
-    try { $process.Kill() } catch {}
-    throw "Rec Room client redirect scan exceeded 120 seconds."
-  }
-  $stdout = $process.StandardOutput.ReadToEnd()
-  $stderr = $process.StandardError.ReadToEnd()
-  if ($process.ExitCode -ne 0) {
-    throw "Rec Room client redirect could not be verified (exit $($process.ExitCode)): $stderr"
-  }
-  try {
-    $state = $stdout | ConvertFrom-Json
-  } catch {
-    throw "Rec Room client redirect returned invalid diagnostics: $stdout"
-  }
-  if (-not $state.ok -or [int]$state.preparedOccurrences -le 0) {
-    throw "Rec Room client has no verified local rec.net redirects. Refusing to advertise it as playable."
-  }
+  $process = Invoke-ConfiguredCommand "node `"$tool`" --root `"$root`""
+  if (-not $process.WaitForExit(120000)) { Stop-ProcessTree $process; throw "Rec Room client redirect scan exceeded 120 seconds." }
+  $stdout = $process.StandardOutput.ReadToEnd(); $stderr = $process.StandardError.ReadToEnd()
+  if ($process.ExitCode -ne 0) { throw "Rec Room client redirect could not be verified (exit $($process.ExitCode)): $stderr" }
+  try { $state = $stdout | ConvertFrom-Json } catch { throw "Rec Room client redirect returned invalid diagnostics: $stdout" }
+  if (-not $state.ok -or [int]$state.preparedOccurrences -le 0) { throw "Rec Room client has no verified local rec.net redirects. Refusing to advertise it as playable." }
   $script:RedirectState = $state
   Write-Host "Verified Rec Room local redirects: $($state.preparedOccurrences) occurrence(s) across $($state.inspectedFiles) inspected files." -ForegroundColor Green
   return $state
@@ -185,19 +148,11 @@ function Resolve-StreamUrl {
   if ($script:cfg.streamStartCommand) {
     $process = Invoke-ConfiguredCommand ([string]$script:cfg.streamStartCommand)
     if ($process) {
-      if (-not $process.WaitForExit(60000)) {
-        try { $process.Kill() } catch {}
-        throw "streamStartCommand did not finish within 60 seconds."
-      }
-      $stdout = $process.StandardOutput.ReadToEnd()
-      $stderr = $process.StandardError.ReadToEnd()
-      if ($process.ExitCode -ne 0) {
-        throw "streamStartCommand failed: $stderr"
-      }
+      if (-not $process.WaitForExit(60000)) { Stop-ProcessTree $process; throw "streamStartCommand did not finish within 60 seconds." }
+      $stdout = $process.StandardOutput.ReadToEnd(); $stderr = $process.StandardError.ReadToEnd()
+      if ($process.ExitCode -ne 0) { throw "streamStartCommand failed: $stderr" }
       $matches = [regex]::Matches($stdout, 'https://[^\s"''<>]+')
-      if ($matches.Count -gt 0) {
-        return $matches[$matches.Count - 1].Value.Trim()
-      }
+      if ($matches.Count -gt 0) { return $matches[$matches.Count - 1].Value.Trim() }
       if ($stdout.Trim()) { return $stdout.Trim() }
     }
   }
@@ -206,13 +161,11 @@ function Resolve-StreamUrl {
 
 function Start-Adapter($job) {
   if (-not $script:cfg.adapterCommand) { return }
-
   $env:FLUX_RECROOM_GATEWAY_URL = [string]$job.gatewayUrl
   $env:FLUX_RECROOM_SESSION_TOKEN = [string]$job.recnetSessionToken
   $env:FLUX_RECROOM_CLIENT_DIR = [string]$script:cfg.clientDir
   $env:FLUX_RECROOM_BUILD = $TargetBuild
   $env:FLUX_RECROOM_PROXY_PORT = "81"
-
   $script:AdapterProcess = Invoke-ConfiguredCommand ([string]$script:cfg.adapterCommand)
   Start-Sleep -Milliseconds 900
   if ($script:AdapterProcess -and $script:AdapterProcess.HasExited -and $script:AdapterProcess.ExitCode -ne 0) {
@@ -222,28 +175,20 @@ function Start-Adapter($job) {
   try {
     $health = Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:81/flux/local-health" -TimeoutSec 5
     if (-not $health.ok) { throw "proxy health returned not-ok" }
-  } catch {
-    throw "Rec Room local proxy is not reachable on port 81: $($_.Exception.Message)"
-  }
+  } catch { throw "Rec Room local proxy is not reachable on port 81: $($_.Exception.Message)" }
 }
 
 function Stop-Stream {
   if (-not $script:cfg.streamStopCommand) { return }
   try {
     $process = Invoke-ConfiguredCommand ([string]$script:cfg.streamStopCommand)
-    if ($process) { [void]$process.WaitForExit(15000) }
-  } catch {
-    Write-Host ("Could not stop browser stream cleanly: " + $_.Exception.Message) -ForegroundColor Yellow
-  }
+    if ($process -and -not $process.WaitForExit(15000)) { Stop-ProcessTree $process }
+  } catch { Write-Host ("Could not stop browser stream cleanly: " + $_.Exception.Message) -ForegroundColor Yellow }
 }
 
 function Stop-CurrentSession {
-  if ($script:GameProcess -and -not $script:GameProcess.HasExited) {
-    try { Stop-Process -Id $script:GameProcess.Id -Force -ErrorAction SilentlyContinue } catch {}
-  }
-  if ($script:AdapterProcess -and -not $script:AdapterProcess.HasExited) {
-    try { Stop-Process -Id $script:AdapterProcess.Id -Force -ErrorAction SilentlyContinue } catch {}
-  }
+  Stop-ProcessTree $script:GameProcess
+  Stop-ProcessTree $script:AdapterProcess
   Stop-Stream
   $script:GameProcess = $null
   $script:AdapterProcess = $null
@@ -252,62 +197,32 @@ function Stop-CurrentSession {
 }
 
 function Fail-Session([string]$SessionId, [string]$Message) {
-  try {
-    [void](Api-Post "/api/recroom/hosts/$($script:cfg.hostId)/sessions/$SessionId/failed" @{
-      error = $Message
-    })
-  } catch {
-    Write-Host ("Could not report failure: " + $_.Exception.Message) -ForegroundColor Yellow
-  }
+  try { [void](Api-Post "/api/recroom/hosts/$($script:cfg.hostId)/sessions/$SessionId/failed" @{ error = $Message }) }
+  catch { Write-Host ("Could not report failure: " + $_.Exception.Message) -ForegroundColor Yellow }
 }
 
 function Start-Session($job) {
-  if ($script:ActiveSessionId) {
-    throw "Host is already serving session $($script:ActiveSessionId)."
-  }
-
+  if ($script:ActiveSessionId) { throw "Host is already serving session $($script:ActiveSessionId)." }
   $layout = Verify-ClientLayout
   $script:ActiveSessionId = [string]$job.sessionId
-
   try {
     [void](Prepare-ClientRedirect)
     Start-Adapter $job
-
     $env:FLUX_RECNET_URL = "http://127.0.0.1:81"
     $env:FLUX_RECNET = "http://127.0.0.1:81"
     $env:FLUX_RECROOM_SESSION_TOKEN = [string]$job.recnetSessionToken
     $env:FLUX_RECROOM_BUILD = $TargetBuild
     $env:FLUX_PLAYER_ACCOUNT_ID = [string]$job.account.accountId
     $env:FLUX_PLAYER_USERNAME = [string]$job.account.username
-
-    $args = @(
-      "-screen-fullscreen", "0",
-      "-screen-width", "1920",
-      "-screen-height", "1080",
-      "-force-d3d11"
-    )
-    $script:GameProcess = Start-Process -FilePath $layout.exe -WorkingDirectory ([string]$script:cfg.clientDir) -ArgumentList $args -PassThru
+    $script:GameProcess = Start-Process -FilePath $layout.exe -WorkingDirectory ([string]$script:cfg.clientDir) -ArgumentList @("-screen-fullscreen", "0", "-screen-width", "1920", "-screen-height", "1080", "-force-d3d11") -PassThru
     $env:FLUX_RECROOM_GAME_PID = [string]$script:GameProcess.Id
-
     Start-Sleep -Seconds 2
-    if ($script:GameProcess.HasExited) {
-      throw "Rec Room exited immediately with code $($script:GameProcess.ExitCode)."
-    }
-
+    if ($script:GameProcess.HasExited) { throw "Rec Room exited immediately with code $($script:GameProcess.ExitCode)." }
     $streamUrl = Resolve-StreamUrl
-    if (-not $streamUrl -or -not ($streamUrl.StartsWith("https://") -or $env:RECROOM_ALLOW_HTTP_STREAMS -eq "1")) {
-      throw "No HTTPS browser stream could be started for this Windows host."
-    }
-
+    if (-not $streamUrl -or -not ($streamUrl.StartsWith("https://") -or $env:RECROOM_ALLOW_HTTP_STREAMS -eq "1")) { throw "No HTTPS browser stream could be started for this Windows host." }
     [void](Api-Post "/api/recroom/hosts/$($script:cfg.hostId)/sessions/$($job.sessionId)/ready" @{
-      streamUrl = $streamUrl
-      processId = $script:GameProcess.Id
-      resolution = "1920x1080"
-      streamer = "flux-browser-control-v1.2"
-      redirectOccurrences = [int]$script:RedirectState.preparedOccurrences
-      proxyPort = 81
+      streamUrl = $streamUrl; processId = $script:GameProcess.Id; resolution = "1920x1080"; streamer = "flux-browser-control-v1.2"; redirectOccurrences = [int]$script:RedirectState.preparedOccurrences; proxyPort = 81
     })
-
     Write-Host "Rec Room session $($job.sessionId) is ready." -ForegroundColor Green
   } catch {
     $message = $_.Exception.Message
@@ -319,8 +234,7 @@ function Start-Session($job) {
 
 function Handle-Job($job) {
   if (-not $job) { return }
-  $type = [string]$job.type
-  switch ($type) {
+  switch ([string]$job.type) {
     "start-session" { Start-Session $job; break }
     "stop-session" {
       if ([string]$job.sessionId -eq $script:ActiveSessionId) {
@@ -329,7 +243,7 @@ function Handle-Job($job) {
       }
       break
     }
-    default { Write-Host "Unknown broker job: $type" -ForegroundColor Yellow }
+    default { Write-Host "Unknown broker job: $($job.type)" -ForegroundColor Yellow }
   }
 }
 
@@ -346,21 +260,8 @@ Write-Host "Client redirect: verified ($($redirect.preparedOccurrences) local en
 Write-Host "Browser stream: automatic HTTPS tunnel when a session starts"
 
 $register = Api-Post "/api/recroom/hosts/register" @{
-  hostId = [string]$script:cfg.hostId
-  name = [string]$script:cfg.name
-  builds = @($TargetBuild)
-  capacity = $capacity
-  metadata = @{
-    computer = $env:COMPUTERNAME
-    os = [Environment]::OSVersion.VersionString
-    clientDir = [string]$script:cfg.clientDir
-    browserStream = $true
-    touchControls = $true
-    targetSteamBuild = "8751857"
-    redirectReady = $true
-    redirectOccurrences = [int]$redirect.preparedOccurrences
-    localProxyPort = 81
-  }
+  hostId = [string]$script:cfg.hostId; name = [string]$script:cfg.name; builds = @($TargetBuild); capacity = $capacity
+  metadata = @{ computer = $env:COMPUTERNAME; os = [Environment]::OSVersion.VersionString; clientDir = [string]$script:cfg.clientDir; browserStream = $true; touchControls = $true; targetSteamBuild = "8751857"; redirectReady = $true; redirectOccurrences = [int]$redirect.preparedOccurrences; localProxyPort = 81 }
 }
 Write-Host "Registered host $($register.hostId)." -ForegroundColor Green
 
@@ -370,26 +271,15 @@ while ($true) {
     if (($now - $script:LastHeartbeat).TotalSeconds -ge 10) {
       $gameRunning = [bool]($script:GameProcess -and -not $script:GameProcess.HasExited)
       [void](Api-Post "/api/recroom/hosts/$($script:cfg.hostId)/heartbeat" @{
-        metadata = @{
-          gameRunning = $gameRunning
-          activeSessionId = $script:ActiveSessionId
-          clientReady = $true
-          redirectReady = $true
-          redirectOccurrences = [int]$script:RedirectState.preparedOccurrences
-          browserStream = $true
-          touchControls = $true
-        }
+        metadata = @{ gameRunning = $gameRunning; activeSessionId = $script:ActiveSessionId; clientReady = $true; redirectReady = $true; redirectOccurrences = [int]$script:RedirectState.preparedOccurrences; browserStream = $true; touchControls = $true }
       })
       $script:LastHeartbeat = $now
     }
-
     if ($script:ActiveSessionId -and $script:GameProcess -and $script:GameProcess.HasExited) {
-      $sid = $script:ActiveSessionId
-      $code = $script:GameProcess.ExitCode
+      $sid = $script:ActiveSessionId; $code = $script:GameProcess.ExitCode
       Fail-Session $sid "Rec Room process exited unexpectedly with code $code."
       Stop-CurrentSession
     }
-
     $response = Api-Get "/api/recroom/hosts/$($script:cfg.hostId)/jobs"
     if ($response.job) { Handle-Job $response.job }
     Start-Sleep -Milliseconds 1000
@@ -398,18 +288,8 @@ while ($true) {
     Start-Sleep -Seconds 5
     try {
       [void](Api-Post "/api/recroom/hosts/register" @{
-        hostId = [string]$script:cfg.hostId
-        name = [string]$script:cfg.name
-        builds = @($TargetBuild)
-        capacity = $capacity
-        metadata = @{
-          computer = $env:COMPUTERNAME
-          clientReady = $true
-          redirectReady = $true
-          redirectOccurrences = [int]$script:RedirectState.preparedOccurrences
-          browserStream = $true
-          touchControls = $true
-        }
+        hostId = [string]$script:cfg.hostId; name = [string]$script:cfg.name; builds = @($TargetBuild); capacity = $capacity
+        metadata = @{ computer = $env:COMPUTERNAME; clientReady = $true; redirectReady = $true; redirectOccurrences = [int]$script:RedirectState.preparedOccurrences; browserStream = $true; touchControls = $true }
       })
     } catch {}
   }
