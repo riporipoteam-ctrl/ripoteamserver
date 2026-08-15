@@ -8,6 +8,7 @@ on:
     paths:
       - "hf-space/recroom_autoload.py"
       - "hf-space/recroom_compat.py"
+      - "hf-space/recroom_compat_extra.py"
       - "hf-space/recroom_broker.py"
       - "hf-space/recroom_capture.py"
       - "hf-space/recroom_gateway.py"
@@ -20,6 +21,7 @@ on:
     paths:
       - "hf-space/recroom_autoload.py"
       - "hf-space/recroom_compat.py"
+      - "hf-space/recroom_compat_extra.py"
       - "hf-space/recroom_broker.py"
       - "hf-space/recroom_capture.py"
       - "hf-space/recroom_gateway.py"
@@ -46,6 +48,7 @@ jobs:
           python -m py_compile
           hf-space/recroom_autoload.py
           hf-space/recroom_compat.py
+          hf-space/recroom_compat_extra.py
           hf-space/recroom_broker.py
           hf-space/recroom_capture.py
           hf-space/recroom_gateway.py
@@ -60,6 +63,10 @@ jobs:
           grep -q 'openid-configuration/jwks' hf-space/recroom_compat.py
           grep -q 'Matchmaking/player/qos' hf-space/recroom_compat.py
           grep -q 'Room_server/rooms/{room_id}' hf-space/recroom_compat.py
+          grep -q 'api/gameconfigs/v1/all' hf-space/recroom_compat_extra.py
+          grep -q 'api/relationships/v2/get' hf-space/recroom_compat_extra.py
+          grep -q 'outfits/me/saved' hf-space/recroom_compat_extra.py
+          grep -q 'econ/roomInventory/room/{room_id}' hf-space/recroom_compat_extra.py
       - name: Validate Windows agent PowerShell syntax
         shell: pwsh
         run: |
