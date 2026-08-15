@@ -26,7 +26,7 @@ $report = [ordered]@{
   gamePid = 0
   windowReady = $false
   streamReady = $false
-  publicStreamUrl = ""
+  streamUrl = ""
   checkpoints = @()
   inputsSent = @()
   processExited = $false
@@ -135,9 +135,6 @@ function Capture-Checkpoint([string]$FrameUrl, [string]$Name) {
 }
 
 function Collect-UnityLogs([DateTimeOffset]$Since) {
-  # Avoid recursive scans of all AppData/Temp. Those can take minutes on a busy
-  # Windows host. Only inspect known Rec Room/Unity-style locations plus the
-  # client directory itself.
   $roots = @(
     (Join-Path $env:USERPROFILE "AppData\LocalLow\Against Gravity\Rec Room"),
     (Join-Path $env:USERPROFILE "AppData\LocalLow\Against Gravity Corp\Rec Room"),
@@ -192,17 +189,20 @@ try {
   Start-Sleep -Seconds 2
   if ($gameProcess.HasExited) { throw "Rec Room exited immediately with code $($gameProcess.ExitCode)." }
 
+  # The public HTTPS tunnel is tested independently in recroom-windows-host-ci.
+  # A diagnostic run should not depend on external tunnel availability, so use
+  # the exact same capture/input server locally for deterministic game testing.
   $streamScript = Join-Path $PSScriptRoot "start-recroom-browser-stream.ps1"
-  $streamLines = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $streamScript)
-  if ($LASTEXITCODE -ne 0) { throw "Browser stream launcher failed." }
-  $publicUrl = [string]($streamLines | Where-Object { $_ -match '^https://' } | Select-Object -Last 1)
-  if (-not $publicUrl) { throw "Browser stream did not return an HTTPS URL." }
+  $streamLines = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $streamScript -LocalOnly)
+  if ($LASTEXITCODE -ne 0) { throw "Local browser stream launcher failed." }
+  $streamUrl = [string]($streamLines | Where-Object { $_ -match '^http://127\.0\.0\.1:' } | Select-Object -Last 1)
+  if (-not $streamUrl) { throw "Local browser stream did not return a control URL." }
   $streamStarted = $true
   $report.streamReady = $true
-  $report.publicStreamUrl = $publicUrl
+  $report.streamUrl = $streamUrl
   $report.windowReady = $true
 
-  $token = Parse-Token $publicUrl
+  $token = Parse-Token $streamUrl
   if (-not $token) { throw "Could not extract stream control token." }
   $encoded = [Uri]::EscapeDataString($token)
   $frameUrl = "http://127.0.0.1:6081/frame.jpg?token=$encoded"
