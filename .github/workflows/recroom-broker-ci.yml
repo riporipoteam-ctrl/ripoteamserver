@@ -54,8 +54,10 @@ jobs:
         shell: pwsh
         run: |
           foreach ($script in @(
+            "windows-live-agent/install-recroom-host.ps1",
             "windows-live-agent/recroom-agent.ps1",
             "windows-live-agent/recroom-capture-agent.ps1",
+            "windows-live-agent/playtest-recroom-client.ps1",
             "windows-live-agent/start-recroom-host.ps1",
             "windows-live-agent/update-recroom-host.ps1",
             "windows-live-agent/bootstrap-recroom-host.ps1",
@@ -83,10 +85,14 @@ jobs:
           if (-not $cfg.streamStartCommand -or -not $cfg.streamStopCommand) { throw "Built-in browser stream commands are required." }
       - name: Verify automatic host assets are present
         run: |
+          test -f windows-live-agent/install-recroom-host.ps1
           test -f windows-live-agent/recroom-web-stream.py
+          test -f windows-live-agent/playtest-recroom-client.ps1
           test -f windows-live-agent/bootstrap-recroom-host.ps1
           test -f windows-live-agent/download-recroom-client.ps1
           test -f windows-live-agent/start-recroom-browser-stream.ps1
           test -f windows-live-agent/stop-recroom-browser-stream.ps1
           grep -q 'Pillow' windows-live-agent/requirements.txt
           grep -q '6337851004861751095' windows-live-agent/download-recroom-client.ps1
+          grep -q 'redirect-client-urls.mjs' windows-live-agent/install-recroom-host.ps1
+          grep -q 'playtest-recroom-client.ps1' windows-live-agent/update-recroom-host.ps1
