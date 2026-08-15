@@ -1,0 +1,71 @@
+name: Rec Room Broker CI
+
+on:
+  push:
+    branches:
+      - feat/recroom-session-broker
+    paths:
+      - "hf-space/recroom_broker.py"
+      - "hf-space/recroom_capture.py"
+      - "hf-space/recroom_gateway.py"
+      - "hf-space/recroom_public.py"
+      - "hf-space/app_server_v2.py"
+      - "windows-live-agent/recroom-agent.ps1"
+      - "windows-live-agent/recroom-capture-agent.ps1"
+      - "windows-live-agent/start-recroom-host.ps1"
+      - "windows-live-agent/update-recroom-host.ps1"
+      - "windows-live-agent/recroom-agent-config.example.json"
+      - ".github/workflows/recroom-broker-ci.yml"
+  pull_request:
+    paths:
+      - "hf-space/recroom_broker.py"
+      - "hf-space/recroom_capture.py"
+      - "hf-space/recroom_gateway.py"
+      - "hf-space/recroom_public.py"
+      - "hf-space/app_server_v2.py"
+      - "windows-live-agent/recroom-agent.ps1"
+      - "windows-live-agent/recroom-capture-agent.ps1"
+      - "windows-live-agent/start-recroom-host.ps1"
+      - "windows-live-agent/update-recroom-host.ps1"
+      - "windows-live-agent/recroom-agent-config.example.json"
+      - ".github/workflows/recroom-broker-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile Rec Room Python
+        run: python -m py_compile hf-space/recroom_broker.py hf-space/recroom_capture.py hf-space/recroom_gateway.py hf-space/recroom_public.py hf-space/app_server_v2.py
+      - name: Validate Windows agent PowerShell syntax
+        shell: pwsh
+        run: |
+          foreach ($script in @(
+            "windows-live-agent/recroom-agent.ps1",
+            "windows-live-agent/recroom-capture-agent.ps1",
+            "windows-live-agent/start-recroom-host.ps1",
+            "windows-live-agent/update-recroom-host.ps1"
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $script),
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$script :: $($_.Message)" }
+              exit 1
+            }
+          }
+      - name: Validate host config JSON
+        shell: pwsh
+        run: |
+          Get-Content "windows-live-agent/recroom-agent-config.example.json" -Raw | ConvertFrom-Json | Out-Null
