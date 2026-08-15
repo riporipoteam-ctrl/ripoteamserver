@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import secrets
+import threading
+import time
 from typing import Any
 
 from fastapi import Body, Header, HTTPException, Query
@@ -8,6 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 
 TARGET_BUILD_ID = "recroom-2022-05-19"
+PAIRING_TTL_SECONDS = 10 * 60
 
 
 def install_recroom_public_routes(app: Any, broker: Any, capture: Any) -> None:
@@ -22,6 +26,15 @@ def install_recroom_public_routes(app: Any, broker: Any, capture: Any) -> None:
     remain on the private host-key routes in recroom_broker.py/recroom_capture.py.
     """
 
+    pairing_lock = threading.RLock()
+    pairing_codes: dict[str, float] = {}
+
+    def prune_pairing_codes() -> None:
+        now = time.time()
+        for code, expires_at in list(pairing_codes.items()):
+            if expires_at <= now:
+                pairing_codes.pop(code, None)
+
     @app.get("/api/recroom-public/status")
     async def recroom_public_status() -> JSONResponse:
         status = broker.status()
@@ -32,6 +45,56 @@ def install_recroom_public_routes(app: Any, broker: Any, capture: Any) -> None:
                 "configured": bool(status.get("configured")),
                 "onlineHosts": int(status.get("onlineHosts") or 0),
                 "sessions": int(status.get("sessions") or 0),
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/api/recroom-public/host-pairing")
+    async def create_host_pairing(
+        authorization: str | None = Header(default=None),
+    ) -> JSONResponse:
+        identity = await asyncio.to_thread(broker.verify_flux_user, authorization)
+        account = identity.get("account") if isinstance(identity, dict) else None
+        if not isinstance(account, dict) or not bool(account.get("isAdmin")):
+            raise HTTPException(status_code=403, detail="Flux administrator access is required to pair a Windows host.")
+        if not broker.host_key:
+            raise HTTPException(status_code=503, detail="Rec Room host authentication is not configured.")
+
+        code = secrets.token_urlsafe(15)
+        expires_at = time.time() + PAIRING_TTL_SECONDS
+        with pairing_lock:
+            prune_pairing_codes()
+            pairing_codes[code] = expires_at
+        broker._audit("host.pairing.create", uid=identity.get("uid"), expires_at=expires_at)
+        return JSONResponse(
+            {
+                "ok": True,
+                "pairingCode": code,
+                "expiresAtMs": int(expires_at * 1000),
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/api/recroom-public/host-pairing/claim")
+    async def claim_host_pairing(
+        payload: dict[str, Any] = Body(default_factory=dict),
+    ) -> JSONResponse:
+        code = str(payload.get("pairingCode") or "").strip()
+        if not code:
+            raise HTTPException(status_code=400, detail="pairingCode is required.")
+        with pairing_lock:
+            prune_pairing_codes()
+            expires_at = pairing_codes.pop(code, None)
+        if not expires_at or expires_at <= time.time():
+            raise HTTPException(status_code=401, detail="Pairing code is invalid, expired, or already used.")
+        if not broker.host_key:
+            raise HTTPException(status_code=503, detail="Rec Room host authentication is not configured.")
+        broker._audit("host.pairing.claim")
+        return JSONResponse(
+            {
+                "ok": True,
+                "hostKey": broker.host_key,
+                "server": str(getattr(broker, "gateway_url", "") or "").rstrip("/"),
             },
             headers={"Cache-Control": "no-store"},
         )
