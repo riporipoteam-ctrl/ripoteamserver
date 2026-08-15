@@ -22,7 +22,7 @@ jobs:
           python-version: "3.12"
       - name: Install stream dependency
         run: python -m pip install "Pillow>=10,<12"
-      - name: Exercise client discovery bootstrap
+      - name: Exercise real one-command installer and client discovery
         shell: pwsh
         run: |
           $fake = Join-Path $env:RUNNER_TEMP "May 19 2022"
@@ -32,13 +32,17 @@ jobs:
           New-Item -ItemType File -Force -Path (Join-Path $fake "Recroom_Release_Data\il2cpp_data\Metadata\global-metadata.dat") | Out-Null
           $env:FLUX_RECROOM_CLIENT_DIR = $fake
           $env:RECROOM_HOST_KEY = "ci-test-only"
-          $config = Join-Path $env:RUNNER_TEMP "recroom-agent-config.json"
-          & .\windows-live-agent\bootstrap-recroom-host.ps1 -Config $config
+          $installDir = Join-Path $env:RUNNER_TEMP "RipoTeamRecRoomHost"
+          & .\windows-live-agent\install-recroom-host.ps1 -InstallDir $installDir
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $config = Join-Path $installDir "recroom-agent-config.json"
+          if (-not (Test-Path $config)) { throw "One-command installer did not create the host config." }
           $cfg = Get-Content $config -Raw | ConvertFrom-Json
-          if ($cfg.clientDir -ne $fake) { throw "Bootstrap did not preserve discovered client directory." }
-          if ($cfg.updateRef -ne "main") { throw "Bootstrap generated a stale update ref." }
-          if (-not $cfg.streamStartCommand -or -not $cfg.streamStopCommand) { throw "Bootstrap did not configure automatic streaming." }
+          if ($cfg.clientDir -ne $fake) { throw "Installer did not preserve discovered client directory." }
+          if ($cfg.updateRef -ne "main") { throw "Installer generated a stale update ref." }
+          if ($cfg.hostKey -ne "ci-test-only") { throw "Installer did not preserve the paired host credential." }
+          if (-not $cfg.streamStartCommand -or -not $cfg.streamStopCommand) { throw "Installer did not configure automatic streaming." }
+          "RECROOM_INSTALL_DIR=$installDir" | Out-File $env:GITHUB_ENV -Append
       - name: Launch a real Windows test window
         shell: pwsh
         run: |
@@ -61,7 +65,9 @@ jobs:
         shell: pwsh
         run: |
           $env:FLUX_RECROOM_GAME_PID = $env:TEST_WINDOW_PID
-          $lines = @(& .\windows-live-agent\start-recroom-browser-stream.ps1)
+          $startStream = Join-Path $env:RECROOM_INSTALL_DIR "start-recroom-browser-stream.ps1"
+          $stopStream = Join-Path $env:RECROOM_INSTALL_DIR "stop-recroom-browser-stream.ps1"
+          $lines = @(& $startStream)
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $url = [string]($lines | Where-Object { $_ -match '^https://' } | Select-Object -Last 1)
           if (-not $url -or $url -notmatch '^https://.+\.trycloudflare\.com/\?token=') { throw "Automatic browser stream did not return a tokenized HTTPS URL: $url" }
@@ -81,10 +87,10 @@ jobs:
           $bytes = [IO.File]::ReadAllBytes($frame)
           if ($bytes[0] -ne 0xFF -or $bytes[1] -ne 0xD8) { throw "Public frame was not JPEG data." }
           Write-Host "PUBLIC_FRAME_OK=true bytes=$($bytes.Length)"
-          & .\windows-live-agent\stop-recroom-browser-stream.ps1
+          & $stopStream
       - name: Verify stream processes cleaned up
         shell: pwsh
         run: |
-          $state = ".\windows-live-agent\recroom-stream-state.json"
+          $state = Join-Path $env:RECROOM_INSTALL_DIR "recroom-stream-state.json"
           if (Test-Path $state) { throw "Stream state file survived cleanup." }
           Stop-Process -Id ([int]$env:TEST_WINDOW_PID) -Force -ErrorAction SilentlyContinue
