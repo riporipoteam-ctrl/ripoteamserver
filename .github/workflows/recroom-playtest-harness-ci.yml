@@ -1,0 +1,132 @@
+name: Rec Room Playtest Harness CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "windows-live-agent/**"
+      - ".github/workflows/recroom-playtest-harness-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-client-pipeline-fixture:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install capture dependency
+        run: python -m pip install "Pillow>=10,<12"
+      - name: Compile a Windows game fixture with embedded rec.net endpoints
+        shell: pwsh
+        run: |
+          $gameDir = Join-Path $env:RUNNER_TEMP "May 19 2022 Playtest Fixture"
+          New-Item -ItemType Directory -Force -Path (Join-Path $gameDir "Recroom_Release_Data\il2cpp_data\Metadata") | Out-Null
+          $source = Join-Path $env:RUNNER_TEMP "RecRoomFixture.cs"
+          @'
+          using System;
+          using System.Drawing;
+          using System.Windows.Forms;
+
+          public class RecRoomFixture : Form {
+              private readonly Label label = new Label();
+              private readonly Timer timer = new Timer();
+              private int tick = 0;
+              public RecRoomFixture() {
+                  Text = "Rec Room May 2022 Playtest Fixture";
+                  ClientSize = new Size(1000, 650);
+                  StartPosition = FormStartPosition.Manual;
+                  Location = new Point(40, 40);
+                  BackColor = Color.FromArgb(18, 28, 45);
+                  KeyPreview = true;
+                  label.Dock = DockStyle.Fill;
+                  label.TextAlign = ContentAlignment.MiddleCenter;
+                  label.Font = new Font("Arial", 28, FontStyle.Bold);
+                  label.ForeColor = Color.White;
+                  label.Text = "REC ROOM CLIENT PLAYTEST FIXTURE";
+                  Controls.Add(label);
+                  KeyDown += (s, e) => { label.Text = "KEY " + e.KeyCode; BackColor = Color.FromArgb(30, 70, 95); };
+                  MouseDown += (s, e) => { label.Text = "MOUSE " + e.Button; BackColor = Color.FromArgb(70, 45, 95); };
+                  MouseMove += (s, e) => { if (e.X % 17 == 0) label.Text = "LOOK " + e.X + "," + e.Y; };
+                  timer.Interval = 450;
+                  timer.Tick += (s, e) => { tick++; label.Text = "RUNNING FRAME " + tick; BackColor = Color.FromArgb(18 + (tick * 7) % 70, 28 + (tick * 5) % 70, 45 + (tick * 3) % 70); };
+                  timer.Start();
+              }
+              [STAThread]
+              public static void Main() {
+                  Application.EnableVisualStyles();
+                  Application.SetCompatibleTextRenderingDefault(false);
+                  Application.Run(new RecRoomFixture());
+              }
+          }
+          '@ | Set-Content $source -Encoding UTF8
+          $csc = "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          if (-not (Test-Path $csc)) { throw "C# compiler was not found." }
+          $exe = Join-Path $gameDir "Recroom_Release.exe"
+          & $csc /nologo /target:winexe /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /out:$exe $source
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $exe)) { throw "Could not compile the Windows game fixture." }
+          # PE files tolerate an overlay. Put realistic endpoint constants there so
+          # the exact same binary redirector used for Rec Room must patch them.
+          $ascii = [Text.Encoding]::ASCII.GetBytes("`0https://accounts.rec.net/Accounts/account/me`0https://api.rec.net/api/config/v2`0")
+          $utf16 = [Text.Encoding]::Unicode.GetBytes("`0https://rooms.rec.net/rooms/123`0https://match.rec.net/Matchmaking/player/login`0")
+          $stream = [IO.File]::Open($exe, [IO.FileMode]::Append, [IO.FileAccess]::Write)
+          try { $stream.Write($ascii, 0, $ascii.Length); $stream.Write($utf16, 0, $utf16.Length) } finally { $stream.Dispose() }
+          [IO.File]::WriteAllBytes((Join-Path $gameDir "GameAssembly.dll"), [Text.Encoding]::ASCII.GetBytes("https://auth.rec.net/auth"))
+          [IO.File]::WriteAllBytes((Join-Path $gameDir "Recroom_Release_Data\il2cpp_data\Metadata\global-metadata.dat"), [Text.Encoding]::ASCII.GetBytes("fixture metadata"))
+          "FIXTURE_GAME_DIR=$gameDir" | Out-File $env:GITHUB_ENV -Append
+      - name: Install the exact Flux Windows host package
+        shell: pwsh
+        run: |
+          $env:FLUX_RECROOM_CLIENT_DIR = $env:FIXTURE_GAME_DIR
+          $env:RECROOM_HOST_KEY = "playtest-ci-only"
+          $installDir = Join-Path $env:RUNNER_TEMP "RipoTeamRecRoomPlaytest"
+          & .\windows-live-agent\install-recroom-host.ps1 -InstallDir $installDir
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($required in @(
+            "playtest-recroom-client.ps1",
+            "recroom-tools\redirect-client-urls.mjs",
+            "recroom-tools\host-proxy.mjs",
+            "start-recroom-browser-stream.ps1",
+            "recroom-web-stream.py"
+          )) {
+            if (-not (Test-Path (Join-Path $installDir $required))) { throw "Installer omitted $required" }
+          }
+          "PLAYTEST_INSTALL_DIR=$installDir" | Out-File $env:GITHUB_ENV -Append
+      - name: Run the full client playtest pipeline
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP "playtest-evidence"
+          $script = Join-Path $env:PLAYTEST_INSTALL_DIR "playtest-recroom-client.ps1"
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script `
+            -ClientDir $env:FIXTURE_GAME_DIR `
+            -GatewayUrl "http://127.0.0.1:9099" `
+            -SessionToken "fixture-session-token" `
+            -DurationSeconds 12 `
+            -OutputDir $output
+          if ($LASTEXITCODE -ne 0) {
+            if (Test-Path (Join-Path $output "playtest-report.json")) { Get-Content (Join-Path $output "playtest-report.json") -Raw }
+            throw "Real-client playtest harness returned failure."
+          }
+          $report = Get-Content (Join-Path $output "playtest-report.json") -Raw | ConvertFrom-Json
+          if (-not $report.ok) { throw "Playtest report was not OK." }
+          if (-not $report.proxyReady -or -not $report.windowReady -or -not $report.streamReady) { throw "Playtest did not cross proxy/window/stream gates." }
+          if ([int]$report.redirectOccurrences -lt 4) { throw "Playtest did not redirect enough embedded Rec Room endpoints." }
+          if ($report.checkpoints.Count -lt 3) { throw "Playtest did not capture enough checkpoints." }
+          if ($report.inputsSent.Count -lt 8) { throw "Playtest did not send the gameplay sequence." }
+          $hashes = @($report.checkpoints | ForEach-Object { $_.sha256 } | Select-Object -Unique)
+          if ($hashes.Count -lt 2) { throw "Playtest screenshots did not change." }
+          Write-Host "RECROOM_REAL_CLIENT_PIPELINE_FIXTURE_OK=true"
+          Get-Content (Join-Path $output "playtest-report.json") -Raw
+          "PLAYTEST_OUTPUT=$output" | Out-File $env:GITHUB_ENV -Append
+      - name: Upload playtest diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recroom-playtest-harness-${{ github.run_id }}
+          path: ${{ env.PLAYTEST_OUTPUT }}
+          if-no-files-found: warn
