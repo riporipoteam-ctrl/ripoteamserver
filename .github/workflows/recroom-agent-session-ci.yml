@@ -31,8 +31,7 @@ jobs:
             public AgentFixture() {
               Text = "Rec Room Agent CI Fixture"; ClientSize = new Size(900, 600); StartPosition = FormStartPosition.Manual; Location = new Point(30,30);
               var label = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Text = "REC ROOM AGENT SESSION", Font = new Font("Arial", 28, FontStyle.Bold) };
-              Controls.Add(label);
-              var timer = new Timer { Interval = 500 }; int n=0; timer.Tick += (s,e) => { n++; label.Text = "SESSION FRAME " + n; }; timer.Start();
+              Controls.Add(label); var timer = new Timer { Interval = 500 }; int n=0; timer.Tick += (s,e) => { n++; label.Text = "SESSION FRAME " + n; }; timer.Start();
             }
             [STAThread] public static void Main() { Application.EnableVisualStyles(); Application.Run(new AgentFixture()); }
           }
@@ -48,89 +47,73 @@ jobs:
       - name: Install host package and configure mock session
         shell: pwsh
         run: |
-          $env:FLUX_RECROOM_CLIENT_DIR=$env:AGENT_GAME_DIR
-          $env:RECROOM_HOST_KEY="ci-host-key"
+          $env:FLUX_RECROOM_CLIENT_DIR=$env:AGENT_GAME_DIR; $env:RECROOM_HOST_KEY="ci-host-key"
           $installDir=Join-Path $env:RUNNER_TEMP "AgentHost"
           & .\windows-live-agent\install-recroom-host.ps1 -InstallDir $installDir
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
-          $config=Join-Path $installDir "recroom-agent-config.json"
-          $cfg=Get-Content $config -Raw|ConvertFrom-Json
-          $cfg.server="http://127.0.0.1:18082"
-          $cfg.hostKey="ci-host-key"
-          $cfg.hostId="ci-win-host"
-          $cfg.clientDir=$env:AGENT_GAME_DIR
-          $cfg.streamUrl="https://example.invalid/flux-recroom-ci-stream"
-          $cfg.streamStartCommand=""
-          $cfg.streamStopCommand=""
-          $cfg.autoUpdate=$false
+          $config=Join-Path $installDir "recroom-agent-config.json"; $cfg=Get-Content $config -Raw|ConvertFrom-Json
+          $cfg.server="http://127.0.0.1:18082"; $cfg.hostKey="ci-host-key"; $cfg.hostId="ci-win-host"; $cfg.clientDir=$env:AGENT_GAME_DIR
+          $cfg.streamUrl="https://example.invalid/flux-recroom-ci-stream"; $cfg.streamStartCommand=""; $cfg.streamStopCommand=""; $cfg.autoUpdate=$false
           $cfg|ConvertTo-Json -Depth 8|Set-Content $config -Encoding UTF8
-          "AGENT_INSTALL_DIR=$installDir"|Out-File $env:GITHUB_ENV -Append
-          "AGENT_CONFIG=$config"|Out-File $env:GITHUB_ENV -Append
-      - name: Start mock broker and run the real Windows agent session lifecycle
+          "AGENT_INSTALL_DIR=$installDir"|Out-File $env:GITHUB_ENV -Append; "AGENT_CONFIG=$config"|Out-File $env:GITHUB_ENV -Append
+      - name: Run two consecutive broker-driven sessions through the real agent
         shell: pwsh
         run: |
-          $readyFile=Join-Path $env:RUNNER_TEMP "agent-ready.json"
-          $failedFile=Join-Path $env:RUNNER_TEMP "agent-failed.json"
+          $ready1=Join-Path $env:RUNNER_TEMP "ready-1.json"; $ready2=Join-Path $env:RUNNER_TEMP "ready-2.json"; $failed=Join-Path $env:RUNNER_TEMP "agent-failed.json"
           $mock=Join-Path $env:RUNNER_TEMP "mock-recroom-broker.py"
           @'
-          import json, os, threading
+          import json, os
           from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-          ready=os.environ['MOCK_READY']; failed=os.environ['MOCK_FAILED']
-          state={'start':False,'stop':False}
+          r1,r2,failed=os.environ['READY1'],os.environ['READY2'],os.environ['FAILED']
+          state={'start1':False,'stop1':False,'idle1':False,'start2':False,'stop2':False}
           class H(BaseHTTPRequestHandler):
-            def log_message(self,*args): pass
-            def sendj(self,code,obj):
-              b=json.dumps(obj).encode(); self.send_response(code); self.send_header('content-type','application/json'); self.send_header('content-length',str(len(b))); self.end_headers(); self.wfile.write(b)
+            def log_message(self,*a): pass
+            def sendj(self,c,o):
+              b=json.dumps(o).encode(); self.send_response(c); self.send_header('content-type','application/json'); self.send_header('content-length',str(len(b))); self.end_headers(); self.wfile.write(b)
             def body(self):
               n=int(self.headers.get('content-length','0') or 0); return json.loads(self.rfile.read(n) or b'{}')
+            def job(self,sid): return {'type':'start-session','sessionId':sid,'gatewayUrl':'http://127.0.0.1:19090','recnetSessionToken':'token-'+sid,'account':{'accountId':'1001','username':'ci-player'}}
             def do_GET(self):
-              if self.path.endswith('/jobs'):
-                if not state['start']:
-                  state['start']=True
-                  return self.sendj(200,{'job':{'type':'start-session','sessionId':'ci-session','gatewayUrl':'http://127.0.0.1:19090','recnetSessionToken':'ci-session-token','account':{'accountId':'1001','username':'ci-player'}}})
-                if os.path.exists(ready) and not state['stop']:
-                  state['stop']=True
-                  return self.sendj(200,{'job':{'type':'stop-session','sessionId':'ci-session'}})
-                return self.sendj(200,{'job':None})
-              return self.sendj(404,{'error':'not found'})
+              if not self.path.endswith('/jobs'): return self.sendj(404,{'error':'not found'})
+              if not state['start1']: state['start1']=True; return self.sendj(200,{'job':self.job('ci-session-1')})
+              if os.path.exists(r1) and not state['stop1']: state['stop1']=True; return self.sendj(200,{'job':{'type':'stop-session','sessionId':'ci-session-1'}})
+              if state['idle1'] and not state['start2']: state['start2']=True; return self.sendj(200,{'job':self.job('ci-session-2')})
+              if os.path.exists(r2) and not state['stop2']: state['stop2']=True; return self.sendj(200,{'job':{'type':'stop-session','sessionId':'ci-session-2'}})
+              return self.sendj(200,{'job':None})
             def do_POST(self):
               payload=self.body()
               if self.path=='/api/recroom/hosts/register': return self.sendj(200,{'ok':True,'hostId':payload.get('hostId')})
-              if self.path.endswith('/heartbeat'): return self.sendj(200,{'ok':True})
+              if self.path.endswith('/heartbeat'):
+                meta=payload.get('metadata') or {}
+                if state['stop1'] and not state['start2'] and not meta.get('activeSessionId'): state['idle1']=True
+                return self.sendj(200,{'ok':True})
               if self.path.endswith('/ready'):
-                open(ready,'w',encoding='utf-8').write(json.dumps(payload,indent=2)); return self.sendj(200,{'ok':True})
+                dest=r2 if 'ci-session-2' in self.path else r1; open(dest,'w',encoding='utf-8').write(json.dumps(payload,indent=2)); return self.sendj(200,{'ok':True})
               if self.path.endswith('/failed'):
-                open(failed,'w',encoding='utf-8').write(json.dumps(payload,indent=2)); return self.sendj(200,{'ok':True})
+                open(failed,'w',encoding='utf-8').write(json.dumps({'path':self.path,'payload':payload},indent=2)); return self.sendj(200,{'ok':True})
               return self.sendj(404,{'error':'not found'})
           ThreadingHTTPServer(('127.0.0.1',18082),H).serve_forever()
           '@|Set-Content $mock -Encoding UTF8
-          $env:MOCK_READY=$readyFile; $env:MOCK_FAILED=$failedFile
-          $brokerOut=Join-Path $env:RUNNER_TEMP "mock-broker.out.log"; $brokerErr=Join-Path $env:RUNNER_TEMP "mock-broker.err.log"
-          $broker=Start-Process python -ArgumentList @("`"$mock`"") -PassThru -WindowStyle Hidden -RedirectStandardOutput $brokerOut -RedirectStandardError $brokerErr
+          $env:READY1=$ready1;$env:READY2=$ready2;$env:FAILED=$failed
+          $broker=Start-Process python -ArgumentList @("`"$mock`"") -PassThru -WindowStyle Hidden
           Start-Sleep -Milliseconds 700
-          $agentScript=Join-Path $env:AGENT_INSTALL_DIR "recroom-agent.ps1"
-          $agentOut=Join-Path $env:RUNNER_TEMP "recroom-agent.out.log"; $agentErr=Join-Path $env:RUNNER_TEMP "recroom-agent.err.log"
+          $agentScript=Join-Path $env:AGENT_INSTALL_DIR "recroom-agent.ps1"; $agentOut=Join-Path $env:RUNNER_TEMP "agent.out.log"; $agentErr=Join-Path $env:RUNNER_TEMP "agent.err.log"
           $arg="-NoProfile -ExecutionPolicy Bypass -File `"$agentScript`" -Config `"$env:AGENT_CONFIG`""
           $agent=Start-Process powershell.exe -ArgumentList $arg -PassThru -RedirectStandardOutput $agentOut -RedirectStandardError $agentErr
-          $ready=$false
-          for($i=0;$i -lt 120;$i++){
-            if(Test-Path $failedFile){Write-Host 'FAILED_CALLBACK:';Get-Content $failedFile -Raw;break}
-            if(Test-Path $readyFile){$ready=$true;break}
-            if($agent.HasExited){break}
-            Start-Sleep -Milliseconds 500
+          $both=$false
+          for($i=0;$i -lt 180;$i++){
+            if(Test-Path $failed){break}; if((Test-Path $ready1) -and (Test-Path $ready2)){$both=$true;break}; if($agent.HasExited){break}; Start-Sleep -Milliseconds 500
           }
-          Write-Host 'AGENT_STDOUT:';Get-Content $agentOut -Raw -ErrorAction SilentlyContinue
-          Write-Host 'AGENT_STDERR:';Get-Content $agentErr -Raw -ErrorAction SilentlyContinue
-          if(Test-Path $failedFile){Get-Content $failedFile -Raw; throw 'Agent reported session failed.'}
-          if(-not $ready){throw 'Agent never reported session ready.'}
-          $payload=Get-Content $readyFile -Raw|ConvertFrom-Json
-          if($payload.streamUrl -ne 'https://example.invalid/flux-recroom-ci-stream'){throw 'Ready callback stream URL mismatch.'}
-          if([int]$payload.redirectOccurrences -lt 4){throw 'Agent did not verify client endpoint redirects.'}
-          if([int]$payload.proxyPort -ne 81){throw 'Agent did not report proxy port 81.'}
-          Start-Sleep -Seconds 3
-          $agentLog=Get-Content $agentOut -Raw -ErrorAction SilentlyContinue
-          if($agentLog -notmatch 'session ci-session is ready'){throw 'Agent did not log session ready.'}
-          if($agentLog -notmatch 'session stopped'){throw 'Agent did not process the stop-session job.'}
-          Write-Host 'RECROOM_AGENT_SESSION_LIFECYCLE_OK=true'
-          Stop-Process -Id $agent.Id -Force -ErrorAction SilentlyContinue
-          Stop-Process -Id $broker.Id -Force -ErrorAction SilentlyContinue
+          Write-Host 'AGENT_STDOUT:';Get-Content $agentOut -Raw -ErrorAction SilentlyContinue; Write-Host 'AGENT_STDERR:';Get-Content $agentErr -Raw -ErrorAction SilentlyContinue
+          if(Test-Path $failed){Get-Content $failed -Raw;throw 'Agent reported a session failure.'}; if(-not $both){throw 'Agent did not make both consecutive sessions ready.'}
+          foreach($file in @($ready1,$ready2)){
+            $p=Get-Content $file -Raw|ConvertFrom-Json
+            if($p.streamUrl -ne 'https://example.invalid/flux-recroom-ci-stream'){throw 'stream URL mismatch'}
+            if([int]$p.redirectOccurrences -lt 4){throw 'redirect verification missing'}
+            if([int]$p.proxyPort -ne 81){throw 'proxy port mismatch'}
+          }
+          Start-Sleep -Seconds 4; $log=Get-Content $agentOut -Raw -ErrorAction SilentlyContinue
+          if(([regex]::Matches($log,'session ci-session-[12] is ready')).Count -lt 2){throw 'Both session ready logs were not observed.'}
+          if(([regex]::Matches($log,'session stopped')).Count -lt 2){throw 'Both stop-session jobs were not processed.'}
+          Write-Host 'RECROOM_TWO_CONSECUTIVE_AGENT_SESSIONS_OK=true'
+          Stop-Process -Id $agent.Id -Force -ErrorAction SilentlyContinue; Stop-Process -Id $broker.Id -Force -ErrorAction SilentlyContinue
