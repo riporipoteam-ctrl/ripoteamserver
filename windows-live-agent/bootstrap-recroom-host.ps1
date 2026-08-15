@@ -1,5 +1,7 @@
 param(
   [string]$Config = (Join-Path $PSScriptRoot "recroom-agent-config.json"),
+  [string]$SteamUsername = "",
+  [switch]$TrySteamDownload,
   [switch]$Start
 )
 
@@ -73,8 +75,19 @@ if (-not $clientDir) {
   }
 }
 
+if (-not $clientDir -and $TrySteamDownload) {
+  $downloadScript = Join-Path $PSScriptRoot "download-recroom-client.ps1"
+  if (-not (Test-Path $downloadScript)) { throw "Missing $downloadScript" }
+  Write-Host "No local May 2022 client found; trying the exact Steam depot with your own Steam account..." -ForegroundColor Cyan
+  $downloaded = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $downloadScript -SteamUsername $SteamUsername -Destination $canonicalRoot)
+  if ($LASTEXITCODE -ne 0) { throw "Licensed Steam client download attempt failed." }
+  $candidate = [string]($downloaded | Select-Object -Last 1)
+  if ($candidate -and (Test-ClientLayout $candidate)) { $clientDir = $candidate }
+  elseif (Test-ClientLayout $canonicalRoot) { $clientDir = $canonicalRoot }
+}
+
 if (-not $clientDir) {
-  throw "May 19 2022 Rec Room client not found. Put your legally obtained build 8751857 folder (or a clearly named ZIP) in Downloads/Desktop, or set FLUX_RECROOM_CLIENT_DIR."
+  throw "May 19 2022 Rec Room client not found. Put your legally obtained build 8751857 folder/ZIP in Downloads/Desktop, set FLUX_RECROOM_CLIENT_DIR, or rerun bootstrap with -TrySteamDownload and your Steam username."
 }
 
 $hostKey = if ($env:RECROOM_HOST_KEY) { [string]$env:RECROOM_HOST_KEY } else { "" }
