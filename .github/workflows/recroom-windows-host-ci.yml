@@ -43,17 +43,39 @@ jobs:
           if ($cfg.hostKey -ne "ci-test-only") { throw "Installer did not preserve the paired host credential." }
           if (-not $cfg.streamStartCommand -or -not $cfg.streamStopCommand) { throw "Installer did not configure automatic streaming." }
           "RECROOM_INSTALL_DIR=$installDir" | Out-File $env:GITHUB_ENV -Append
-      - name: Launch a real Windows test window
+      - name: Launch an input-aware Windows test game window
         shell: pwsh
         run: |
+          $eventFile = Join-Path $env:RUNNER_TEMP "flux-input-events.log"
+          $env:FLUX_INPUT_EVENT_FILE = $eventFile
+          "INPUT_EVENT_FILE=$eventFile" | Out-File $env:GITHUB_ENV -Append
           @'
+          import os
           import tkinter as tk
+          from pathlib import Path
+
+          event_file = Path(os.environ["FLUX_INPUT_EVENT_FILE"])
+          event_file.write_text("READY\n", encoding="utf-8")
+
+          def record(message):
+              with event_file.open("a", encoding="utf-8") as f:
+                  f.write(message + "\n")
+                  f.flush()
+              label.config(text=message)
+
           root = tk.Tk()
           root.title("Flux Rec Room Stream CI")
           root.geometry("900x600+40+40")
           root.configure(bg="#101622")
-          label = tk.Label(root, text="FLUX REC ROOM STREAM TEST", fg="white", bg="#101622", font=("Arial", 28, "bold"))
+          label = tk.Label(root, text="FLUX REC ROOM INPUT TEST", fg="white", bg="#101622", font=("Arial", 28, "bold"))
           label.pack(expand=True)
+          root.bind("<KeyPress>", lambda e: record(f"KEYDOWN:{e.keysym}"))
+          root.bind("<KeyRelease>", lambda e: record(f"KEYUP:{e.keysym}"))
+          root.bind("<ButtonPress>", lambda e: record(f"BUTTONDOWN:{e.num}"))
+          root.bind("<ButtonRelease>", lambda e: record(f"BUTTONUP:{e.num}"))
+          root.bind("<Motion>", lambda e: record(f"MOVE:{e.x}:{e.y}"))
+          root.bind("<MouseWheel>", lambda e: record(f"WHEEL:{e.delta}"))
+          root.after(250, root.focus_force)
           root.after(480000, root.destroy)
           root.mainloop()
           '@ | Set-Content (Join-Path $env:RUNNER_TEMP "flux-test-window.py") -Encoding UTF8
@@ -61,7 +83,8 @@ jobs:
           "TEST_WINDOW_PID=$($window.Id)" | Out-File $env:GITHUB_ENV -Append
           Start-Sleep -Seconds 2
           if ($window.HasExited) { throw "Test window exited before stream validation." }
-      - name: Start automatic HTTPS browser stream and fetch a frame
+          if (-not (Test-Path $eventFile)) { throw "Input-aware test window did not create its event log." }
+      - name: Start automatic HTTPS browser stream and exercise gameplay controls
         shell: pwsh
         run: |
           $env:FLUX_RECROOM_GAME_PID = $env:TEST_WINDOW_PID
@@ -72,6 +95,7 @@ jobs:
           $url = [string]($lines | Where-Object { $_ -match '^https://' } | Select-Object -Last 1)
           if (-not $url -or $url -notmatch '^https://.+\.trycloudflare\.com/\?token=') { throw "Automatic browser stream did not return a tokenized HTTPS URL: $url" }
           Write-Host "STREAM_URL_CREATED=true"
+
           $frameUrl = $url -replace '/\?token=', '/frame.jpg?token='
           $frameUrl += '&t=' + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
           $frame = Join-Path $env:RUNNER_TEMP "recroom-stream-frame.jpg"
@@ -87,6 +111,34 @@ jobs:
           $bytes = [IO.File]::ReadAllBytes($frame)
           if ($bytes[0] -ne 0xFF -or $bytes[1] -ne 0xD8) { throw "Public frame was not JPEG data." }
           Write-Host "PUBLIC_FRAME_OK=true bytes=$($bytes.Length)"
+
+          $inputUrl = $url -replace '/\?token=', '/input?token='
+          function Send-Input($payload) {
+            Invoke-RestMethod -Method Post -Uri $inputUrl -ContentType "application/json" -Body ($payload | ConvertTo-Json -Compress) -TimeoutSec 15 | Out-Null
+          }
+
+          Send-Input @{ type = "button"; button = "left"; down = $true; x = 0.5; y = 0.5 }
+          Send-Input @{ type = "button"; button = "left"; down = $false }
+          Send-Input @{ type = "key"; key = "w"; down = $true }
+          Start-Sleep -Milliseconds 150
+          Send-Input @{ type = "key"; key = "w"; down = $false }
+          Send-Input @{ type = "move"; dx = 35; dy = 20 }
+          Send-Input @{ type = "wheel"; delta = 1 }
+          Send-Input @{ type = "release" }
+
+          $received = $false
+          for ($i = 0; $i -lt 20; $i++) {
+            $events = Get-Content $env:INPUT_EVENT_FILE -Raw -ErrorAction SilentlyContinue
+            if ($events -match 'KEYDOWN:w' -and $events -match 'KEYUP:w' -and $events -match 'BUTTONDOWN:1' -and $events -match 'BUTTONUP:1' -and $events -match 'MOVE:') {
+              $received = $true
+              break
+            }
+            Start-Sleep -Milliseconds 250
+          }
+          Write-Host "WINDOW_INPUT_EVENTS:"
+          Get-Content $env:INPUT_EVENT_FILE -ErrorAction SilentlyContinue | Select-Object -Last 30
+          if (-not $received) { throw "Windows game window did not receive the complete remote keyboard/mouse control sequence." }
+          Write-Host "PUBLIC_GAMEPLAY_INPUT_OK=true"
           & $stopStream
       - name: Verify stream processes cleaned up
         shell: pwsh
