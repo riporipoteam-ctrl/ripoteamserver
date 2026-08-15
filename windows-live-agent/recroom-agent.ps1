@@ -9,25 +9,84 @@ $script:AdapterProcess = $null
 $script:ActiveSessionId = ""
 $script:LastHeartbeat = [DateTimeOffset]::MinValue
 
+function Set-CfgProperty($cfg, [string]$Name, $Value) {
+  if ($cfg.PSObject.Properties[$Name]) { $cfg.$Name = $Value }
+  else { $cfg | Add-Member -NotePropertyName $Name -NotePropertyValue $Value }
+}
+
 function Load-Config {
   if (-not (Test-Path $Config)) {
-    throw "Missing $Config. Copy recroom-agent-config.example.json to recroom-agent-config.json and edit it locally."
+    throw "Missing $Config. Run bootstrap-recroom-host.ps1 first."
   }
   $cfg = Get-Content $Config -Raw | ConvertFrom-Json
-  if ($env:RECROOM_HOST_KEY) { $cfg.hostKey = $env:RECROOM_HOST_KEY }
-  if ($env:RECROOM_BROKER_URL) { $cfg.server = $env:RECROOM_BROKER_URL }
-  if ($env:FLUX_RECROOM_CLIENT_DIR) { $cfg.clientDir = $env:FLUX_RECROOM_CLIENT_DIR }
-  if ($env:FLUX_RECROOM_STREAM_URL) { $cfg.streamUrl = $env:FLUX_RECROOM_STREAM_URL }
+  if ($env:RECROOM_HOST_KEY) { Set-CfgProperty $cfg "hostKey" $env:RECROOM_HOST_KEY }
+  if ($env:RECROOM_BROKER_URL) { Set-CfgProperty $cfg "server" $env:RECROOM_BROKER_URL }
+  if ($env:FLUX_RECROOM_CLIENT_DIR) { Set-CfgProperty $cfg "clientDir" $env:FLUX_RECROOM_CLIENT_DIR }
+  if ($env:FLUX_RECROOM_STREAM_URL) { Set-CfgProperty $cfg "streamUrl" $env:FLUX_RECROOM_STREAM_URL }
+  if (-not $cfg.adapterCommand) {
+    Set-CfgProperty $cfg "adapterCommand" 'node "%RECROOM_AGENT_DIR%\recroom-tools\host-proxy.mjs"'
+  }
+  if (-not $cfg.streamStartCommand -and -not $cfg.streamUrl) {
+    Set-CfgProperty $cfg "streamStartCommand" 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%RECROOM_AGENT_DIR%\start-recroom-browser-stream.ps1"'
+  }
+  if (-not $cfg.streamStopCommand) {
+    Set-CfgProperty $cfg "streamStopCommand" 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%RECROOM_AGENT_DIR%\stop-recroom-browser-stream.ps1"'
+  }
   return $cfg
 }
 
 function Require-Config($cfg) {
-  foreach ($name in @("server", "hostId", "hostKey", "clientDir")) {
+  foreach ($name in @("server", "hostId", "hostKey")) {
     if (-not $cfg.$name) { throw "Rec Room agent config '$name' is required." }
+  }
+  if ([string]$cfg.hostKey -match '^SET_') {
+    throw "RECROOM_HOST_KEY is not configured on this Windows host."
   }
   if (($cfg.buildId) -and ([string]$cfg.buildId -ne $TargetBuild)) {
     throw "This agent currently targets $TargetBuild only."
   }
+}
+
+function Test-ClientLayoutAt([string]$Root) {
+  if (-not $Root -or -not (Test-Path $Root)) { return $false }
+  $exe = @("RecRoom.exe", "Recroom_Release.exe") | ForEach-Object { Join-Path $Root $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
+  if (-not $exe) { return $false }
+  if (-not (Test-Path (Join-Path $Root "GameAssembly.dll"))) { return $false }
+  $data = @("RecRoom_Data", "Recroom_Release_Data") | ForEach-Object { Join-Path $Root $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
+  if (-not $data) { return $false }
+  return Test-Path (Join-Path $data "il2cpp_data\Metadata\global-metadata.dat")
+}
+
+function Resolve-ClientDir {
+  $candidates = New-Object System.Collections.Generic.List[string]
+  if ($env:FLUX_RECROOM_CLIENT_DIR) { $candidates.Add([string]$env:FLUX_RECROOM_CLIENT_DIR) }
+  if ($script:cfg.clientDir) { $candidates.Add([string]$script:cfg.clientDir) }
+  if ($env:LOCALAPPDATA) { $candidates.Add((Join-Path $env:LOCALAPPDATA "FluxRecRoom\May 19 2022")) }
+  $candidates.Add("C:\Games\FluxRecRoom\May 19 2022")
+
+  foreach ($candidate in $candidates | Select-Object -Unique) {
+    if (Test-ClientLayoutAt $candidate) {
+      $resolved = (Resolve-Path $candidate).Path
+      Set-CfgProperty $script:cfg "clientDir" $resolved
+      return $resolved
+    }
+  }
+
+  foreach ($root in @((Join-Path $env:USERPROFILE "Downloads"), (Join-Path $env:USERPROFILE "Desktop"))) {
+    if (-not (Test-Path $root)) { continue }
+    $exe = Get-ChildItem -Path $root -File -Recurse -ErrorAction SilentlyContinue |
+      Where-Object {
+        $_.Name -in @("RecRoom.exe", "Recroom_Release.exe") -and
+        $_.DirectoryName -match '(?i)(8751857|2022|May.?19|Rec.?Room)'
+      } | Select-Object -First 1
+    if ($exe -and (Test-ClientLayoutAt $exe.Directory.FullName)) {
+      $resolved = $exe.Directory.FullName
+      Set-CfgProperty $script:cfg "clientDir" $resolved
+      return $resolved
+    }
+  }
+
+  throw "May 19 2022 Rec Room client was not found. Run bootstrap-recroom-host.ps1 or set FLUX_RECROOM_CLIENT_DIR to your legally obtained build 8751857 folder."
 }
 
 function Api-Get([string]$Path) {
@@ -41,8 +100,7 @@ function Api-Post([string]$Path, $Body) {
 }
 
 function Find-RecRoomExe {
-  $root = [string]$script:cfg.clientDir
-  if (-not (Test-Path $root)) { throw "Rec Room client folder does not exist: $root" }
+  $root = Resolve-ClientDir
   foreach ($name in @("RecRoom.exe", "Recroom_Release.exe")) {
     $path = Join-Path $root $name
     if (Test-Path $path) { return $path }
@@ -51,7 +109,7 @@ function Find-RecRoomExe {
 }
 
 function Verify-ClientLayout {
-  $root = [string]$script:cfg.clientDir
+  $root = Resolve-ClientDir
   $exe = Find-RecRoomExe
   $assembly = Join-Path $root "GameAssembly.dll"
   if (-not (Test-Path $assembly)) { throw "GameAssembly.dll is missing from $root" }
@@ -90,16 +148,20 @@ function Resolve-StreamUrl {
   if ($script:cfg.streamStartCommand) {
     $process = Invoke-ConfiguredCommand ([string]$script:cfg.streamStartCommand)
     if ($process) {
-      if (-not $process.WaitForExit(20000)) {
+      if (-not $process.WaitForExit(60000)) {
         try { $process.Kill() } catch {}
-        throw "streamStartCommand did not finish within 20 seconds."
+        throw "streamStartCommand did not finish within 60 seconds."
       }
+      $stdout = $process.StandardOutput.ReadToEnd()
+      $stderr = $process.StandardError.ReadToEnd()
       if ($process.ExitCode -ne 0) {
-        $err = $process.StandardError.ReadToEnd()
-        throw "streamStartCommand failed: $err"
+        throw "streamStartCommand failed: $stderr"
       }
-      $candidate = $process.StandardOutput.ReadToEnd().Trim()
-      if ($candidate) { return $candidate }
+      $matches = [regex]::Matches($stdout, 'https://[^\s"''<>]+')
+      if ($matches.Count -gt 0) {
+        return $matches[$matches.Count - 1].Value.Trim()
+      }
+      if ($stdout.Trim()) { return $stdout.Trim() }
     }
   }
   return [string]$script:cfg.streamUrl
@@ -121,6 +183,16 @@ function Start-Adapter($job) {
   }
 }
 
+function Stop-Stream {
+  if (-not $script:cfg.streamStopCommand) { return }
+  try {
+    $process = Invoke-ConfiguredCommand ([string]$script:cfg.streamStopCommand)
+    if ($process) { [void]$process.WaitForExit(15000) }
+  } catch {
+    Write-Host ("Could not stop browser stream cleanly: " + $_.Exception.Message) -ForegroundColor Yellow
+  }
+}
+
 function Stop-CurrentSession {
   if ($script:GameProcess -and -not $script:GameProcess.HasExited) {
     try { Stop-Process -Id $script:GameProcess.Id -Force -ErrorAction SilentlyContinue } catch {}
@@ -128,9 +200,11 @@ function Stop-CurrentSession {
   if ($script:AdapterProcess -and -not $script:AdapterProcess.HasExited) {
     try { Stop-Process -Id $script:AdapterProcess.Id -Force -ErrorAction SilentlyContinue } catch {}
   }
+  Stop-Stream
   $script:GameProcess = $null
   $script:AdapterProcess = $null
   $script:ActiveSessionId = ""
+  Remove-Item Env:FLUX_RECROOM_GAME_PID -ErrorAction SilentlyContinue
 }
 
 function Fail-Session([string]$SessionId, [string]$Message) {
@@ -152,8 +226,6 @@ function Start-Session($job) {
   $script:ActiveSessionId = [string]$job.sessionId
 
   try {
-    # The adapter/proxy receives the verified Flux session token through local
-    # environment only. It is never written to this repository or printed here.
     Start-Adapter $job
 
     $env:FLUX_RECNET_URL = [string]$job.gatewayUrl
@@ -170,6 +242,7 @@ function Start-Session($job) {
       "-force-d3d11"
     )
     $script:GameProcess = Start-Process -FilePath $layout.exe -WorkingDirectory ([string]$script:cfg.clientDir) -ArgumentList $args -PassThru
+    $env:FLUX_RECROOM_GAME_PID = [string]$script:GameProcess.Id
 
     Start-Sleep -Seconds 2
     if ($script:GameProcess.HasExited) {
@@ -178,14 +251,14 @@ function Start-Session($job) {
 
     $streamUrl = Resolve-StreamUrl
     if (-not $streamUrl -or -not ($streamUrl.StartsWith("https://") -or $env:RECROOM_ALLOW_HTTP_STREAMS -eq "1")) {
-      throw "No HTTPS streamUrl is configured for this Windows host."
+      throw "No HTTPS browser stream could be started for this Windows host."
     }
 
     [void](Api-Post "/api/recroom/hosts/$($script:cfg.hostId)/sessions/$($job.sessionId)/ready" @{
       streamUrl = $streamUrl
       processId = $script:GameProcess.Id
       resolution = "1920x1080"
-      streamer = "windows-host"
+      streamer = "flux-browser-control"
     })
 
     Write-Host "Rec Room session $($job.sessionId) is ready." -ForegroundColor Green
@@ -216,20 +289,24 @@ function Handle-Job($job) {
 $script:cfg = Load-Config
 Require-Config $script:cfg
 $layout = Verify-ClientLayout
+$capacity = if ($script:cfg.capacity) { [Math]::Max(1, [Math]::Min(8, [int]$script:cfg.capacity)) } else { 1 }
 Write-Host "Flux Rec Room Windows Host" -ForegroundColor Cyan
 Write-Host "Target build: May 19 2022 (8751857)"
 Write-Host "Client: $($layout.exe)"
 Write-Host "Broker: $($script:cfg.server)"
+Write-Host "Browser stream: automatic HTTPS tunnel when a session starts"
 
 $register = Api-Post "/api/recroom/hosts/register" @{
   hostId = [string]$script:cfg.hostId
   name = [string]$script:cfg.name
   builds = @($TargetBuild)
-  capacity = 1
+  capacity = $capacity
   metadata = @{
     computer = $env:COMPUTERNAME
     os = [Environment]::OSVersion.VersionString
     clientDir = [string]$script:cfg.clientDir
+    browserStream = $true
+    targetSteamBuild = "8751857"
   }
 }
 Write-Host "Registered host $($register.hostId)." -ForegroundColor Green
@@ -243,6 +320,8 @@ while ($true) {
         metadata = @{
           gameRunning = $gameRunning
           activeSessionId = $script:ActiveSessionId
+          clientReady = $true
+          browserStream = $true
         }
       })
       $script:LastHeartbeat = $now
@@ -266,8 +345,12 @@ while ($true) {
         hostId = [string]$script:cfg.hostId
         name = [string]$script:cfg.name
         builds = @($TargetBuild)
-        capacity = 1
-        metadata = @{ computer = $env:COMPUTERNAME }
+        capacity = $capacity
+        metadata = @{
+          computer = $env:COMPUTERNAME
+          clientReady = $true
+          browserStream = $true
+        }
       })
     } catch {}
   }
