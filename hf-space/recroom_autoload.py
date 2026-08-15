@@ -32,10 +32,6 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         public_url = os.environ.get("RECROOM_PUBLIC_BASE_URL", "https://echoxr-ripoteam-cloud-pc.hf.space").rstrip("/")
         os.environ.setdefault("RECROOM_GATEWAY_URL", public_url)
 
-        # The Space already has ADMIN_TOKEN configured. If dedicated Rec Room
-        # secrets were not supplied, derive purpose-separated Rec Room keys from
-        # it rather than reusing the raw admin token itself. This means a paired
-        # Windows host never needs (or learns) the broader Cloud PC admin secret.
         admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
         if admin_token:
             os.environ.setdefault(
@@ -50,18 +46,19 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         from recroom_gateway import RecRoomGateway, install_recroom_gateway_routes
         from recroom_compat import install_recroom_compat_routes
         from recroom_compat_extra import install_recroom_extra_routes
+        from recroom_match_compat import install_recroom_match_compat_routes
         from recroom_broker import install_recroom_broker_routes
         from recroom_capture import install_recroom_capture_routes
         from recroom_public import install_recroom_public_routes
 
         gateway = RecRoomGateway(root / "recroom-gateway")
         install_recroom_gateway_routes(application, gateway)
-        # Fix typed RecNet DTO shapes and add the known May-2022 startup routes
-        # only after the core gateway has mounted its identity/state endpoints.
         install_recroom_compat_routes(application, gateway)
-        # Add known post-login/profile/economy calls separately so the startup
-        # compatibility surface remains easy to audit and unknown calls stay 404.
         install_recroom_extra_routes(application, gateway)
+        # Matchmaking/heartbeat is mounted last among RecNet compatibility layers
+        # because it intentionally replaces the earlier generic join DTOs with
+        # the recovered roomInstance structure used by old clients.
+        install_recroom_match_compat_routes(application, gateway)
         broker = install_recroom_broker_routes(application, root / "recroom-broker")
         capture = install_recroom_capture_routes(application, broker, root / "recroom-captures")
         install_recroom_public_routes(application, broker, capture)
@@ -83,17 +80,14 @@ def _mount_when_app_exists() -> None:
         if application is None:
             time.sleep(0.25)
             continue
-        # Let app.py finish its core route registration first, then add the
-        # optional Rec Room surface. FastAPI/Gradio supports routes added here.
         time.sleep(0.75)
         try:
             data_dir = getattr(module, "DATA_DIR", None)
             result = install_into_live_app(application, data_dir if isinstance(data_dir, Path) else None)
-            if module is not None:
-                if result.get("gateway") is not None:
-                    module.RIPO_RECROOM_GATEWAY = result["gateway"]
-                    module.RIPO_RECROOM_BROKER = result["broker"]
-                    module.RIPO_RECROOM_CAPTURE = result["capture"]
+            if module is not None and result.get("gateway") is not None:
+                module.RIPO_RECROOM_GATEWAY = result["gateway"]
+                module.RIPO_RECROOM_BROKER = result["broker"]
+                module.RIPO_RECROOM_CAPTURE = result["capture"]
             print(f"Rec Room May 2022 runtime routes mounted: {result.get('ok')}")
             return
         except Exception as exc:
