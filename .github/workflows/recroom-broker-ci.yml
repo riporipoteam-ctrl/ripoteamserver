@@ -7,6 +7,7 @@ on:
     paths:
       - "hf-space/recroom_broker.py"
       - "hf-space/recroom_capture.py"
+      - "hf-space/recroom_public.py"
       - "hf-space/app_server_v2.py"
       - "windows-live-agent/recroom-agent.ps1"
       - "windows-live-agent/recroom-capture-agent.ps1"
@@ -18,6 +19,7 @@ on:
     paths:
       - "hf-space/recroom_broker.py"
       - "hf-space/recroom_capture.py"
+      - "hf-space/recroom_public.py"
       - "hf-space/app_server_v2.py"
       - "windows-live-agent/recroom-agent.ps1"
       - "windows-live-agent/recroom-capture-agent.ps1"
@@ -39,7 +41,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile broker Python
-        run: python -m py_compile hf-space/recroom_broker.py hf-space/recroom_capture.py hf-space/app_server_v2.py
+        run: python -m py_compile hf-space/recroom_broker.py hf-space/recroom_capture.py hf-space/recroom_public.py hf-space/app_server_v2.py
       - name: Validate Windows agent PowerShell syntax
         shell: pwsh
         run: |
