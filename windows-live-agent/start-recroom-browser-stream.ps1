@@ -24,7 +24,7 @@ if (Test-Path $stopScript) {
 }
 
 $python = $null
-foreach ($candidate in @("py.exe", "python.exe", "python3.exe")) {
+foreach ($candidate in @("python.exe", "python3.exe", "py.exe")) {
   $command = Get-Command $candidate -ErrorAction SilentlyContinue
   if ($command) { $python = $command.Source; break }
 }
