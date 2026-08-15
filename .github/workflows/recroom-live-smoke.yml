@@ -49,3 +49,29 @@ jobs:
           print(f'RECROOM_ONLINE_HOSTS={hosts}')
           print('Broker is live and configured.')
           PY
+
+      - name: Verify browser preflight from Flux Pages
+        run: |
+          set -euo pipefail
+          curl --silent --show-error --dump-header /tmp/recroom-cors.txt --output /dev/null \
+            --request OPTIONS \
+            --header 'Origin: https://riporipoteam-ctrl.github.io' \
+            --header 'Access-Control-Request-Method: POST' \
+            --header 'Access-Control-Request-Headers: authorization,content-type' \
+            'https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/sessions'
+          cat /tmp/recroom-cors.txt
+          python - <<'PY'
+          headers={}
+          for line in open('/tmp/recroom-cors.txt', encoding='utf-8', errors='replace'):
+              if ':' not in line:
+                  continue
+              key, value=line.split(':',1)
+              headers[key.strip().lower()]=value.strip()
+          origin=headers.get('access-control-allow-origin','')
+          methods=headers.get('access-control-allow-methods','').lower()
+          allowed_headers=headers.get('access-control-allow-headers','').lower()
+          assert origin in {'*','https://riporipoteam-ctrl.github.io'}, headers
+          assert '*' in methods or 'post' in methods, headers
+          assert '*' in allowed_headers or ('authorization' in allowed_headers and 'content-type' in allowed_headers), headers
+          print('Flux GitHub Pages CORS preflight is accepted by the live Rec Room broker.')
+          PY
