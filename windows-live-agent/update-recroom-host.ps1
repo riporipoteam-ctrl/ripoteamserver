@@ -38,6 +38,7 @@ $targets = @(
   [pscustomobject]@{ Name="recroom-web-stream.py"; Url="https://raw.githubusercontent.com/$hostRepo/$hostRef/windows-live-agent/recroom-web-stream.py"; Destination=(Join-Path $PSScriptRoot "recroom-web-stream.py"); Kind="raw" },
   [pscustomobject]@{ Name="requirements.txt"; Url="https://raw.githubusercontent.com/$hostRepo/$hostRef/windows-live-agent/requirements.txt"; Destination=(Join-Path $PSScriptRoot "requirements.txt"); Kind="raw" },
   [pscustomobject]@{ Name="host-proxy.mjs"; Url="https://raw.githubusercontent.com/$toolsRepo/$toolsRef/scripts/host-proxy.mjs"; Destination=(Join-Path $toolDir "host-proxy.mjs"); Kind="node" },
+  [pscustomobject]@{ Name="redirect-client-urls.mjs"; Url="https://raw.githubusercontent.com/$toolsRepo/$toolsRef/scripts/redirect-client-urls.mjs"; Destination=(Join-Path $toolDir "redirect-client-urls.mjs"); Kind="node" },
   [pscustomobject]@{ Name="verify-client.mjs"; Url="https://raw.githubusercontent.com/$toolsRepo/$toolsRef/scripts/verify-client.mjs"; Destination=(Join-Path $toolDir "verify-client.mjs"); Kind="node" },
   [pscustomobject]@{ Name="scan-client-urls.mjs"; Url="https://raw.githubusercontent.com/$toolsRepo/$toolsRef/scripts/scan-client-urls.mjs"; Destination=(Join-Path $toolDir "scan-client-urls.mjs"); Kind="node" },
   [pscustomobject]@{ Name="patch-client-urls.mjs"; Url="https://raw.githubusercontent.com/$toolsRepo/$toolsRef/scripts/patch-client-urls.mjs"; Destination=(Join-Path $toolDir "patch-client-urls.mjs"); Kind="node" }
