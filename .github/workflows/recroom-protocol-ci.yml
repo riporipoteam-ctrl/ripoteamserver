@@ -1,0 +1,128 @@
+name: Rec Room Protocol CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hf-space/recroom_gateway.py"
+      - "hf-space/recroom_compat.py"
+      - "hf-space/recroom_compat_extra.py"
+      - "hf-space/recroom_match_model.py"
+      - "hf-space/recroom_match_compat.py"
+      - ".github/workflows/recroom-protocol-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install protocol test dependencies
+        run: python -m pip install --disable-pip-version-check fastapi 'httpx<1' requests cryptography
+      - name: Exercise authenticated May 2022 startup and Dorm flow
+        env:
+          PHOTON_APP_ID: ci-photon-app
+          PHOTON_APP_VERSION: "0.2"
+          PHOTON_REGION: eu
+        run: |
+          PYTHONPATH=hf-space python - <<'PY'
+          import tempfile
+          from pathlib import Path
+          from fastapi import FastAPI
+          from fastapi.testclient import TestClient
+
+          from recroom_gateway import NativeSession, RecRoomGateway, install_recroom_gateway_routes
+          from recroom_compat import install_recroom_compat_routes
+          from recroom_compat_extra import install_recroom_extra_routes
+          from recroom_match_compat import install_recroom_match_compat_routes
+
+          root=Path(tempfile.mkdtemp(prefix='rr-protocol-'))
+          gateway=RecRoomGateway(root)
+          token='ci-native-session-token'
+          session=NativeSession(
+              token=token,
+              session_id='ci-session',
+              uid='ci-uid',
+              account_id=77,
+              username='ci_player',
+              display_name='CI Player',
+              state=gateway.default_state(77),
+          )
+          gateway._sessions[token]=session
+
+          app=FastAPI()
+          install_recroom_gateway_routes(app,gateway)
+          install_recroom_compat_routes(app,gateway)
+          install_recroom_extra_routes(app,gateway)
+          install_recroom_match_compat_routes(app,gateway)
+          client=TestClient(app)
+          headers={'authorization':f'Bearer {token}'}
+
+          cfg=client.get('/api/config/v2').json()
+          assert isinstance(cfg,list), cfg
+          values={x['Key']:x['Value'] for x in cfg}
+          assert values['BuildId']=='8751857', values
+          assert values['Screens.ForceVerification']=='0', values
+
+          me=client.get('/Accounts/account/me',headers=headers)
+          assert me.status_code==200, me.text
+          account=me.json()
+          assert account['accountId']==77 and account['username']=='ci_player', account
+
+          dorm=client.post('/Matchmaking/matchmake/dorm',headers=headers,json={})
+          assert dorm.status_code==200, dorm.text
+          body=dorm.json()
+          assert body['errorCode']==0 and isinstance(body['roomInstance'],dict), body
+          room=body['roomInstance']
+          required={
+              'roomInstanceId','roomId','subRoomId','location','photonRegionId','photonRoomId','name',
+              'maxCapacity','isFull','isPrivate','isInProgress','roomInstanceType','isMatchmakingSocial',
+              'dataBlobName','dataBlobChecksum','dataBlob','matchMakingPolicy','inviteCode'
+          }
+          assert required.issubset(room), room
+          assert room['location']=='DormRoom' and room['isPrivate'] is True, room
+          assert room['photonRegionId']=='eu', room
+          assert room['photonRoomId']==room['roomInstanceId'], room
+          assert session.state['lastRoomId']==room['roomId'], session.state
+          assert session.state['currentRoomInstance']['roomInstanceId']==room['roomInstanceId'], session.state
+
+          heartbeat=client.post('/Matchmaking/player/heartbeat',headers=headers,json={})
+          assert heartbeat.status_code==200, heartbeat.text
+          hb=heartbeat.json()
+          assert hb['errorCode']==0, hb
+          assert hb['player']['accountId']==77, hb
+          assert hb['roomInstance']['roomInstanceId']==room['roomInstanceId'], (room,hb)
+          assert hb['roomInstance']['roomId']==room['roomId'], (room,hb)
+
+          persisted=gateway.load_state(77)
+          assert persisted['dormRoomId']==room['roomId'], persisted
+          assert persisted['lastRoomId']==room['roomId'], persisted
+
+          active=client.get(f"/Matchmaking/roominstance/{room['roomInstanceId']}",headers=headers)
+          assert active.status_code==200 and active.json()['roomInstanceId']==room['roomInstanceId'], active.text
+
+          # Static browse routes must beat /rooms/{room_id}; this catches the
+          # classic "hot" -> integer validation 422 route-order failure.
+          hot=client.get('/Room_server/rooms/hot',headers=headers)
+          assert hot.status_code==200 and hot.json()==[], hot.text
+          owned=client.get('/Room_server/rooms/ownedby/me',headers=headers)
+          assert owned.status_code==200 and owned.json()==[], owned.text
+
+          auth=client.post('/Auth/connect/token',headers=headers,data={})
+          assert auth.status_code==200, auth.text
+          access=auth.json()['access_token']
+          assert access.count('.')==2, access
+          jwks=client.get('/Auth/.well-known/openid-configuration/jwks').json()
+          assert jwks['keys'][0]['alg']=='RS256' and jwks['keys'][0]['kty']=='RSA', jwks
+
+          print('RECROOM_AUTHENTICATED_DORM_PROTOCOL_OK=true')
+          print('roomInstanceId=',room['roomInstanceId'])
+          print('dormRoomId=',room['roomId'])
+          PY
