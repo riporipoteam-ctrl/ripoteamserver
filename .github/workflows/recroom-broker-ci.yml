@@ -6,15 +6,21 @@ on:
       - feat/recroom-session-broker
     paths:
       - "hf-space/recroom_broker.py"
+      - "hf-space/recroom_capture.py"
       - "hf-space/app_server_v2.py"
       - "windows-live-agent/recroom-agent.ps1"
+      - "windows-live-agent/recroom-capture-agent.ps1"
+      - "windows-live-agent/start-recroom-host.ps1"
       - "windows-live-agent/recroom-agent-config.example.json"
       - ".github/workflows/recroom-broker-ci.yml"
   pull_request:
     paths:
       - "hf-space/recroom_broker.py"
+      - "hf-space/recroom_capture.py"
       - "hf-space/app_server_v2.py"
       - "windows-live-agent/recroom-agent.ps1"
+      - "windows-live-agent/recroom-capture-agent.ps1"
+      - "windows-live-agent/start-recroom-host.ps1"
       - "windows-live-agent/recroom-agent-config.example.json"
       - ".github/workflows/recroom-broker-ci.yml"
 
@@ -31,20 +37,26 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile broker Python
-        run: python -m py_compile hf-space/recroom_broker.py hf-space/app_server_v2.py
+        run: python -m py_compile hf-space/recroom_broker.py hf-space/recroom_capture.py hf-space/app_server_v2.py
       - name: Validate Windows agent PowerShell syntax
         shell: pwsh
         run: |
-          $tokens = $null
-          $errors = $null
-          [void][System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path "windows-live-agent/recroom-agent.ps1"),
-            [ref]$tokens,
-            [ref]$errors
-          )
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_.Message }
-            exit 1
+          foreach ($script in @(
+            "windows-live-agent/recroom-agent.ps1",
+            "windows-live-agent/recroom-capture-agent.ps1",
+            "windows-live-agent/start-recroom-host.ps1"
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $script),
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$script :: $($_.Message)" }
+              exit 1
+            }
           }
       - name: Validate host config JSON
         shell: pwsh
