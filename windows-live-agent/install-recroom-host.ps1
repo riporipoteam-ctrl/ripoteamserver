@@ -9,6 +9,8 @@ param(
 $ErrorActionPreference = "Stop"
 $Repo = "riporipoteam-ctrl/ripoteamserver"
 $Ref = "main"
+$ToolsRepo = "riporipoteam-ctrl/recroomfluxgame"
+$ToolsRef = "main"
 
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 
@@ -19,6 +21,7 @@ $files = @(
   "update-recroom-host.ps1",
   "recroom-agent.ps1",
   "recroom-capture-agent.ps1",
+  "playtest-recroom-client.ps1",
   "start-recroom-browser-stream.ps1",
   "stop-recroom-browser-stream.ps1",
   "recroom-web-stream.py",
@@ -33,6 +36,18 @@ foreach ($name in $files) {
   Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $destination -TimeoutSec 60
   if (-not (Test-Path $destination) -or (Get-Item $destination).Length -le 0) {
     throw "Host tool download failed: $name"
+  }
+}
+
+$toolsDir = Join-Path $InstallDir "recroom-tools"
+New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
+foreach ($name in @("host-proxy.mjs", "redirect-client-urls.mjs", "verify-client.mjs", "scan-client-urls.mjs")) {
+  $url = "https://raw.githubusercontent.com/$ToolsRepo/$ToolsRef/scripts/$name"
+  $destination = Join-Path $toolsDir $name
+  Write-Host "Fetching tool $name..." -ForegroundColor DarkCyan
+  Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $destination -TimeoutSec 60
+  if (-not (Test-Path $destination) -or (Get-Item $destination).Length -le 0) {
+    throw "Rec Room client tool download failed: $name"
   }
 }
 
@@ -51,6 +66,7 @@ if ($PairingCode) { $arguments += @("-PairingCode", $PairingCode) }
 if ($LASTEXITCODE -ne 0) { throw "Rec Room host bootstrap failed." }
 
 Write-Host "Flux Rec Room Windows host installed at $InstallDir" -ForegroundColor Green
+Write-Host "Client redirect, browser controls, and the real-client playtest harness are installed." -ForegroundColor Green
 Write-Host "The client is never uploaded by this installer. Steam authentication, if requested, happens locally on this PC." -ForegroundColor DarkGray
 
 if ($Start) {
@@ -59,4 +75,6 @@ if ($Start) {
 } else {
   Write-Host "Start command:" -ForegroundColor Cyan
   Write-Host "  powershell -ExecutionPolicy Bypass -File `"$InstallDir\start-recroom-host.ps1`""
+  Write-Host "Playtest command:" -ForegroundColor Cyan
+  Write-Host "  powershell -ExecutionPolicy Bypass -File `"$InstallDir\playtest-recroom-client.ps1`" -ClientDir <May-2022-client> -GatewayUrl <gateway> -SessionToken <token>"
 }
