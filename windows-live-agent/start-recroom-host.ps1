@@ -3,6 +3,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$env:RECROOM_AGENT_DIR = $PSScriptRoot
 
 if (-not (Test-Path $Config)) {
   throw "Missing $Config. Copy recroom-agent-config.example.json to recroom-agent-config.json and edit it locally."
