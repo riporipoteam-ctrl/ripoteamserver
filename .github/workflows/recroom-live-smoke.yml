@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
     paths:
+      - "hf-space/recroom_autoload.py"
+      - "hf-space/recroom_compat.py"
+      - "hf-space/recroom_gateway.py"
+      - "hf-space/recroom_broker.py"
+      - "hf-space/recroom_public.py"
       - ".github/workflows/recroom-live-smoke.yml"
   workflow_dispatch:
 
@@ -13,12 +18,12 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - name: Verify live compatibility gateway
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --retry 8 --retry-delay 4 \
+          curl --fail --silent --show-error --retry 12 --retry-delay 5 \
             "https://echoxr-ripoteam-cloud-pc.hf.space/flux/health" \
             -o /tmp/recroom-health.json
           cat /tmp/recroom-health.json
@@ -30,6 +35,62 @@ jobs:
           assert data.get('buildDate') == '2022-05-19', data
           assert data.get('photon', {}).get('configured') is True, data
           print('May 19 2022 gateway and Photon config are live.')
+          PY
+
+      - name: Verify typed May 2022 startup DTOs are live
+        run: |
+          set -euo pipefail
+          base='https://echoxr-ripoteam-cloud-pc.hf.space'
+          for i in $(seq 1 24); do
+            curl -fsS "$base/api/config/v2" -o /tmp/config.json || true
+            if python - <<'PY'
+          import json,sys
+          try:
+              d=json.load(open('/tmp/config.json'))
+              ok=isinstance(d,list) and any(x.get('Key')=='BuildId' and x.get('Value')=='8751857' for x in d if isinstance(x,dict))
+          except Exception:
+              ok=False
+          sys.exit(0 if ok else 1)
+          PY
+            then break; fi
+            sleep 5
+          done
+          cat /tmp/config.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/config.json'))
+          assert isinstance(d,list), d
+          values={x.get('Key'):x.get('Value') for x in d if isinstance(x,dict)}
+          assert values.get('BuildId')=='8751857', values
+          assert values.get('BuildDate')=='2022-05-19', values
+          assert values.get('Screens.ForceVerification')=='0', values
+          assert values.get('Maintenance.Enabled')=='false', values
+          print('Typed config-v2 list is live.')
+          PY
+
+          curl -fsS "$base/api/versioncheck/v4" -o /tmp/version.json
+          cat /tmp/version.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/version.json'))
+          assert d.get('VersionStatus')==0, d
+          assert d.get('UpdateNotificationStage')==0, d
+          assert d.get('RequiresUpdate') is False, d
+          print('Version check allows the May 2022 client.')
+          PY
+
+          curl -fsS "$base/Auth/.well-known/openid-configuration" -o /tmp/oidc.json
+          curl -fsS "$base/Auth/.well-known/openid-configuration/jwks" -o /tmp/jwks.json
+          cat /tmp/oidc.json
+          cat /tmp/jwks.json
+          python - <<'PY'
+          import json
+          o=json.load(open('/tmp/oidc.json')); j=json.load(open('/tmp/jwks.json'))
+          assert o.get('issuer','').startswith('http://127.0.0.1:81/Auth'), o
+          assert o.get('token_endpoint','').endswith('/Auth/connect/token'), o
+          keys=j.get('keys') or []
+          assert len(keys)==1 and keys[0].get('kty')=='RSA' and keys[0].get('alg')=='RS256', j
+          print('Local OIDC/JWKS token-validation surface is live.')
           PY
 
       - name: Verify live browser session broker
@@ -54,16 +115,12 @@ jobs:
         run: |
           set -euo pipefail
           create_status="$(curl --silent --show-error --output /tmp/pair-create.json --write-out '%{http_code}' \
-            --request POST \
-            --header 'content-type: application/json' \
-            --data '{}' \
+            --request POST --header 'content-type: application/json' --data '{}' \
             'https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/host-pairing')"
           cat /tmp/pair-create.json
           test "$create_status" = "401"
-
           claim_status="$(curl --silent --show-error --output /tmp/pair-claim.json --write-out '%{http_code}' \
-            --request POST \
-            --header 'content-type: application/json' \
+            --request POST --header 'content-type: application/json' \
             --data '{"pairingCode":"definitely-not-a-real-pairing-code"}' \
             'https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/host-pairing/claim')"
           cat /tmp/pair-claim.json
