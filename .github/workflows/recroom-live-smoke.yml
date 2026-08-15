@@ -6,6 +6,7 @@ on:
     paths:
       - "hf-space/recroom_autoload.py"
       - "hf-space/recroom_compat.py"
+      - "hf-space/recroom_compat_extra.py"
       - "hf-space/recroom_gateway.py"
       - "hf-space/recroom_broker.py"
       - "hf-space/recroom_public.py"
@@ -92,6 +93,24 @@ jobs:
           assert len(keys)==1 and keys[0].get('kty')=='RSA' and keys[0].get('alg')=='RS256', j
           print('Local OIDC/JWKS token-validation surface is live.')
           PY
+
+      - name: Verify expanded post-login route layer is mounted
+        run: |
+          set -euo pipefail
+          base='https://echoxr-ripoteam-cloud-pc.hf.space'
+          # Without a native Flux session these routes should be 401. A 404 would
+          # mean the compatibility module was not mounted after deployment.
+          for path in \
+            '/api/gameconfigs/v1/all' \
+            '/api/relationships/v2/get' \
+            '/outfits/me/saved' \
+            '/econ/roomInventory/player'; do
+            code="$(curl --silent --show-error --output /tmp/extra-route.json --write-out '%{http_code}' "$base$path")"
+            echo "$path -> HTTP $code"
+            cat /tmp/extra-route.json
+            test "$code" = "401"
+          done
+          echo 'Expanded post-login RecNet route layer is mounted.'
 
       - name: Verify live browser session broker
         run: |
