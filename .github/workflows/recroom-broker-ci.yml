@@ -3,12 +3,15 @@ name: Rec Room Broker CI
 on:
   push:
     branches:
+      - main
       - feat/recroom-session-broker
     paths:
+      - "hf-space/recroom_autoload.py"
       - "hf-space/recroom_broker.py"
       - "hf-space/recroom_capture.py"
       - "hf-space/recroom_gateway.py"
       - "hf-space/recroom_public.py"
+      - "hf-space/sitecustomize.py"
       - "hf-space/app_server_v2.py"
       - "windows-live-agent/recroom-agent.ps1"
       - "windows-live-agent/recroom-capture-agent.ps1"
@@ -18,10 +21,12 @@ on:
       - ".github/workflows/recroom-broker-ci.yml"
   pull_request:
     paths:
+      - "hf-space/recroom_autoload.py"
       - "hf-space/recroom_broker.py"
       - "hf-space/recroom_capture.py"
       - "hf-space/recroom_gateway.py"
       - "hf-space/recroom_public.py"
+      - "hf-space/sitecustomize.py"
       - "hf-space/app_server_v2.py"
       - "windows-live-agent/recroom-agent.ps1"
       - "windows-live-agent/recroom-capture-agent.ps1"
@@ -43,7 +48,15 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile Rec Room Python
-        run: python -m py_compile hf-space/recroom_broker.py hf-space/recroom_capture.py hf-space/recroom_gateway.py hf-space/recroom_public.py hf-space/app_server_v2.py
+        run: >-
+          python -m py_compile
+          hf-space/recroom_autoload.py
+          hf-space/recroom_broker.py
+          hf-space/recroom_capture.py
+          hf-space/recroom_gateway.py
+          hf-space/recroom_public.py
+          hf-space/sitecustomize.py
+          hf-space/app_server_v2.py
       - name: Validate Windows agent PowerShell syntax
         shell: pwsh
         run: |
