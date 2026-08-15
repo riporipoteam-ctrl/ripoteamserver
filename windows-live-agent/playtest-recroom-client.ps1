@@ -38,7 +38,7 @@ $report = [ordered]@{
 
 $proxyProcess = $null
 $gameProcess = $null
-$streamStarted = $false
+$captureProcess = $null
 
 function Save-Report {
   $report.finishedAt = [DateTimeOffset]::UtcNow.ToString("o")
@@ -106,14 +106,49 @@ function Start-Proxy([string]$ProxyScript, [string]$Gateway, [string]$Token) {
   throw "Rec Room proxy never became healthy on port 81."
 }
 
-function Parse-Token([string]$Url) {
-  $uri = [Uri]$Url
-  foreach ($pair in $uri.Query.TrimStart('?').Split('&')) {
-    if (-not $pair) { continue }
-    $parts = $pair.Split('=', 2)
-    if ($parts[0] -eq 'token' -and $parts.Count -eq 2) { return [Uri]::UnescapeDataString($parts[1]) }
+function Start-LocalCapture([int]$GamePid) {
+  $python = $null
+  foreach ($candidate in @("python.exe", "python3.exe", "py.exe")) {
+    $command = Get-Command $candidate -ErrorAction SilentlyContinue
+    if ($command) { $python = $command.Source; break }
   }
-  return ""
+  if (-not $python) { throw "Python 3 is required for the Rec Room playtest capture server." }
+  $prefix = @()
+  if ((Split-Path $python -Leaf).ToLowerInvariant() -eq "py.exe") { $prefix = @("-3") }
+  $check = Start-Process -FilePath $python -ArgumentList @($prefix + @("-c", '"from PIL import ImageGrab"')) -Wait -PassThru -NoNewWindow
+  if ($check.ExitCode -ne 0) {
+    $install = Start-Process -FilePath $python -ArgumentList @($prefix + @("-m", "pip", "install", "--disable-pip-version-check", "Pillow>=10,<12")) -Wait -PassThru -NoNewWindow
+    if ($install.ExitCode -ne 0) { throw "Could not install Pillow for the Rec Room playtest capture server." }
+  }
+
+  $script = Join-Path $PSScriptRoot "recroom-web-stream.py"
+  if (-not (Test-Path $script)) { throw "Missing Rec Room capture server: $script" }
+  $bytes = New-Object byte[] 32
+  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+  $token = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+','-').Replace('/','_')
+  $stdout = Join-Path $OutputDir "capture-server.out.log"
+  $stderr = Join-Path $OutputDir "capture-server.err.log"
+  $args = @($prefix + @("`"$script`"", "--pid", [string]$GamePid, "--port", "6081", "--token", $token, "--max-width", "1280", "--quality", "72"))
+  $process = Start-Process -FilePath $python -ArgumentList $args -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+  for ($i = 0; $i -lt 80; $i++) {
+    if ($process.HasExited) {
+      $detail = ((Get-Content $stderr -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content $stdout -Raw -ErrorAction SilentlyContinue)).Trim()
+      throw "Rec Room capture server exited before finding the game window: $detail"
+    }
+    try {
+      $health = Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:6081/health" -TimeoutSec 2
+      if ($health.ok) {
+        return [pscustomobject]@{
+          Process = $process
+          Token = $token
+          Url = "http://127.0.0.1:6081/?token=$([Uri]::EscapeDataString($token))"
+        }
+      }
+    } catch {}
+    Start-Sleep -Milliseconds 250
+  }
+  try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
+  throw "Rec Room capture server could not find a visible game window."
 }
 
 function Send-Input([string]$InputUrl, $Payload) {
@@ -189,22 +224,12 @@ try {
   Start-Sleep -Seconds 2
   if ($gameProcess.HasExited) { throw "Rec Room exited immediately with code $($gameProcess.ExitCode)." }
 
-  # The public HTTPS tunnel is tested independently in recroom-windows-host-ci.
-  # A diagnostic run should not depend on external tunnel availability, so use
-  # the exact same capture/input server locally for deterministic game testing.
-  $streamScript = Join-Path $PSScriptRoot "start-recroom-browser-stream.ps1"
-  $streamLines = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $streamScript -LocalOnly)
-  if ($LASTEXITCODE -ne 0) { throw "Local browser stream launcher failed." }
-  $streamUrl = [string]($streamLines | Where-Object { $_ -match '^http://127\.0\.0\.1:' } | Select-Object -Last 1)
-  if (-not $streamUrl) { throw "Local browser stream did not return a control URL." }
-  $streamStarted = $true
+  $capture = Start-LocalCapture $gameProcess.Id
+  $captureProcess = $capture.Process
   $report.streamReady = $true
-  $report.streamUrl = $streamUrl
+  $report.streamUrl = $capture.Url
   $report.windowReady = $true
-
-  $token = Parse-Token $streamUrl
-  if (-not $token) { throw "Could not extract stream control token." }
-  $encoded = [Uri]::EscapeDataString($token)
+  $encoded = [Uri]::EscapeDataString($capture.Token)
   $frameUrl = "http://127.0.0.1:6081/frame.jpg?token=$encoded"
   $inputUrl = "http://127.0.0.1:6081/input?token=$encoded"
 
@@ -246,13 +271,8 @@ try {
   $report.errors += $_.Exception.Message
 } finally {
   try { $report.unityLogs = @(Collect-UnityLogs $startedAt) } catch { $report.errors += ("Unity log collection failed: " + $_.Exception.Message) }
-  try {
-    if ($streamStarted) {
-      $stop = Join-Path $PSScriptRoot "stop-recroom-browser-stream.ps1"
-      if (Test-Path $stop) { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stop 2>$null | Out-Null }
-    }
-  } catch {}
   if (-not $KeepRunning) {
+    if ($captureProcess -and -not $captureProcess.HasExited) { Stop-Process -Id $captureProcess.Id -Force -ErrorAction SilentlyContinue }
     if ($gameProcess -and -not $gameProcess.HasExited) { Stop-Process -Id $gameProcess.Id -Force -ErrorAction SilentlyContinue }
     if ($proxyProcess -and -not $proxyProcess.HasExited) { Stop-Process -Id $proxyProcess.Id -Force -ErrorAction SilentlyContinue }
   }
