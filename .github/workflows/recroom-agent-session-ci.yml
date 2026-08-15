@@ -97,6 +97,7 @@ jobs:
           $env:READY1=$ready1;$env:READY2=$ready2;$env:FAILED=$failed
           $broker=Start-Process python -ArgumentList @("`"$mock`"") -PassThru -WindowStyle Hidden
           Start-Sleep -Milliseconds 700
+          $env:RECROOM_AGENT_DIR=$env:AGENT_INSTALL_DIR
           $agentScript=Join-Path $env:AGENT_INSTALL_DIR "recroom-agent.ps1"; $agentOut=Join-Path $env:RUNNER_TEMP "agent.out.log"; $agentErr=Join-Path $env:RUNNER_TEMP "agent.err.log"
           $arg="-NoProfile -ExecutionPolicy Bypass -File `"$agentScript`" -Config `"$env:AGENT_CONFIG`""
           $agent=Start-Process powershell.exe -ArgumentList $arg -PassThru -RedirectStandardOutput $agentOut -RedirectStandardError $agentErr
