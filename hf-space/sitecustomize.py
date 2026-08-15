@@ -22,6 +22,12 @@ try:
 except Exception as exc:
     print(f"TikTok session stability patch failed to load: {exc}")
 
+try:
+    from recroom_autoload import start_recroom_autoload
+    start_recroom_autoload()
+except Exception as exc:
+    print(f"Rec Room runtime autoload failed to start: {exc}")
+
 
 def _auto_probe_live_studio(connector, wine_runner) -> None:
     if os.environ.get("RIPO_WINE_AUTOPROBE", "0").strip().lower() not in {"1", "true", "yes", "on"}:
