@@ -1,5 +1,6 @@
 param(
-  [int]$Port = 6081
+  [int]$Port = 6081,
+  [switch]$LocalOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,13 +40,15 @@ if ($pilCheck.ExitCode -ne 0) {
   if ($install.ExitCode -ne 0) { throw "Could not install Pillow for the Rec Room browser stream." }
 }
 
-New-Item -ItemType Directory -Path $binDir -Force | Out-Null
-if (-not (Test-Path $cloudflared)) {
-  $url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
-  $temp = "$cloudflared.download"
-  Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $temp -TimeoutSec 120
-  if (-not (Test-Path $temp) -or (Get-Item $temp).Length -lt 1MB) { throw "cloudflared download was incomplete." }
-  Move-Item $temp $cloudflared -Force
+if (-not $LocalOnly) {
+  New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+  if (-not (Test-Path $cloudflared)) {
+    $url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+    $temp = "$cloudflared.download"
+    Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $temp -TimeoutSec 120
+    if (-not (Test-Path $temp) -or (Get-Item $temp).Length -lt 1MB) { throw "cloudflared download was incomplete." }
+    Move-Item $temp $cloudflared -Force
+  }
 }
 
 Remove-Item $stdoutLog,$stderrLog,$tunnelOut,$tunnelErr -Force -ErrorAction SilentlyContinue
@@ -80,32 +83,39 @@ if (-not $healthy) {
   throw "Rec Room browser stream could not find a visible game window."
 }
 
-$tunnel = Start-Process -FilePath $cloudflared -ArgumentList @("tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:$Port") -PassThru -WindowStyle Hidden -RedirectStandardOutput $tunnelOut -RedirectStandardError $tunnelErr
-$tunnelUrl = ""
-for ($i = 0; $i -lt 180; $i++) {
-  if ($tunnel.HasExited) {
-    $detail = ((Get-Content $tunnelErr -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content $tunnelOut -Raw -ErrorAction SilentlyContinue)).Trim()
-    throw "Cloudflare tunnel exited before becoming ready: $detail"
+$tunnelPid = 0
+$baseUrl = "http://127.0.0.1:$Port"
+if (-not $LocalOnly) {
+  $tunnel = Start-Process -FilePath $cloudflared -ArgumentList @("tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:$Port") -PassThru -WindowStyle Hidden -RedirectStandardOutput $tunnelOut -RedirectStandardError $tunnelErr
+  $tunnelUrl = ""
+  for ($i = 0; $i -lt 180; $i++) {
+    if ($tunnel.HasExited) {
+      $detail = ((Get-Content $tunnelErr -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content $tunnelOut -Raw -ErrorAction SilentlyContinue)).Trim()
+      throw "Cloudflare tunnel exited before becoming ready: $detail"
+    }
+    $logs = ((Get-Content $tunnelErr -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content $tunnelOut -Raw -ErrorAction SilentlyContinue))
+    $match = [regex]::Match($logs, 'https://[a-z0-9-]+\.trycloudflare\.com', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if ($match.Success) { $tunnelUrl = $match.Value; break }
+    Start-Sleep -Milliseconds 250
   }
-  $logs = ((Get-Content $tunnelErr -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content $tunnelOut -Raw -ErrorAction SilentlyContinue))
-  $match = [regex]::Match($logs, 'https://[a-z0-9-]+\.trycloudflare\.com', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-  if ($match.Success) { $tunnelUrl = $match.Value; break }
-  Start-Sleep -Milliseconds 250
-}
-if (-not $tunnelUrl) {
-  Stop-Process -Id $tunnel.Id -Force -ErrorAction SilentlyContinue
-  Stop-Process -Id $stream.Id -Force -ErrorAction SilentlyContinue
-  throw "Cloudflare Quick Tunnel did not return an HTTPS URL."
+  if (-not $tunnelUrl) {
+    Stop-Process -Id $tunnel.Id -Force -ErrorAction SilentlyContinue
+    Stop-Process -Id $stream.Id -Force -ErrorAction SilentlyContinue
+    throw "Cloudflare Quick Tunnel did not return an HTTPS URL."
+  }
+  $tunnelPid = $tunnel.Id
+  $baseUrl = $tunnelUrl.TrimEnd('/')
 }
 
 $state = [ordered]@{
   startedAt = [DateTimeOffset]::UtcNow.ToString("o")
   gamePid = $gamePid
   streamPid = $stream.Id
-  tunnelPid = $tunnel.Id
+  tunnelPid = $tunnelPid
   localPort = $Port
-  publicUrl = $tunnelUrl
+  localOnly = [bool]$LocalOnly
+  publicUrl = $(if ($LocalOnly) { "" } else { $baseUrl })
 }
 $state | ConvertTo-Json -Depth 4 | Set-Content $statePath -Encoding UTF8
 
-Write-Output ($tunnelUrl.TrimEnd('/') + "/?token=" + [Uri]::EscapeDataString($token))
+Write-Output ($baseUrl + "/?token=" + [Uri]::EscapeDataString($token))
