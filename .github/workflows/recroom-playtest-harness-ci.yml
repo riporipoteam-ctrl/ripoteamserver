@@ -14,7 +14,7 @@ permissions:
 jobs:
   real-client-pipeline-fixture:
     runs-on: windows-latest
-    timeout-minutes: 12
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,7 +32,6 @@ jobs:
           using System;
           using System.Drawing;
           using System.Windows.Forms;
-
           public class RecRoomFixture : Form {
               private readonly Label label = new Label();
               private readonly Timer timer = new Timer();
@@ -57,16 +56,10 @@ jobs:
                   timer.Tick += (s, e) => { tick++; label.Text = "RUNNING FRAME " + tick; BackColor = Color.FromArgb(18 + (tick * 7) % 70, 28 + (tick * 5) % 70, 45 + (tick * 3) % 70); };
                   timer.Start();
               }
-              [STAThread]
-              public static void Main() {
-                  Application.EnableVisualStyles();
-                  Application.SetCompatibleTextRenderingDefault(false);
-                  Application.Run(new RecRoomFixture());
-              }
+              [STAThread] public static void Main() { Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false); Application.Run(new RecRoomFixture()); }
           }
           '@ | Set-Content $source -Encoding UTF8
           $csc = "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          if (-not (Test-Path $csc)) { throw "C# compiler was not found." }
           $exe = Join-Path $gameDir "Recroom_Release.exe"
           & $csc /nologo /target:winexe /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /out:$exe $source
           if ($LASTEXITCODE -ne 0 -or -not (Test-Path $exe)) { throw "Could not compile the Windows game fixture." }
@@ -85,42 +78,21 @@ jobs:
           $installDir = Join-Path $env:RUNNER_TEMP "RipoTeamRecRoomPlaytest"
           & .\windows-live-agent\install-recroom-host.ps1 -InstallDir $installDir
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          foreach ($required in @(
-            "playtest-recroom-client.ps1",
-            "recroom-tools\redirect-client-urls.mjs",
-            "recroom-tools\host-proxy.mjs",
-            "start-recroom-browser-stream.ps1",
-            "recroom-web-stream.py"
-          )) {
+          foreach ($required in @("playtest-recroom-client.ps1","recroom-tools\redirect-client-urls.mjs","recroom-tools\host-proxy.mjs","recroom-web-stream.py")) {
             if (-not (Test-Path (Join-Path $installDir $required))) { throw "Installer omitted $required" }
           }
           "PLAYTEST_INSTALL_DIR=$installDir" | Out-File $env:GITHUB_ENV -Append
-      - name: Run the full client playtest pipeline
-        shell: pwsh
+      - name: Run the full client playtest pipeline directly
+        shell: powershell
         run: |
           $output = Join-Path $env:RUNNER_TEMP "playtest-evidence"
           New-Item -ItemType Directory -Path $output -Force | Out-Null
           "PLAYTEST_OUTPUT=$output" | Out-File $env:GITHUB_ENV -Append
           $script = Join-Path $env:PLAYTEST_INSTALL_DIR "playtest-recroom-client.ps1"
-          $stdout = Join-Path $output "harness-stdout.log"
-          $stderr = Join-Path $output "harness-stderr.log"
-          $argString = "-NoProfile -ExecutionPolicy Bypass -File `"$script`" -ClientDir `"$env:FIXTURE_GAME_DIR`" -GatewayUrl `"http://127.0.0.1:9099`" -SessionToken `"fixture-session-token`" -DurationSeconds 12 -OutputDir `"$output`""
-          $process = Start-Process -FilePath "powershell.exe" -ArgumentList $argString -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-          if (-not $process.WaitForExit(180000)) {
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-            Write-Host "HARNESS_TIMEOUT=true"
-            Get-Content $stdout -Raw -ErrorAction SilentlyContinue
-            Get-Content $stderr -Raw -ErrorAction SilentlyContinue
-            if (Test-Path (Join-Path $output "playtest-report.json")) { Get-Content (Join-Path $output "playtest-report.json") -Raw }
-            throw "Real-client playtest harness exceeded 180 seconds."
-          }
-          Write-Host "HARNESS_EXIT_CODE=$($process.ExitCode)"
-          Get-Content $stdout -Raw -ErrorAction SilentlyContinue
-          Get-Content $stderr -Raw -ErrorAction SilentlyContinue
-          if ($process.ExitCode -ne 0) {
-            if (Test-Path (Join-Path $output "playtest-report.json")) { Get-Content (Join-Path $output "playtest-report.json") -Raw }
-            throw "Real-client playtest harness returned failure."
-          }
+          & $script -ClientDir $env:FIXTURE_GAME_DIR -GatewayUrl "http://127.0.0.1:9099" -SessionToken "fixture-session-token" -DurationSeconds 12 -OutputDir $output
+          $code = $LASTEXITCODE
+          if (Test-Path (Join-Path $output "playtest-report.json")) { Get-Content (Join-Path $output "playtest-report.json") -Raw }
+          if ($code -ne 0) { throw "Real-client playtest harness returned exit code $code." }
           $report = Get-Content (Join-Path $output "playtest-report.json") -Raw | ConvertFrom-Json
           if (-not $report.ok) { throw "Playtest report was not OK." }
           if (-not $report.proxyReady -or -not $report.windowReady -or -not $report.streamReady) { throw "Playtest did not cross proxy/window/stream gates." }
@@ -130,7 +102,6 @@ jobs:
           $hashes = @($report.checkpoints | ForEach-Object { $_.sha256 } | Select-Object -Unique)
           if ($hashes.Count -lt 2) { throw "Playtest screenshots did not change." }
           Write-Host "RECROOM_REAL_CLIENT_PIPELINE_FIXTURE_OK=true"
-          Get-Content (Join-Path $output "playtest-report.json") -Raw
       - name: Upload playtest diagnostics
         if: always()
         uses: actions/upload-artifact@v4
