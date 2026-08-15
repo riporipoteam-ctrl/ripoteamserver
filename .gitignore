@@ -6,3 +6,6 @@ node_modules/
 __pycache__/
 *.pyc
 .DS_Store
+windows-live-agent/recroom-agent-config.json
+windows-live-agent/recroom-agent-state.json
+windows-live-agent/*.local.json
