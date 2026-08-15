@@ -6,7 +6,6 @@ import io
 import json
 import os
 import secrets
-import sys
 import threading
 import time
 from http import HTTPStatus
@@ -22,14 +21,18 @@ if os.name != "nt":
     raise SystemExit("recroom_web_stream.py only runs on Windows.")
 
 user32 = ctypes.windll.user32
-kernel32 = ctypes.windll.kernel32
 
 SW_RESTORE = 9
 KEYEVENTF_KEYUP = 0x0002
+MOUSEEVENTF_MOVE = 0x0001
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
 MOUSEEVENTF_RIGHTDOWN = 0x0008
 MOUSEEVENTF_RIGHTUP = 0x0010
+MOUSEEVENTF_MIDDLEDOWN = 0x0020
+MOUSEEVENTF_MIDDLEUP = 0x0040
+MOUSEEVENTF_WHEEL = 0x0800
+WHEEL_DELTA = 120
 
 VK = {
     "Backspace": 0x08,
@@ -40,6 +43,7 @@ VK = {
     "Alt": 0x12,
     "Escape": 0x1B,
     "Space": 0x20,
+    " ": 0x20,
     "ArrowLeft": 0x25,
     "ArrowUp": 0x26,
     "ArrowRight": 0x27,
@@ -48,6 +52,7 @@ VK = {
 }
 for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789":
     VK[ch.lower()] = ord(ch)
+    VK[ch] = ord(ch)
 
 
 class RECT(ctypes.Structure):
@@ -110,7 +115,16 @@ def send_key(hwnd: int, key: str, down: bool) -> None:
     user32.keybd_event(code, 0, 0 if down else KEYEVENTF_KEYUP, 0)
 
 
-def send_click(hwnd: int, x_norm: float, y_norm: float, button: str) -> None:
+def button_flags(button: str) -> tuple[int, int]:
+    normalized = button.lower()
+    if normalized == "right":
+        return MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP
+    if normalized == "middle":
+        return MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP
+    return MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP
+
+
+def move_absolute(hwnd: int, x_norm: float, y_norm: float) -> None:
     left, top, right, bottom = window_rect(hwnd)
     x_norm = min(1.0, max(0.0, x_norm))
     y_norm = min(1.0, max(0.0, y_norm))
@@ -118,12 +132,35 @@ def send_click(hwnd: int, x_norm: float, y_norm: float, button: str) -> None:
     y = int(top + (bottom - top) * y_norm)
     focus_window(hwnd)
     user32.SetCursorPos(x, y)
-    if button == "right":
-        user32.mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
-        user32.mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
+
+
+def send_mouse_button(hwnd: int, button: str, down: bool, x_norm: float | None = None, y_norm: float | None = None) -> None:
+    if x_norm is not None and y_norm is not None:
+        move_absolute(hwnd, x_norm, y_norm)
     else:
-        user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
-        user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+        focus_window(hwnd)
+    down_flag, up_flag = button_flags(button)
+    user32.mouse_event(down_flag if down else up_flag, 0, 0, 0, 0)
+
+
+def send_click(hwnd: int, x_norm: float, y_norm: float, button: str) -> None:
+    send_mouse_button(hwnd, button, True, x_norm, y_norm)
+    send_mouse_button(hwnd, button, False)
+
+
+def send_mouse_move(hwnd: int, dx: int, dy: int) -> None:
+    focus_window(hwnd)
+    dx = max(-5000, min(5000, int(dx)))
+    dy = max(-5000, min(5000, int(dy)))
+    if dx or dy:
+        user32.mouse_event(MOUSEEVENTF_MOVE, dx, dy, 0, 0)
+
+
+def send_wheel(hwnd: int, delta: int) -> None:
+    focus_window(hwnd)
+    delta = max(-10, min(10, int(delta)))
+    if delta:
+        user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, delta * WHEEL_DELTA, 0)
 
 
 def capture_jpeg(hwnd: int, max_width: int, quality: int) -> bytes:
@@ -145,25 +182,34 @@ def html_page(token: str) -> bytes:
 <html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no\">
 <title>Flux Rec Room Host</title>
 <style>
-html,body{{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font-family:system-ui,sans-serif}}
+html,body{{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font-family:system-ui,sans-serif;touch-action:none}}
 #wrap{{position:fixed;inset:0;display:grid;place-items:center;background:#000}}
-#frame{{max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;outline:none;cursor:crosshair;user-select:none;-webkit-user-drag:none}}
-#status{{position:fixed;left:10px;bottom:10px;padding:6px 9px;border-radius:999px;background:#000a;font-size:11px;pointer-events:none}}
+#frame{{max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;outline:none;cursor:crosshair;user-select:none;-webkit-user-drag:none;touch-action:none}}
+#status{{position:fixed;left:10px;bottom:10px;padding:6px 9px;border-radius:999px;background:#000b;font-size:11px;pointer-events:none;z-index:10}}
+#hint{{position:fixed;right:10px;bottom:10px;padding:6px 9px;border-radius:999px;background:#0009;font-size:11px;color:#ddd;pointer-events:none;z-index:10}}
 </style></head><body>
-<div id=\"wrap\"><img id=\"frame\" tabindex=\"0\" alt=\"Rec Room live game window\"></div><div id=\"status\">Flux remote control</div>
+<div id=\"wrap\"><img id=\"frame\" tabindex=\"0\" alt=\"Rec Room live game window\"></div>
+<div id=\"status\">Flux remote control</div><div id=\"hint\">Click to capture mouse · Esc releases</div>
 <script>
 const token={safe}; const frame=document.getElementById('frame'); const status=document.getElementById('status');
-let stopped=false; let last=0; const fps=12;
-function refresh(){{if(stopped)return; const now=Date.now(); if(now-last>1000/fps){{last=now; frame.src=`frame.jpg?token=${{encodeURIComponent(token)}}&t=${{now}}`;}} requestAnimationFrame(refresh);}}
-frame.onload=()=>{{status.textContent='Connected · click image to control';}};
+let stopped=false,last=0; const fps=15; let pendingDx=0,pendingDy=0,moveScheduled=false;
+function refresh(){{if(stopped)return;const now=Date.now();if(now-last>1000/fps){{last=now;frame.src=`frame.jpg?token=${{encodeURIComponent(token)}}&t=${{now}}`;}}requestAnimationFrame(refresh);}}
+frame.onload=()=>{{status.textContent=document.pointerLockElement===frame?'Connected · mouse captured':'Connected · click to control';}};
 frame.onerror=()=>{{status.textContent='Waiting for Rec Room window…';}};
 async function input(payload){{try{{await fetch(`input?token=${{encodeURIComponent(token)}}`,{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify(payload),cache:'no-store'}});}}catch{{}}}}
-function norm(ev){{const r=frame.getBoundingClientRect(); const iw=frame.naturalWidth||r.width, ih=frame.naturalHeight||r.height; const scale=Math.min(r.width/iw,r.height/ih); const dw=iw*scale,dh=ih*scale; const ox=r.left+(r.width-dw)/2,oy=r.top+(r.height-dh)/2; return {{x:(ev.clientX-ox)/dw,y:(ev.clientY-oy)/dh}};}}
-frame.addEventListener('pointerdown',ev=>{{ev.preventDefault(); frame.focus(); const p=norm(ev); input({{type:'click',x:p.x,y:p.y,button:ev.button===2?'right':'left'}});}});
+function norm(ev){{const r=frame.getBoundingClientRect();const iw=frame.naturalWidth||r.width,ih=frame.naturalHeight||r.height;const scale=Math.min(r.width/iw,r.height/ih);const dw=iw*scale,dh=ih*scale;const ox=r.left+(r.width-dw)/2,oy=r.top+(r.height-dh)/2;return{{x:(ev.clientX-ox)/dw,y:(ev.clientY-oy)/dh}};}}
+function buttonName(button){{return button===2?'right':button===1?'middle':'left';}}
+function flushMove(){{moveScheduled=false;const dx=Math.round(pendingDx),dy=Math.round(pendingDy);pendingDx=0;pendingDy=0;if(dx||dy)input({{type:'move',dx,dy}});}}
+frame.addEventListener('pointerdown',ev=>{{ev.preventDefault();frame.focus();const button=buttonName(ev.button);if(document.pointerLockElement===frame){{input({{type:'button',button,down:true}});}}else{{const p=norm(ev);input({{type:'button',button,down:true,x:p.x,y:p.y}});if(ev.button===0&&frame.requestPointerLock)frame.requestPointerLock().catch?.(()=>{{}});}}}});
+frame.addEventListener('pointerup',ev=>{{ev.preventDefault();input({{type:'button',button:buttonName(ev.button),down:false}});}});
+frame.addEventListener('mousemove',ev=>{{if(document.pointerLockElement!==frame)return;pendingDx+=ev.movementX||0;pendingDy+=ev.movementY||0;if(!moveScheduled){{moveScheduled=true;requestAnimationFrame(flushMove);}}}});
+frame.addEventListener('wheel',ev=>{{ev.preventDefault();const delta=ev.deltaY<0?1:-1;input({{type:'wheel',delta}});}},{{passive:false}});
 frame.addEventListener('contextmenu',ev=>ev.preventDefault());
-window.addEventListener('keydown',ev=>{{if(['F5','F11','F12'].includes(ev.key))return; ev.preventDefault(); input({{type:'key',key:ev.key,down:true}});}});
-window.addEventListener('keyup',ev=>{{if(['F5','F11','F12'].includes(ev.key))return; ev.preventDefault(); input({{type:'key',key:ev.key,down:false}});}});
-window.addEventListener('beforeunload',()=>{{stopped=true;}}); frame.focus(); refresh();
+document.addEventListener('pointerlockchange',()=>{{const locked=document.pointerLockElement===frame;status.textContent=locked?'Connected · mouse captured':'Connected · click to control';if(!locked)input({{type:'release'}});}});
+window.addEventListener('keydown',ev=>{{if(['F5','F11','F12'].includes(ev.key))return;ev.preventDefault();input({{type:'key',key:ev.key,down:true}});}});
+window.addEventListener('keyup',ev=>{{if(['F5','F11','F12'].includes(ev.key))return;ev.preventDefault();input({{type:'key',key:ev.key,down:false}});}});
+window.addEventListener('blur',()=>input({{type:'release'}}));
+window.addEventListener('beforeunload',()=>{{stopped=true;input({{type:'release'}});}});frame.focus();refresh();
 </script></body></html>""".encode("utf-8")
 
 
@@ -177,6 +223,8 @@ class Server(ThreadingHTTPServer):
         self.max_width = max_width
         self.quality = quality
         self.lock = threading.Lock()
+        self.keys_down: set[str] = set()
+        self.buttons_down: set[str] = set()
 
     def hwnd(self) -> int:
         hwnd = find_window(self.pid)
@@ -184,9 +232,29 @@ class Server(ThreadingHTTPServer):
             raise RuntimeError("Rec Room window is not visible yet.")
         return hwnd
 
+    def release_inputs(self) -> None:
+        try:
+            hwnd = self.hwnd()
+        except Exception:
+            self.keys_down.clear()
+            self.buttons_down.clear()
+            return
+        for key in list(self.keys_down):
+            try:
+                send_key(hwnd, key, False)
+            except Exception:
+                pass
+        for button in list(self.buttons_down):
+            try:
+                send_mouse_button(hwnd, button, False)
+            except Exception:
+                pass
+        self.keys_down.clear()
+        self.buttons_down.clear()
+
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "FluxRecRoomStream/1.0"
+    server_version = "FluxRecRoomStream/1.1"
 
     def log_message(self, _format: str, *_args) -> None:
         return
@@ -214,7 +282,7 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/health":
             try:
                 hwnd = self.server.hwnd()
-                body = {"ok": True, "pid": self.server.pid, "window": hwnd}
+                body = {"ok": True, "pid": self.server.pid, "window": hwnd, "inputVersion": 2}
                 return self.send_json(HTTPStatus.OK, body)
             except Exception as exc:
                 return self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": str(exc)})
@@ -243,9 +311,31 @@ class Handler(BaseHTTPRequestHandler):
             hwnd = self.server.hwnd()
             kind = str(data.get("type") or "")
             if kind == "key":
-                send_key(hwnd, str(data.get("key") or ""), bool(data.get("down")))
+                key = str(data.get("key") or "")
+                down = bool(data.get("down"))
+                send_key(hwnd, key, down)
+                if down:
+                    self.server.keys_down.add(key)
+                else:
+                    self.server.keys_down.discard(key)
             elif kind == "click":
                 send_click(hwnd, float(data.get("x", 0.5)), float(data.get("y", 0.5)), str(data.get("button") or "left"))
+            elif kind == "button":
+                button = str(data.get("button") or "left")
+                down = bool(data.get("down"))
+                x = data.get("x")
+                y = data.get("y")
+                send_mouse_button(hwnd, button, down, float(x) if x is not None else None, float(y) if y is not None else None)
+                if down:
+                    self.server.buttons_down.add(button)
+                else:
+                    self.server.buttons_down.discard(button)
+            elif kind == "move":
+                send_mouse_move(hwnd, int(data.get("dx", 0)), int(data.get("dy", 0)))
+            elif kind == "wheel":
+                send_wheel(hwnd, int(data.get("delta", 0)))
+            elif kind == "release":
+                self.server.release_inputs()
             else:
                 return self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "unsupported input"})
             return self.send_json(HTTPStatus.OK, {"ok": True})
@@ -264,12 +354,13 @@ def main() -> int:
     args = parser.parse_args()
     token = args.token or secrets.token_urlsafe(32)
     server = Server((args.host, args.port), Handler, pid=args.pid, token=token, max_width=max(640, args.max_width), quality=min(92, max(35, args.quality)))
-    print(json.dumps({"ok": True, "host": args.host, "port": args.port, "pid": args.pid}), flush=True)
+    print(json.dumps({"ok": True, "host": args.host, "port": args.port, "pid": args.pid, "inputVersion": 2}), flush=True)
     try:
         server.serve_forever(poll_interval=0.25)
     except KeyboardInterrupt:
         pass
     finally:
+        server.release_inputs()
         server.server_close()
     return 0
 
