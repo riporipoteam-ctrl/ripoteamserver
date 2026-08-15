@@ -50,19 +50,42 @@ jobs:
           print('Broker is live and configured.')
           PY
 
+      - name: Verify secure host pairing routes are live
+        run: |
+          set -euo pipefail
+          create_status="$(curl --silent --show-error --output /tmp/pair-create.json --write-out '%{http_code}' \
+            --request POST \
+            --header 'content-type: application/json' \
+            --data '{}' \
+            'https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/host-pairing')"
+          cat /tmp/pair-create.json
+          test "$create_status" = "401"
+
+          claim_status="$(curl --silent --show-error --output /tmp/pair-claim.json --write-out '%{http_code}' \
+            --request POST \
+            --header 'content-type: application/json' \
+            --data '{"pairingCode":"definitely-not-a-real-pairing-code"}' \
+            'https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/host-pairing/claim')"
+          cat /tmp/pair-claim.json
+          test "$claim_status" = "401"
+          echo "Host pairing endpoints are live and reject unauthenticated/invalid claims."
+
       - name: Verify browser preflight from Flux Pages
         run: |
           set -euo pipefail
-          curl --silent --show-error --dump-header /tmp/recroom-cors.txt --output /dev/null \
-            --request OPTIONS \
-            --header 'Origin: https://riporipoteam-ctrl.github.io' \
-            --header 'Access-Control-Request-Method: POST' \
-            --header 'Access-Control-Request-Headers: authorization,content-type' \
-            'https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/sessions'
-          cat /tmp/recroom-cors.txt
-          python - <<'PY'
+          for endpoint in sessions host-pairing; do
+            curl --silent --show-error --dump-header "/tmp/recroom-cors-$endpoint.txt" --output /dev/null \
+              --request OPTIONS \
+              --header 'Origin: https://riporipoteam-ctrl.github.io' \
+              --header 'Access-Control-Request-Method: POST' \
+              --header 'Access-Control-Request-Headers: authorization,content-type' \
+              "https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/$endpoint"
+            cat "/tmp/recroom-cors-$endpoint.txt"
+            ENDPOINT="$endpoint" python - <<'PY'
+          import os
           headers={}
-          for line in open('/tmp/recroom-cors.txt', encoding='utf-8', errors='replace'):
+          path=f"/tmp/recroom-cors-{os.environ['ENDPOINT']}.txt"
+          for line in open(path, encoding='utf-8', errors='replace'):
               if ':' not in line:
                   continue
               key, value=line.split(':',1)
@@ -75,3 +98,4 @@ jobs:
           assert '*' in allowed_headers or ('authorization' in allowed_headers and 'content-type' in allowed_headers), headers
           print('Flux GitHub Pages CORS preflight is accepted by the live Rec Room broker.')
           PY
+          done
