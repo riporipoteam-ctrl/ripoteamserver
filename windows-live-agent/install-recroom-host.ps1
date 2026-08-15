@@ -1,6 +1,7 @@
 param(
   [string]$InstallDir = (Join-Path $env:LOCALAPPDATA "RipoTeam\RecRoomHost"),
   [string]$SteamUsername = "",
+  [string]$PairingCode = "",
   [switch]$TrySteamDownload,
   [switch]$Start
 )
@@ -44,6 +45,7 @@ $arguments = @(
 )
 if ($TrySteamDownload) { $arguments += "-TrySteamDownload" }
 if ($SteamUsername) { $arguments += @("-SteamUsername", "`"$SteamUsername`"") }
+if ($PairingCode) { $arguments += @("-PairingCode", "`"$PairingCode`"") }
 
 & powershell.exe @arguments
 if ($LASTEXITCODE -ne 0) { throw "Rec Room host bootstrap failed." }
