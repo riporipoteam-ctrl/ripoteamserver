@@ -1,0 +1,90 @@
+name: Rec Room Windows Host CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "windows-live-agent/**"
+      - ".github/workflows/recroom-windows-host-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-stream:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install stream dependency
+        run: python -m pip install "Pillow>=10,<12"
+      - name: Exercise client discovery bootstrap
+        shell: pwsh
+        run: |
+          $fake = Join-Path $env:RUNNER_TEMP "May 19 2022"
+          New-Item -ItemType Directory -Force -Path (Join-Path $fake "Recroom_Release_Data\il2cpp_data\Metadata") | Out-Null
+          New-Item -ItemType File -Force -Path (Join-Path $fake "Recroom_Release.exe") | Out-Null
+          New-Item -ItemType File -Force -Path (Join-Path $fake "GameAssembly.dll") | Out-Null
+          New-Item -ItemType File -Force -Path (Join-Path $fake "Recroom_Release_Data\il2cpp_data\Metadata\global-metadata.dat") | Out-Null
+          $env:FLUX_RECROOM_CLIENT_DIR = $fake
+          $env:RECROOM_HOST_KEY = "ci-test-only"
+          $config = Join-Path $env:RUNNER_TEMP "recroom-agent-config.json"
+          & .\windows-live-agent\bootstrap-recroom-host.ps1 -Config $config
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $cfg = Get-Content $config -Raw | ConvertFrom-Json
+          if ($cfg.clientDir -ne $fake) { throw "Bootstrap did not preserve discovered client directory." }
+          if ($cfg.updateRef -ne "main") { throw "Bootstrap generated a stale update ref." }
+          if (-not $cfg.streamStartCommand -or -not $cfg.streamStopCommand) { throw "Bootstrap did not configure automatic streaming." }
+      - name: Launch a real Windows test window
+        shell: pwsh
+        run: |
+          @'
+          import tkinter as tk
+          root = tk.Tk()
+          root.title("Flux Rec Room Stream CI")
+          root.geometry("900x600+40+40")
+          root.configure(bg="#101622")
+          label = tk.Label(root, text="FLUX REC ROOM STREAM TEST", fg="white", bg="#101622", font=("Arial", 28, "bold"))
+          label.pack(expand=True)
+          root.after(480000, root.destroy)
+          root.mainloop()
+          '@ | Set-Content (Join-Path $env:RUNNER_TEMP "flux-test-window.py") -Encoding UTF8
+          $window = Start-Process -FilePath python -ArgumentList @((Join-Path $env:RUNNER_TEMP "flux-test-window.py")) -PassThru
+          "TEST_WINDOW_PID=$($window.Id)" | Out-File $env:GITHUB_ENV -Append
+          Start-Sleep -Seconds 2
+          if ($window.HasExited) { throw "Test window exited before stream validation." }
+      - name: Start automatic HTTPS browser stream and fetch a frame
+        shell: pwsh
+        run: |
+          $env:FLUX_RECROOM_GAME_PID = $env:TEST_WINDOW_PID
+          $lines = @(& .\windows-live-agent\start-recroom-browser-stream.ps1)
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $url = [string]($lines | Where-Object { $_ -match '^https://' } | Select-Object -Last 1)
+          if (-not $url -or $url -notmatch '^https://.+\.trycloudflare\.com/\?token=') { throw "Automatic browser stream did not return a tokenized HTTPS URL: $url" }
+          Write-Host "STREAM_URL_CREATED=true"
+          $frameUrl = $url -replace '/\?token=', '/frame.jpg?token='
+          $frameUrl += '&t=' + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          $frame = Join-Path $env:RUNNER_TEMP "recroom-stream-frame.jpg"
+          $ok = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            try {
+              Invoke-WebRequest -UseBasicParsing -Uri $frameUrl -OutFile $frame -TimeoutSec 10
+              if ((Test-Path $frame) -and (Get-Item $frame).Length -gt 1000) { $ok = $true; break }
+            } catch {}
+            Start-Sleep -Seconds 1
+          }
+          if (-not $ok) { throw "Public HTTPS stream never returned a usable JPEG frame." }
+          $bytes = [IO.File]::ReadAllBytes($frame)
+          if ($bytes[0] -ne 0xFF -or $bytes[1] -ne 0xD8) { throw "Public frame was not JPEG data." }
+          Write-Host "PUBLIC_FRAME_OK=true bytes=$($bytes.Length)"
+          & .\windows-live-agent\stop-recroom-browser-stream.ps1
+      - name: Verify stream processes cleaned up
+        shell: pwsh
+        run: |
+          $state = ".\windows-live-agent\recroom-stream-state.json"
+          if (Test-Path $state) { throw "Stream state file survived cleanup." }
+          Stop-Process -Id ([int]$env:TEST_WINDOW_PID) -Force -ErrorAction SilentlyContinue
