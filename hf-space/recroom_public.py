@@ -63,11 +63,7 @@ def install_recroom_public_routes(app: Any, broker: Any, capture: Any) -> None:
             headers={"Cache-Control": "no-store"},
         )
 
-    @app.delete("/api/recroom-public/sessions/{session_id}")
-    async def delete_public_recroom_session(
-        session_id: str,
-        access_token: str = Query(alias="accessToken"),
-    ) -> JSONResponse:
+    def release_for_player(session_id: str, access_token: str) -> JSONResponse:
         # Validate ownership before releasing the allocation.
         broker.session_for_access(session_id, access_token)
         broker.release(session_id)
@@ -75,6 +71,23 @@ def install_recroom_public_routes(app: Any, broker: Any, capture: Any) -> None:
             {"ok": True, "sessionId": session_id, "state": "released"},
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.delete("/api/recroom-public/sessions/{session_id}")
+    async def delete_public_recroom_session(
+        session_id: str,
+        access_token: str = Query(alias="accessToken"),
+    ) -> JSONResponse:
+        return release_for_player(session_id, access_token)
+
+    # GitHub Pages calls the Space cross-origin. The live Space intentionally
+    # allows browser GET/POST/OPTIONS only, so expose an equivalent POST release
+    # route rather than widening CORS to destructive methods globally.
+    @app.post("/api/recroom-public/sessions/{session_id}/release")
+    async def post_public_recroom_session_release(
+        session_id: str,
+        access_token: str = Query(alias="accessToken"),
+    ) -> JSONResponse:
+        return release_for_player(session_id, access_token)
 
     @app.post("/api/recroom-public/sessions/{session_id}/captures")
     async def create_public_capture(
