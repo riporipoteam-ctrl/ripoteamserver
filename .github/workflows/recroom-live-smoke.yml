@@ -7,6 +7,7 @@ on:
       - "hf-space/recroom_autoload.py"
       - "hf-space/recroom_compat.py"
       - "hf-space/recroom_compat_extra.py"
+      - "hf-space/recroom_match_compat.py"
       - "hf-space/recroom_gateway.py"
       - "hf-space/recroom_broker.py"
       - "hf-space/recroom_public.py"
@@ -82,8 +83,6 @@ jobs:
 
           curl -fsS "$base/Auth/.well-known/openid-configuration" -o /tmp/oidc.json
           curl -fsS "$base/Auth/.well-known/openid-configuration/jwks" -o /tmp/jwks.json
-          cat /tmp/oidc.json
-          cat /tmp/jwks.json
           python - <<'PY'
           import json
           o=json.load(open('/tmp/oidc.json')); j=json.load(open('/tmp/jwks.json'))
@@ -94,12 +93,12 @@ jobs:
           print('Local OIDC/JWKS token-validation surface is live.')
           PY
 
-      - name: Verify expanded post-login route layer is mounted
+      - name: Verify expanded post-login and matchmaking route layers are mounted
         run: |
           set -euo pipefail
           base='https://echoxr-ripoteam-cloud-pc.hf.space'
-          # Without a native Flux session these routes should be 401. A 404 would
-          # mean the compatibility module was not mounted after deployment.
+          # Protected routes should be 401 without a native Flux session. A 404
+          # means the compatibility layer did not mount after deployment.
           for path in \
             '/api/gameconfigs/v1/all' \
             '/api/relationships/v2/get' \
@@ -107,10 +106,17 @@ jobs:
             '/econ/roomInventory/player'; do
             code="$(curl --silent --show-error --output /tmp/extra-route.json --write-out '%{http_code}' "$base$path")"
             echo "$path -> HTTP $code"
-            cat /tmp/extra-route.json
             test "$code" = "401"
           done
-          echo 'Expanded post-login RecNet route layer is mounted.'
+          for path in \
+            '/Matchmaking/matchmake/dorm' \
+            '/Matchmaking/player/heartbeat'; do
+            code="$(curl --silent --show-error --output /tmp/match-route.json --write-out '%{http_code}' \
+              --request POST --header 'content-type: application/json' --data '{}' "$base$path")"
+            echo "$path -> HTTP $code"
+            test "$code" = "401"
+          done
+          echo 'Expanded RecNet and recovered roomInstance matchmaking layers are mounted.'
 
       - name: Verify live browser session broker
         run: |
@@ -136,13 +142,11 @@ jobs:
           create_status="$(curl --silent --show-error --output /tmp/pair-create.json --write-out '%{http_code}' \
             --request POST --header 'content-type: application/json' --data '{}' \
             'https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/host-pairing')"
-          cat /tmp/pair-create.json
           test "$create_status" = "401"
           claim_status="$(curl --silent --show-error --output /tmp/pair-claim.json --write-out '%{http_code}' \
             --request POST --header 'content-type: application/json' \
             --data '{"pairingCode":"definitely-not-a-real-pairing-code"}' \
             'https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/host-pairing/claim')"
-          cat /tmp/pair-claim.json
           test "$claim_status" = "401"
           echo "Host pairing endpoints are live and reject unauthenticated/invalid claims."
 
@@ -156,16 +160,13 @@ jobs:
               --header 'Access-Control-Request-Method: POST' \
               --header 'Access-Control-Request-Headers: authorization,content-type' \
               "https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/$endpoint"
-            cat "/tmp/recroom-cors-$endpoint.txt"
             ENDPOINT="$endpoint" python - <<'PY'
           import os
           headers={}
           path=f"/tmp/recroom-cors-{os.environ['ENDPOINT']}.txt"
           for line in open(path, encoding='utf-8', errors='replace'):
-              if ':' not in line:
-                  continue
-              key, value=line.split(':',1)
-              headers[key.strip().lower()]=value.strip()
+              if ':' not in line: continue
+              key, value=line.split(':',1); headers[key.strip().lower()]=value.strip()
           origin=headers.get('access-control-allow-origin','')
           methods=headers.get('access-control-allow-methods','').lower()
           allowed_headers=headers.get('access-control-allow-headers','').lower()
