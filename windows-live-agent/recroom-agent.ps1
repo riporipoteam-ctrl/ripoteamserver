@@ -8,6 +8,7 @@ $script:GameProcess = $null
 $script:AdapterProcess = $null
 $script:ActiveSessionId = ""
 $script:LastHeartbeat = [DateTimeOffset]::MinValue
+$script:RedirectState = $null
 
 function Set-CfgProperty($cfg, [string]$Name, $Value) {
   if ($cfg.PSObject.Properties[$Name]) { $cfg.$Name = $Value }
@@ -144,6 +145,42 @@ function Invoke-ConfiguredCommand([string]$Command) {
   return $process
 }
 
+function Prepare-ClientRedirect {
+  $root = Resolve-ClientDir
+  $tool = Join-Path $PSScriptRoot "recroom-tools\redirect-client-urls.mjs"
+  if (-not (Test-Path $tool)) {
+    throw "Missing Rec Room client redirect tool: $tool. Run update-recroom-host.ps1."
+  }
+  $node = Get-Command node.exe -ErrorAction SilentlyContinue
+  if (-not $node) { $node = Get-Command node -ErrorAction SilentlyContinue }
+  if (-not $node) { throw "Node.js is required to prepare the Rec Room client redirect." }
+
+  $env:FLUX_RECROOM_LOCAL_BASE = "http://127.0.0.1:81"
+  $command = "node `"$tool`" --root `"$root`""
+  $process = Invoke-ConfiguredCommand $command
+  if (-not $process) { throw "Could not start the Rec Room client redirect tool." }
+  if (-not $process.WaitForExit(120000)) {
+    try { $process.Kill() } catch {}
+    throw "Rec Room client redirect scan exceeded 120 seconds."
+  }
+  $stdout = $process.StandardOutput.ReadToEnd()
+  $stderr = $process.StandardError.ReadToEnd()
+  if ($process.ExitCode -ne 0) {
+    throw "Rec Room client redirect could not be verified (exit $($process.ExitCode)): $stderr"
+  }
+  try {
+    $state = $stdout | ConvertFrom-Json
+  } catch {
+    throw "Rec Room client redirect returned invalid diagnostics: $stdout"
+  }
+  if (-not $state.ok -or [int]$state.preparedOccurrences -le 0) {
+    throw "Rec Room client has no verified local rec.net redirects. Refusing to advertise it as playable."
+  }
+  $script:RedirectState = $state
+  Write-Host "Verified Rec Room local redirects: $($state.preparedOccurrences) occurrence(s) across $($state.inspectedFiles) inspected files." -ForegroundColor Green
+  return $state
+}
+
 function Resolve-StreamUrl {
   if ($script:cfg.streamStartCommand) {
     $process = Invoke-ConfiguredCommand ([string]$script:cfg.streamStartCommand)
@@ -174,12 +211,19 @@ function Start-Adapter($job) {
   $env:FLUX_RECROOM_SESSION_TOKEN = [string]$job.recnetSessionToken
   $env:FLUX_RECROOM_CLIENT_DIR = [string]$script:cfg.clientDir
   $env:FLUX_RECROOM_BUILD = $TargetBuild
+  $env:FLUX_RECROOM_PROXY_PORT = "81"
 
   $script:AdapterProcess = Invoke-ConfiguredCommand ([string]$script:cfg.adapterCommand)
-  Start-Sleep -Milliseconds 700
+  Start-Sleep -Milliseconds 900
   if ($script:AdapterProcess -and $script:AdapterProcess.HasExited -and $script:AdapterProcess.ExitCode -ne 0) {
     $err = $script:AdapterProcess.StandardError.ReadToEnd()
     throw "Rec Room adapter failed to start: $err"
+  }
+  try {
+    $health = Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:81/flux/local-health" -TimeoutSec 5
+    if (-not $health.ok) { throw "proxy health returned not-ok" }
+  } catch {
+    throw "Rec Room local proxy is not reachable on port 81: $($_.Exception.Message)"
   }
 }
 
@@ -226,10 +270,11 @@ function Start-Session($job) {
   $script:ActiveSessionId = [string]$job.sessionId
 
   try {
+    [void](Prepare-ClientRedirect)
     Start-Adapter $job
 
-    $env:FLUX_RECNET_URL = [string]$job.gatewayUrl
-    $env:FLUX_RECNET = [string]$job.gatewayUrl
+    $env:FLUX_RECNET_URL = "http://127.0.0.1:81"
+    $env:FLUX_RECNET = "http://127.0.0.1:81"
     $env:FLUX_RECROOM_SESSION_TOKEN = [string]$job.recnetSessionToken
     $env:FLUX_RECROOM_BUILD = $TargetBuild
     $env:FLUX_PLAYER_ACCOUNT_ID = [string]$job.account.accountId
@@ -258,7 +303,9 @@ function Start-Session($job) {
       streamUrl = $streamUrl
       processId = $script:GameProcess.Id
       resolution = "1920x1080"
-      streamer = "flux-browser-control"
+      streamer = "flux-browser-control-v1.2"
+      redirectOccurrences = [int]$script:RedirectState.preparedOccurrences
+      proxyPort = 81
     })
 
     Write-Host "Rec Room session $($job.sessionId) is ready." -ForegroundColor Green
@@ -289,11 +336,13 @@ function Handle-Job($job) {
 $script:cfg = Load-Config
 Require-Config $script:cfg
 $layout = Verify-ClientLayout
+$redirect = Prepare-ClientRedirect
 $capacity = if ($script:cfg.capacity) { [Math]::Max(1, [Math]::Min(8, [int]$script:cfg.capacity)) } else { 1 }
 Write-Host "Flux Rec Room Windows Host" -ForegroundColor Cyan
 Write-Host "Target build: May 19 2022 (8751857)"
 Write-Host "Client: $($layout.exe)"
 Write-Host "Broker: $($script:cfg.server)"
+Write-Host "Client redirect: verified ($($redirect.preparedOccurrences) local endpoint occurrence(s))"
 Write-Host "Browser stream: automatic HTTPS tunnel when a session starts"
 
 $register = Api-Post "/api/recroom/hosts/register" @{
@@ -306,7 +355,11 @@ $register = Api-Post "/api/recroom/hosts/register" @{
     os = [Environment]::OSVersion.VersionString
     clientDir = [string]$script:cfg.clientDir
     browserStream = $true
+    touchControls = $true
     targetSteamBuild = "8751857"
+    redirectReady = $true
+    redirectOccurrences = [int]$redirect.preparedOccurrences
+    localProxyPort = 81
   }
 }
 Write-Host "Registered host $($register.hostId)." -ForegroundColor Green
@@ -321,7 +374,10 @@ while ($true) {
           gameRunning = $gameRunning
           activeSessionId = $script:ActiveSessionId
           clientReady = $true
+          redirectReady = $true
+          redirectOccurrences = [int]$script:RedirectState.preparedOccurrences
           browserStream = $true
+          touchControls = $true
         }
       })
       $script:LastHeartbeat = $now
@@ -349,7 +405,10 @@ while ($true) {
         metadata = @{
           computer = $env:COMPUTERNAME
           clientReady = $true
+          redirectReady = $true
+          redirectOccurrences = [int]$script:RedirectState.preparedOccurrences
           browserStream = $true
+          touchControls = $true
         }
       })
     } catch {}
