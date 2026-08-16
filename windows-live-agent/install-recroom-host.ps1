@@ -18,6 +18,7 @@ $files = @(
   "start-recroom-host.ps1",
   "bootstrap-recroom-host.ps1",
   "download-recroom-client.ps1",
+  "identify-recroom-client.ps1",
   "update-recroom-host.ps1",
   "recroom-agent.ps1",
   "recroom-capture-agent.ps1",
@@ -66,7 +67,7 @@ if ($PairingCode) { $arguments += @("-PairingCode", $PairingCode) }
 if ($LASTEXITCODE -ne 0) { throw "Rec Room host bootstrap failed." }
 
 Write-Host "Flux Rec Room Windows host installed at $InstallDir" -ForegroundColor Green
-Write-Host "Client redirect, browser controls, and the real-client playtest harness are installed." -ForegroundColor Green
+Write-Host "Strict build identification, client redirect, browser controls, and the real-client playtest harness are installed." -ForegroundColor Green
 Write-Host "The client is never uploaded by this installer. Steam authentication, if requested, happens locally on this PC." -ForegroundColor DarkGray
 
 if ($Start) {
@@ -75,6 +76,8 @@ if ($Start) {
 } else {
   Write-Host "Start command:" -ForegroundColor Cyan
   Write-Host "  powershell -ExecutionPolicy Bypass -File `"$InstallDir\start-recroom-host.ps1`""
+  Write-Host "Identify client command:" -ForegroundColor Cyan
+  Write-Host "  powershell -ExecutionPolicy Bypass -File `"$InstallDir\identify-recroom-client.ps1`" -Scan"
   Write-Host "Playtest command:" -ForegroundColor Cyan
   Write-Host "  powershell -ExecutionPolicy Bypass -File `"$InstallDir\playtest-recroom-client.ps1`" -ClientDir <May-2022-client> -GatewayUrl <gateway> -SessionToken <token>"
 }
