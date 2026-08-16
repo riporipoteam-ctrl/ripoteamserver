@@ -29,6 +29,12 @@ $toolDir = Join-Path $PSScriptRoot "recroom-tools"
 New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
 
 $targets = @(
+  # Keep the supervisor, updater and strict client identifier current too. Older
+  # installs used to refresh only the workers, which could leave stale loose
+  # client-discovery behavior around forever.
+  [pscustomobject]@{ Name="start-recroom-host.ps1"; Url="https://raw.githubusercontent.com/$hostRepo/$hostRef/windows-live-agent/start-recroom-host.ps1"; Destination=(Join-Path $PSScriptRoot "start-recroom-host.ps1"); Kind="powershell" },
+  [pscustomobject]@{ Name="identify-recroom-client.ps1"; Url="https://raw.githubusercontent.com/$hostRepo/$hostRef/windows-live-agent/identify-recroom-client.ps1"; Destination=(Join-Path $PSScriptRoot "identify-recroom-client.ps1"); Kind="powershell" },
+  [pscustomobject]@{ Name="update-recroom-host.ps1"; Url="https://raw.githubusercontent.com/$hostRepo/$hostRef/windows-live-agent/update-recroom-host.ps1"; Destination=(Join-Path $PSScriptRoot "update-recroom-host.ps1"); Kind="powershell" },
   [pscustomobject]@{ Name="recroom-agent.ps1"; Url="https://raw.githubusercontent.com/$hostRepo/$hostRef/windows-live-agent/recroom-agent.ps1"; Destination=(Join-Path $PSScriptRoot "recroom-agent.ps1"); Kind="powershell" },
   [pscustomobject]@{ Name="recroom-capture-agent.ps1"; Url="https://raw.githubusercontent.com/$hostRepo/$hostRef/windows-live-agent/recroom-capture-agent.ps1"; Destination=(Join-Path $PSScriptRoot "recroom-capture-agent.ps1"); Kind="powershell" },
   [pscustomobject]@{ Name="playtest-recroom-client.ps1"; Url="https://raw.githubusercontent.com/$hostRepo/$hostRef/windows-live-agent/playtest-recroom-client.ps1"; Destination=(Join-Path $PSScriptRoot "playtest-recroom-client.ps1"); Kind="powershell" },
