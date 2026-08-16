@@ -1,10 +1,10 @@
-Hugging Face deployment: success
-Hugging Face runtime wait: cancelled
+Hugging Face deployment: skipped
+Hugging Face runtime wait: skipped
 Hugging Face Space health: skipped
 TikTok OAuth verification: skipped
-Source commit: 7a671c787e7f00399334b2622c4df87707b186a8
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31936699447
-Recorded at: 2026-08-16T08:32:48Z
+Source commit: fd610b3d7211c1bc5fe147387af13134f68d5b6c
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31936713574
+Recorded at: 2026-08-16T08:33:07Z
 
 ===== space-info.txt =====
 {
