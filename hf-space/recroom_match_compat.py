@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from fastapi import Header
+from fastapi import Header, Request, Response
 from fastapi.responses import JSONResponse
 
 from recroom_gateway import PHOTON_REGION, NativeSession, RecRoomGateway
@@ -68,10 +68,50 @@ def _player(session: NativeSession) -> dict[str, Any]:
     )
 
 
-def install_recroom_match_compat_routes(app: Any, gateway: RecRoomGateway) -> None:
-    """Override join/heartbeat DTOs with recovered old-client room presence."""
+async def _remember_login_lock(request: Request, session: NativeSession) -> None:
+    """Best-effort capture of the client's LoginLock without making it a gate.
 
+    The recovered service carries LoginLock through presence lifecycle requests.
+    The compatibility gateway has one native session per Flux login already, so we
+    do not reject beats on this value yet, but retaining it keeps our presence state
+    wire-compatible and gives the real-client diagnostic path useful evidence.
+    """
+    value = ""
+    try:
+        content_type = (request.headers.get("content-type") or "").lower()
+        if "application/json" in content_type:
+            body = await request.json()
+            if isinstance(body, dict):
+                value = str(body.get("LoginLock") or body.get("loginLock") or "")
+        else:
+            form = await request.form()
+            value = str(form.get("LoginLock") or form.get("loginLock") or "")
+    except Exception:
+        try:
+            raw = (await request.body()).decode("utf-8", errors="ignore")
+            for item in raw.split("&"):
+                if "=" not in item:
+                    continue
+                key, candidate = item.split("=", 1)
+                if key.lower() == "loginlock":
+                    value = candidate
+                    break
+        except Exception:
+            pass
+    if value:
+        session.state["loginLock"] = value[:128]
+
+
+def install_recroom_match_compat_routes(app: Any, gateway: RecRoomGateway) -> None:
+    """Override presence/join DTOs with recovered old-client behavior."""
+
+    # These generic gateway routes return shapes that differ from old Rec Room.
+    # In particular, player/login is an empty ACK and a first-run logout must not
+    # destroy the synthetic Orientation -2 presence.
     for path, methods in [
+        ("/Matchmaking/player/login", {"POST"}),
+        ("/Matchmaking/player/logout", {"POST"}),
+        ("/Matchmaking/player/exclusivelogin", {"POST"}),
         ("/Matchmaking/matchmake/dorm", {"POST"}),
         ("/Matchmaking/matchmake/v2/room/{room_id}", {"POST"}),
         ("/Matchmaking/player/heartbeat", {"POST"}),
@@ -83,6 +123,50 @@ def install_recroom_match_compat_routes(app: Any, gateway: RecRoomGateway) -> No
         if authorization and authorization.lower().startswith("bearer "):
             token = authorization[7:].strip()
         return gateway.from_token(token)
+
+    @app.post("/Matchmaking/player/login")
+    async def rr2022_player_login(request: Request, authorization: str | None = Header(default=None)) -> Response:
+        session = session_for(authorization)
+        await _remember_login_lock(request, session)
+        # The account-creation bootstrap on the recovered service already has the
+        # player seeded into Orientation before login. Our Flux auth exchange has
+        # no separate presence store, so seed the equivalent -2 presence here for
+        # a genuinely fresh account, but do not set lastRoomId.
+        if "lastRoomId" not in session.state:
+            _orientation_instance(session)
+        # Old client expects a bare/empty 200 ACK here, not a player JSON object.
+        return Response(status_code=200)
+
+    @app.post("/Matchmaking/player/exclusivelogin")
+    async def rr2022_player_exclusive_login(request: Request, authorization: str | None = Header(default=None)) -> JSONResponse:
+        session = session_for(authorization)
+        await _remember_login_lock(request, session)
+        return JSONResponse({"errorCode": 0})
+
+    @app.post("/Matchmaking/player/logout")
+    async def rr2022_player_logout(request: Request, authorization: str | None = Header(default=None)) -> Response:
+        session = session_for(authorization)
+        await _remember_login_lock(request, session)
+        current = session.state.get("currentRoomInstance")
+        instance_id = None
+        if isinstance(current, dict):
+            try:
+                instance_id = int(current.get("roomInstanceId"))
+            except (TypeError, ValueError):
+                instance_id = None
+
+        # The stock client can emit a spurious logout immediately after account
+        # creation. Clearing Orientation here destroys the -2 bootstrap and sends
+        # the client down the normal Dorm path before onboarding finishes.
+        if "lastRoomId" not in session.state or instance_id == ORIENTATION_INSTANCE_ID:
+            _orientation_instance(session)
+            return Response(status_code=200)
+
+        # A real logout from a normal room clears only the active presence. Keep
+        # lastRoomId/dormRoomId as persisted history so the next login is not
+        # incorrectly treated as a brand-new account.
+        session.state.pop("currentRoomInstance", None)
+        return Response(status_code=200)
 
     @app.post("/Matchmaking/matchmake/dorm")
     async def rr2022_matchmake_dorm(authorization: str | None = Header(default=None)) -> JSONResponse:
