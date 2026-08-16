@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "windows-live-agent/**"
+      - ".github/scripts/add-recroom-ci-manifest-evidence.ps1"
       - ".github/workflows/recroom-playtest-harness-ci.yml"
   workflow_dispatch:
 
@@ -69,6 +70,7 @@ jobs:
           try { $stream.Write($ascii, 0, $ascii.Length); $stream.Write($utf16, 0, $utf16.Length) } finally { $stream.Dispose() }
           [IO.File]::WriteAllBytes((Join-Path $gameDir "GameAssembly.dll"), [Text.Encoding]::ASCII.GetBytes("https://auth.rec.net/auth"))
           [IO.File]::WriteAllBytes((Join-Path $gameDir "Recroom_Release_Data\il2cpp_data\Metadata\global-metadata.dat"), [Text.Encoding]::ASCII.GetBytes("fixture metadata"))
+          & .\.github\scripts\add-recroom-ci-manifest-evidence.ps1 -ClientDir $gameDir
           "FIXTURE_GAME_DIR=$gameDir" | Out-File $env:GITHUB_ENV -Append
       - name: Install the exact Flux Windows host package
         shell: pwsh
@@ -78,9 +80,11 @@ jobs:
           $installDir = Join-Path $env:RUNNER_TEMP "RipoTeamRecRoomPlaytest"
           & .\windows-live-agent\install-recroom-host.ps1 -InstallDir $installDir
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          foreach ($required in @("playtest-recroom-client.ps1","recroom-tools\redirect-client-urls.mjs","recroom-tools\host-proxy.mjs","recroom-web-stream.py")) {
+          foreach ($required in @("playtest-recroom-client.ps1","recroom-tools\redirect-client-urls.mjs","recroom-tools\host-proxy.mjs","recroom-web-stream.py","identify-recroom-client.ps1")) {
             if (-not (Test-Path (Join-Path $installDir $required))) { throw "Installer omitted $required" }
           }
+          $identity = (& (Join-Path $installDir "identify-recroom-client.ps1") -Root $env:FIXTURE_GAME_DIR -AsJson | Select-Object -Last 1) | ConvertFrom-Json
+          if (-not $identity.preferred.playableBy2022Agent -or $identity.preferred.confidence -ne "verified-steam-manifest-cache") { throw "Installed playtest fixture did not pass strict May-2022 identity." }
           "PLAYTEST_INSTALL_DIR=$installDir" | Out-File $env:GITHUB_ENV -Append
       - name: Run the full client playtest pipeline directly
         shell: powershell
