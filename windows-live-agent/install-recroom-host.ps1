@@ -11,7 +11,24 @@ $Repo = "riporipoteam-ctrl/ripoteamserver"
 $Ref = "main"
 $ToolsRepo = "riporipoteam-ctrl/recroomfluxgame"
 $ToolsRef = "main"
-$cacheBust = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+
+function Resolve-GitHubCommit([string]$Repository, [string]$Reference) {
+  $encodedRef = [Uri]::EscapeDataString($Reference)
+  $uri = "https://api.github.com/repos/$Repository/commits/$encodedRef"
+  $result = Invoke-RestMethod -UseBasicParsing -Headers @{
+    "User-Agent" = "RipoTeam-RecRoom-Host"
+    "Accept" = "application/vnd.github+json"
+    "Cache-Control" = "no-cache"
+  } -Uri $uri -TimeoutSec 30
+  $sha = [string]$result.sha
+  if ($sha -notmatch '^[0-9a-fA-F]{40}$') { throw "Could not resolve $Repository@$Reference to an immutable Git commit." }
+  return $sha.ToLowerInvariant()
+}
+
+$hostSha = Resolve-GitHubCommit $Repo $Ref
+$toolsSha = Resolve-GitHubCommit $ToolsRepo $ToolsRef
+Write-Host "Host tools revision: $hostSha" -ForegroundColor DarkGray
+Write-Host "Rec Room proxy tools revision: $toolsSha" -ForegroundColor DarkGray
 
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 
@@ -32,10 +49,10 @@ $files = @(
 )
 
 foreach ($name in $files) {
-  $url = "https://raw.githubusercontent.com/$Repo/$Ref/windows-live-agent/$name?cb=$cacheBust-$([Uri]::EscapeDataString($name))"
+  $url = "https://raw.githubusercontent.com/$Repo/$hostSha/windows-live-agent/$name"
   $destination = Join-Path $InstallDir $name
   Write-Host "Fetching $name..." -ForegroundColor DarkCyan
-  Invoke-WebRequest -UseBasicParsing -Headers @{ "Cache-Control" = "no-cache" } -Uri $url -OutFile $destination -TimeoutSec 60
+  Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $destination -TimeoutSec 60
   if (-not (Test-Path $destination) -or (Get-Item $destination).Length -le 0) {
     throw "Host tool download failed: $name"
   }
@@ -44,14 +61,25 @@ foreach ($name in $files) {
 $toolsDir = Join-Path $InstallDir "recroom-tools"
 New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
 foreach ($name in @("host-proxy.mjs", "redirect-client-urls.mjs", "verify-client.mjs", "scan-client-urls.mjs")) {
-  $url = "https://raw.githubusercontent.com/$ToolsRepo/$ToolsRef/scripts/$name?cb=$cacheBust-$([Uri]::EscapeDataString($name))"
+  $url = "https://raw.githubusercontent.com/$ToolsRepo/$toolsSha/scripts/$name"
   $destination = Join-Path $toolsDir $name
   Write-Host "Fetching tool $name..." -ForegroundColor DarkCyan
-  Invoke-WebRequest -UseBasicParsing -Headers @{ "Cache-Control" = "no-cache" } -Uri $url -OutFile $destination -TimeoutSec 60
+  Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $destination -TimeoutSec 60
   if (-not (Test-Path $destination) -or (Get-Item $destination).Length -le 0) {
     throw "Rec Room client tool download failed: $name"
   }
 }
+
+$installState = [ordered]@{
+  installedAt = [DateTimeOffset]::UtcNow.ToString("o")
+  hostRepository = $Repo
+  hostRef = $Ref
+  hostCommit = $hostSha
+  toolsRepository = $ToolsRepo
+  toolsRef = $ToolsRef
+  toolsCommit = $toolsSha
+}
+$installState | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $InstallDir "recroom-install-state.json") -Encoding UTF8
 
 $bootstrap = Join-Path $InstallDir "bootstrap-recroom-host.ps1"
 $config = Join-Path $InstallDir "recroom-agent-config.json"
