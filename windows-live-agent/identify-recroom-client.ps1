@@ -270,7 +270,8 @@ function Candidate-Roots {
     $searchRoots += (Join-Path $env:USERPROFILE "Downloads\DepotDownloader-windows-x64\depots\471711")
     $searchRoots += (Join-Path $env:USERPROFILE "Downloads\DepotDownloader\depots\471711")
   }
-  foreach ($drive in @("C:", "D:", "E:")) {
+  foreach ($drive in @("C:\", "D:\", "E:\")) {
+    if (-not (Test-Path -LiteralPath $drive -PathType Container)) { continue }
     $searchRoots += (Join-Path $drive "DepotDownloader-windows-x64\depots\471711")
     $searchRoots += (Join-Path $drive "DepotDownloader\depots\471711")
     $searchRoots += (Join-Path $drive "Games\FluxRecRoom")
