@@ -18,11 +18,15 @@ $report = [ordered]@{
   ok = $false
   targetBuild = "recroom-2022-05-19"
   steamBuild = "8751857"
+  manifestId = "6337851004861751095"
   startedAt = $startedAt.ToString("o")
   clientDir = ""
   executable = ""
+  clientIdentity = $null
   redirectOccurrences = 0
   proxyReady = $false
+  proxyRequests = @()
+  proxyFailures = @()
   gamePid = 0
   windowReady = $false
   streamReady = $false
@@ -32,6 +36,10 @@ $report = [ordered]@{
   processExited = $false
   processExitCode = $null
   unityLogs = @()
+  orientationEvidence = @()
+  dormEvidence = @()
+  unityExceptions = @()
+  diagnosis = "not-run"
   errors = @()
   finishedAt = $null
 }
@@ -43,7 +51,7 @@ $captureProcess = $null
 function Save-Report {
   $report.finishedAt = [DateTimeOffset]::UtcNow.ToString("o")
   $path = Join-Path $OutputDir "playtest-report.json"
-  $report | ConvertTo-Json -Depth 10 | Set-Content $path -Encoding UTF8
+  $report | ConvertTo-Json -Depth 12 | Set-Content $path -Encoding UTF8
   return $path
 }
 
@@ -58,6 +66,28 @@ function Require-Layout([string]$Root) {
   $metadata = Join-Path $data "il2cpp_data\Metadata\global-metadata.dat"
   if (-not (Test-Path $metadata)) { throw "global-metadata.dat is missing from $data" }
   return [pscustomobject]@{ Root = $resolved; Exe = $exe; Data = $data; Metadata = $metadata }
+}
+
+function Identify-Client([string]$Root) {
+  $finder = Join-Path $PSScriptRoot "identify-recroom-client.ps1"
+  if (-not (Test-Path -LiteralPath $finder -PathType Leaf)) { throw "Missing strict client identifier: $finder. Run update-recroom-host.ps1 first." }
+  $stdout = Join-Path $OutputDir "client-identity.json"
+  $stderr = Join-Path $OutputDir "client-identity.err.log"
+  $process = Start-Process -FilePath "powershell.exe" -ArgumentList @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$finder`"", "-Root", "`"$Root`"", "-AsJson"
+  ) -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+  if ($process.ExitCode -ne 0) {
+    $detail = Get-Content $stderr -Raw -ErrorAction SilentlyContinue
+    throw "Strict client identifier failed: $detail"
+  }
+  $raw = Get-Content $stdout -Raw
+  try { $identity = $raw | ConvertFrom-Json } catch { throw "Strict client identifier returned invalid JSON: $raw" }
+  $target = @($identity.clients | Where-Object { $_.kind -eq "target-2022" -and $_.playableBy2022Agent }) | Select-Object -First 1
+  if (-not $target) {
+    $found = @($identity.clients | Select-Object -ExpandProperty kind -ErrorAction SilentlyContinue) -join ", "
+    throw "Playtest refuses an unverified client. Expected May 19 2022 build 8751857; detected: $found"
+  }
+  return $target
 }
 
 function Run-NodeJson([string]$Script, [string[]]$Arguments) {
@@ -88,6 +118,8 @@ function Start-Proxy([string]$ProxyScript, [string]$Gateway, [string]$Token) {
   $env:FLUX_RECROOM_GATEWAY_URL = $Gateway
   $env:FLUX_RECROOM_SESSION_TOKEN = $Token
   $env:FLUX_RECROOM_PROXY_PORT = "81"
+  # Diagnostics intentionally enable per-request logging. It is redirected to
+  # files, so unlike production there is no undrained stdout pipe to deadlock.
   $env:FLUX_RECROOM_PROXY_LOG = "1"
   $stdout = Join-Path $OutputDir "host-proxy.out.log"
   $stderr = Join-Path $OutputDir "host-proxy.err.log"
@@ -195,10 +227,114 @@ function Collect-UnityLogs([DateTimeOffset]$Since) {
   return $copied
 }
 
+function Analyze-ProxyLogs {
+  $out = Join-Path $OutputDir "host-proxy.out.log"
+  $err = Join-Path $OutputDir "host-proxy.err.log"
+  $requests = @()
+  if (Test-Path $out) {
+    foreach ($line in Get-Content $out -ErrorAction SilentlyContinue) {
+      if ($line -match '^(?<method>[A-Z]+)\s+(?<raw>\S+)\s+=>\s+(?<path>\S+)\s+->\s+(?<status>\d{3})\s+\((?<ms>\d+)ms\)$') {
+        $entry = [ordered]@{
+          method = $Matches.method
+          raw = $Matches.raw
+          path = $Matches.path
+          status = [int]$Matches.status
+          elapsedMs = [int]$Matches.ms
+        }
+        $requests += $entry
+      }
+    }
+  }
+  $report.proxyRequests = @($requests | Select-Object -Last 200)
+  $failures = @($requests | Where-Object { [int]$_.status -ge 400 })
+  if (Test-Path $err) {
+    foreach ($line in Get-Content $err -ErrorAction SilentlyContinue | Where-Object { $_.Trim() }) {
+      $failures += [ordered]@{ method = "proxy"; raw = ""; path = ""; status = 0; elapsedMs = 0; error = $line.Trim() }
+    }
+  }
+  $report.proxyFailures = @($failures | Select-Object -Last 100)
+}
+
+function Analyze-UnityLogs {
+  $orientation = New-Object System.Collections.Generic.List[string]
+  $dorm = New-Object System.Collections.Generic.List[string]
+  $exceptions = New-Object System.Collections.Generic.List[string]
+  foreach ($path in @($report.unityLogs)) {
+    if (-not (Test-Path $path)) { continue }
+    foreach ($line in Get-Content $path -ErrorAction SilentlyContinue) {
+      $text = [string]$line
+      if ($text -match '(?i)(Orientation|\^Orientation|c79709d8-a31b-48aa-9eb8-cc31ba9505e8|room.?13\b)') {
+        if ($orientation.Count -lt 60) { $orientation.Add($text.Trim()) }
+      }
+      if ($text -match '(?i)(DormRoom|dormroom2|76d98498-60a1-430c-ab76-b54a29b7a163)') {
+        if ($dorm.Count -lt 60) { $dorm.Add($text.Trim()) }
+      }
+      if ($text -match '(?i)(Unhandled|Exception|NullReference|ArgumentException|MissingMethod|TypeLoad|AccessViolation|Fatal|Crash|Failed to load|HTTP/[0-9.]+\s+[45]\d\d)') {
+        if ($exceptions.Count -lt 120) { $exceptions.Add($text.Trim()) }
+      }
+    }
+  }
+  $report.orientationEvidence = @($orientation | Select-Object -Unique)
+  $report.dormEvidence = @($dorm | Select-Object -Unique)
+  $report.unityExceptions = @($exceptions | Select-Object -Unique)
+}
+
+function Set-Diagnosis([int]$UniqueFrameCount) {
+  if ($report.processExited) {
+    $report.diagnosis = "process-exited"
+    return
+  }
+  $statuses = @($report.proxyFailures | Where-Object { $_.status } | ForEach-Object { [int]$_.status })
+  if (@($statuses | Where-Object { $_ -in @(401,403) }).Count -gt 0) {
+    $report.diagnosis = "auth-failure"
+    return
+  }
+  if (@($statuses | Where-Object { $_ -eq 404 }).Count -gt 0) {
+    $report.diagnosis = "missing-recnet-route"
+    return
+  }
+  if (@($statuses | Where-Object { $_ -eq 422 }).Count -gt 0) {
+    $report.diagnosis = "recnet-schema-or-route-validation"
+    return
+  }
+  if (@($statuses | Where-Object { $_ -ge 500 }).Count -gt 0 -or @($report.proxyFailures | Where-Object { $_.error }).Count -gt 0) {
+    $report.diagnosis = "proxy-or-backend-failure"
+    return
+  }
+  if (@($report.unityExceptions).Count -gt 0) {
+    $report.diagnosis = "unity-client-exception"
+    return
+  }
+  if ($UniqueFrameCount -lt 2) {
+    $report.diagnosis = "client-frozen-static-frame"
+    return
+  }
+  if (@($report.orientationEvidence).Count -gt 0) {
+    $report.diagnosis = "orientation-observed"
+    return
+  }
+  if (@($report.dormEvidence).Count -gt 0) {
+    $report.diagnosis = "dorm-observed"
+    return
+  }
+  $report.diagnosis = "client-running-visuals-changing-no-log-room-evidence"
+}
+
 try {
   $layout = Require-Layout $ClientDir
   $report.clientDir = $layout.Root
   $report.executable = $layout.Exe
+  $identity = Identify-Client $layout.Root
+  $report.clientIdentity = [ordered]@{
+    kind = [string]$identity.kind
+    confidence = [string]$identity.confidence
+    buildId = [string]$identity.buildId
+    manifestId = [string]$identity.manifestId
+    exeSha256 = [string]$identity.fingerprint.exeSha256
+    gameAssemblySha256 = [string]$identity.fingerprint.gameAssemblySha256
+    metadataSha256 = [string]$identity.fingerprint.metadataSha256
+  }
+
   $tools = Join-Path $PSScriptRoot "recroom-tools"
   $redirectTool = Join-Path $tools "redirect-client-urls.mjs"
   $proxyTool = Join-Path $tools "host-proxy.mjs"
@@ -270,7 +406,12 @@ try {
 } catch {
   $report.errors += $_.Exception.Message
 } finally {
+  try { Analyze-ProxyLogs } catch { $report.errors += ("Proxy log analysis failed: " + $_.Exception.Message) }
   try { $report.unityLogs = @(Collect-UnityLogs $startedAt) } catch { $report.errors += ("Unity log collection failed: " + $_.Exception.Message) }
+  try { Analyze-UnityLogs } catch { $report.errors += ("Unity log analysis failed: " + $_.Exception.Message) }
+  $uniqueFrameCount = @($report.checkpoints | ForEach-Object { $_.sha256 } | Select-Object -Unique).Count
+  try { Set-Diagnosis $uniqueFrameCount } catch { $report.errors += ("Diagnosis failed: " + $_.Exception.Message) }
+
   if (-not $KeepRunning) {
     if ($captureProcess -and -not $captureProcess.HasExited) { Stop-Process -Id $captureProcess.Id -Force -ErrorAction SilentlyContinue }
     if ($gameProcess -and -not $gameProcess.HasExited) { Stop-Process -Id $gameProcess.Id -Force -ErrorAction SilentlyContinue }
@@ -279,7 +420,8 @@ try {
   Remove-Item Env:FLUX_RECROOM_GAME_PID -ErrorAction SilentlyContinue
   $reportPath = Save-Report
   Write-Host "Rec Room playtest report: $reportPath" -ForegroundColor Cyan
-  Write-Host ($report | ConvertTo-Json -Depth 10)
+  Write-Host "Diagnosis: $($report.diagnosis)" -ForegroundColor Cyan
+  Write-Host ($report | ConvertTo-Json -Depth 12)
 }
 
 if (-not $report.ok) { exit 2 }
