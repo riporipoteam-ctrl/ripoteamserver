@@ -1,0 +1,53 @@
+name: Verify Rec Room VM Runtime
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hf-space/recroom_vm_*.py"
+      - "hf-space/app_server_v2.py"
+      - ".github/workflows/recroom-vm-capability.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-vm-control-plane:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile VM control-plane modules
+        run: |
+          python -m py_compile \
+            hf-space/recroom_vm_pool.py \
+            hf-space/recroom_vm_bridge.py \
+            hf-space/recroom_public.py \
+            hf-space/app_server_v2.py
+      - name: Read live RipoTeamServer VM capability
+        run: |
+          set -euo pipefail
+          URL="https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-vm/capabilities"
+          for i in $(seq 1 30); do
+            if curl -fsS -H 'Cache-Control: no-cache' "$URL?ts=$(date +%s)" -o /tmp/vm.json; then
+              cat /tmp/vm.json | python -m json.tool
+              python - <<'PY'
+          import json
+          p=json.load(open('/tmp/vm.json'))
+          assert p.get('ok') is True, p
+          assert p.get('provider') == 'kvm', p
+          print('supported=', p.get('supported'))
+          print('readyForGame=', p.get('readyForGame'))
+          print('reason=', p.get('reason'))
+          print('warning=', p.get('warning'))
+          print('checks=', p.get('checks'))
+          PY
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Live VM capability endpoint never became reachable" >&2
+          exit 1
