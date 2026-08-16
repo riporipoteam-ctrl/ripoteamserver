@@ -49,6 +49,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         from recroom_route_order import stabilize_recroom_route_order
         from recroom_broker import install_recroom_broker_routes
         from recroom_vm_bridge import attach_recroom_vm_pool
+        from recroom_client_installer import install_recroom_client_installer_routes
         from recroom_capture import install_recroom_capture_routes
         from recroom_public import install_recroom_public_routes
 
@@ -60,20 +61,26 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         install_recroom_match_compat_routes(application, gateway)
         install_recroom_photon_compat_routes(application, gateway)
         # Old dedicated service hosts are patched to same-length localhost
-        # prefixes. The Windows proxy removes the prefix, leaving service-native
-        # paths such as /player/login, /account/me, /roomInventory/player, etc.
+        # prefixes. The local runtime proxy removes the prefix, leaving
+        # service-native paths such as /player/login, /account/me, etc.
         install_recroom_service_alias_routes(application, gateway)
         install_recroom_service_extra_alias_routes(application, gateway)
         install_recroom_leaderboard_compat_routes(application, gateway)
-        # Dynamic room-id routes must remain behind search/hot/bulk/etc aliases.
         stabilize_recroom_route_order(application)
 
         broker = install_recroom_broker_routes(application, root / "recroom-broker")
-        # This is the production path used by app.py. The VM bridge must be
-        # attached BEFORE the browser-facing routes are installed so public Play
-        # allocations create a RipoTeamServer-owned disposable Windows VM rather
-        # than looking for a manually paired PC.
+        # Attach server-owned disposable runtimes before the browser-facing API.
+        # On managed Linux the active provider is the KVM-free Wine sandbox.
         vm_pool = attach_recroom_vm_pool(application, broker, root)
+        wine_pool = getattr(broker, "wine_pool", None)
+        client_installer = None
+        if wine_pool is not None:
+            client_installer = install_recroom_client_installer_routes(
+                application,
+                broker,
+                wine_pool,
+                root / "recroom-client-installer",
+            )
         capture = install_recroom_capture_routes(application, broker, root / "recroom-captures")
         install_recroom_public_routes(application, broker, capture)
 
@@ -84,6 +91,8 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
             "gateway": gateway,
             "broker": broker,
             "vmPool": vm_pool,
+            "winePool": wine_pool,
+            "clientInstaller": client_installer,
             "capture": capture,
         }
 
@@ -103,8 +112,10 @@ def _mount_when_app_exists() -> None:
                 module.RIPO_RECROOM_GATEWAY = result["gateway"]
                 module.RIPO_RECROOM_BROKER = result["broker"]
                 module.RIPO_RECROOM_VM_POOL = result["vmPool"]
+                module.RIPO_RECROOM_WINE_POOL = result.get("winePool")
+                module.RIPO_RECROOM_CLIENT_INSTALLER = result.get("clientInstaller")
                 module.RIPO_RECROOM_CAPTURE = result["capture"]
-            print(f"Rec Room May 2022 runtime + disposable VM routes mounted: {result.get('ok')}")
+            print(f"Rec Room May 2022 server-stream routes mounted: {result.get('ok')}")
             return
         except Exception as exc:
             print(f"Rec Room runtime route mount failed: {exc}")
