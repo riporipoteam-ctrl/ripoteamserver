@@ -90,7 +90,6 @@ jobs:
           headers={'authorization':f'Bearer {token}'}
           lock='aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
 
-          # accounts.rec.net -> /acct prefix -> proxy strips it -> /account/me
           account=client.get('/account/me',headers=headers)
           assert account.status_code==200, account.text
           assert account.json()['accountId']==24680, account.text
@@ -98,15 +97,12 @@ jobs:
           parental=client.get('/parentalcontrol/me',headers=headers)
           assert parental.status_code==200 and parental.json()['IsJunior'] is False, parental.text
 
-          # match.rec.net -> /m prefix -> proxy strips it -> /player/login
           login=client.post('/player/login',headers=headers,data={'LoginLock':lock})
           assert login.status_code==200 and login.content==b'', repr(login.content)
           assert session.state.get('loginLock')==lock, session.state
           assert session.state['currentRoomInstance']['roomInstanceId']==ORIENTATION_INSTANCE_ID, session.state
           assert 'lastRoomId' not in session.state, session.state
 
-          # rooms.rec.net -> /r prefix -> /rooms/13. Static room-list aliases must
-          # also beat the dynamic integer route after ordering is stabilized.
           orientation=client.get('/rooms/13',headers=headers)
           assert orientation.status_code==200, orientation.text
           om=orientation.json()
@@ -121,7 +117,6 @@ jobs:
           assert photon.status_code==200, photon.text
           assert photon.json()['RoomInstanceId']==ORIENTATION_INSTANCE_ID, photon.text
 
-          # DorkNet's reverse-engineering notes show this must be a primitive bool.
           avoid=client.get('/player/avoidjuniors',headers=headers)
           assert avoid.status_code==200 and avoid.json() is False, avoid.text
           avoid_set=client.put('/player/avoidjuniors',headers=headers,data={'avoidJuniors':'true'})
@@ -129,13 +124,13 @@ jobs:
           avoid2=client.get('/player/avoidjuniors',headers=headers)
           assert avoid2.json() is True, avoid2.text
 
-          # Both old region-ping spellings/method families are accepted.
           for path in ('/player/photonregionpings','/player/gameserverregionpings'):
-              for method in ('get','post','put'):
-                  resp=getattr(client,method)(path,headers=headers,data={'region':'eu','ping':'42'} if method!='get' else None)
+              resp=client.get(path,headers=headers)
+              assert resp.status_code==200, (path,'get',resp.status_code,resp.text)
+              for method in ('post','put'):
+                  resp=getattr(client,method)(path,headers=headers,data={'region':'eu','ping':'42'})
                   assert resp.status_code==200, (path,method,resp.status_code,resp.text)
 
-          # Critical stock signup quirk: service-host logout must not erase -2.
           logout=client.post('/player/logout',headers=headers,data={'LoginLock':lock})
           assert logout.status_code==200 and logout.content==b'', repr(logout.content)
           beat=client.post('/player/heartbeat',headers=headers,data={'LoginLock':lock})
@@ -144,13 +139,10 @@ jobs:
           assert bp['roomInstance']['roomInstanceId']==ORIENTATION_INSTANCE_ID, bp
           assert bp['roomInstance']['location']==ORIENTATION_SCENE_LOCATION_ID, bp
 
-          # auth.rec.net can arrive as /connect/token rather than /Auth/connect/token.
           oauth=client.post('/connect/token',headers=headers,data={})
           assert oauth.status_code==200, oauth.text
           assert oauth.json()['access_token'].count('.')==2, oauth.text
 
-          # The old service-host Dorm transition must match the same stable scene
-          # and Photon instance as the unified route family.
           dorm=client.post('/matchmake/dorm',headers=headers,data={})
           assert dorm.status_code==200, dorm.text
           room=dorm.json()['roomInstance']
@@ -163,7 +155,6 @@ jobs:
           assert photon2.status_code==200, photon2.text
           assert photon2.json()['RoomInstanceId']==room['roomInstanceId'], (room,photon2.text)
 
-          # Unified paths remain consistent with the same live session.
           unified_beat=client.post('/Matchmaking/player/heartbeat',headers=headers,json={})
           assert unified_beat.status_code==200, unified_beat.text
           assert unified_beat.json()['roomInstance']['roomInstanceId']==room['roomInstanceId'], unified_beat.text
