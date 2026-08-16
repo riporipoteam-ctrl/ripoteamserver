@@ -42,34 +42,35 @@ jobs:
           app=FastAPI(); install_recroom_leaderboard_compat_routes(app,g)
           c=TestClient(app); h={'authorization':f'Bearer {token}'}
 
-          for prefix in ('/leaderboard','/api/leaderboard'):
-              rank=c.post(prefix+'/GetPlayerRank',headers=h,json={'PlayerId':987,'StatChannel':7,'RoomId':13})
+          for channel,prefix in ((7,'/leaderboard'),(8,'/api/leaderboard')):
+              rank=c.post(prefix+'/GetPlayerRank',headers=h,json={'PlayerId':987,'StatChannel':channel,'RoomId':13})
               assert rank.status_code==200,rank.text
               assert rank.json()=={'playerId':987,'score':0,'rank':0},rank.text
 
-              near=c.post(prefix+'/GetNearbyScores',headers=h,json={'PlayerId':987,'StatChannel':7,'RoomId':13,'WindowSize':5})
+              near=c.post(prefix+'/GetNearbyScores',headers=h,json={'PlayerId':987,'StatChannel':channel,'RoomId':13,'WindowSize':5})
               assert near.status_code==200 and near.json()=={'rows':[]},near.text
-              ranks=c.post(prefix+'/GetRanks',headers=h,json={'PlayerId':987,'StatChannel':7,'RoomId':13,'RankStart':1,'RankEnd':10})
+              ranks=c.post(prefix+'/GetRanks',headers=h,json={'PlayerId':987,'StatChannel':channel,'RoomId':13,'RankStart':1,'RankEnd':10})
               assert ranks.status_code==200 and ranks.json()=={'rows':[]},ranks.text
 
-              top=c.get(prefix+'/Top?channel=7&roomId=13',headers=h)
+              top=c.get(f'{prefix}/Top?channel={channel}&roomId=13',headers=h)
               assert top.status_code==200,top.text
               tp=top.json()
               assert set(tp)=={'GlobalOverall','GlobalPeriodic','FriendsOverall','FriendsPeriodic','NextResetUTC'},tp
               assert tp['GlobalOverall']==[] and tp['FriendsOverall']==[],tp
 
-              setr=c.post(prefix+'/SetStat',headers=h,json={'StatChannel':7,'RoomId':13,'StatValue':42})
+              setr=c.post(prefix+'/SetStat',headers=h,json={'StatChannel':channel,'RoomId':13,'StatValue':42})
               assert setr.status_code==200 and setr.json()=={'success':True,'error':''},setr.text
-              rank2=c.post(prefix+'/GetPlayerRank',headers=h,json={'PlayerId':987,'StatChannel':7,'RoomId':13})
+              rank2=c.post(prefix+'/GetPlayerRank',headers=h,json={'PlayerId':987,'StatChannel':channel,'RoomId':13})
               assert rank2.json()=={'playerId':987,'score':42,'rank':1},rank2.text
-              near2=c.post(prefix+'/GetNearbyScores',headers=h,json={'PlayerId':987,'StatChannel':7,'RoomId':13,'WindowSize':5})
+              near2=c.post(prefix+'/GetNearbyScores',headers=h,json={'PlayerId':987,'StatChannel':channel,'RoomId':13,'WindowSize':5})
               assert near2.json()=={'rows':[{'playerId':987,'score':42,'rank':1}]},near2.text
 
-              mismatch=c.post(prefix+'/CheckAndSetStat',headers=h,json={'StatChannel':7,'RoomId':13,'StatValue':50,'CurrentStatValue':999})
+              mismatch=c.post(prefix+'/CheckAndSetStat',headers=h,json={'StatChannel':channel,'RoomId':13,'StatValue':50,'CurrentStatValue':999})
               assert mismatch.status_code==200 and mismatch.json()['success'] is False,mismatch.text
-              ok=c.post(prefix+'/CheckAndSetStat',headers=h,json={'StatChannel':7,'RoomId':13,'StatValue':50,'CurrentStatValue':42})
+              ok=c.post(prefix+'/CheckAndSetStat',headers=h,json={'StatChannel':channel,'RoomId':13,'StatValue':50,'CurrentStatValue':42})
               assert ok.status_code==200 and ok.json()['success'] is True,ok.text
 
           print('RECROOM_LEADERBOARD_EMPTY_OBJECT_SHAPES_OK=true')
           print('RECROOM_LEADERBOARD_WRITE_READ_OK=true')
+          print('RECROOM_LEADERBOARD_ALIAS_STATE_SHARED_OK=true')
           PY
