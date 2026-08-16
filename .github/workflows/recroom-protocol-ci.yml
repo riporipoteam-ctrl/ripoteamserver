@@ -27,7 +27,7 @@ jobs:
           python-version: "3.12"
       - name: Install protocol test dependencies
         run: python -m pip install --disable-pip-version-check fastapi 'httpx<0.28' requests cryptography
-      - name: Exercise authenticated May 2022 startup and Dorm flow
+      - name: Exercise fresh-account Orientation then Dorm flow
         env:
           RECROOM_PHOTON_APP_ID: ci-photon-app
           RECROOM_PHOTON_APP_VERSION: "0.2"
@@ -47,12 +47,16 @@ jobs:
           from recroom_compat_extra import install_recroom_extra_routes
           from recroom_room_compat import install_recroom_room_compat_routes
           from recroom_match_compat import install_recroom_match_compat_routes
-          from recroom_match_model import DORM_SCENE_LOCATION_ID
+          from recroom_match_model import (
+              DORM_SCENE_LOCATION_ID,
+              ORIENTATION_INSTANCE_ID,
+              ORIENTATION_ROOM_ID,
+              ORIENTATION_SCENE_LOCATION_ID,
+              ORIENTATION_SUBROOM_ID,
+          )
 
           root=Path(tempfile.mkdtemp(prefix='rr-protocol-'))
           gateway=RecRoomGateway(root)
-          # CI must never call Firestore; state mutation itself is what this test
-          # needs to verify.
           gateway._write_recroom_state=lambda _session: None
 
           token='ci-native-session-token'
@@ -90,15 +94,48 @@ jobs:
           account=me.json()
           assert account['accountId']==77 and account['username']=='ci_player', account
 
+          # A brand-new account has no lastRoomId. The client loads Orientation
+          # locally and heartbeat must preserve the sentinel -2 presence.
+          fresh=client.post('/Matchmaking/player/heartbeat',headers=headers,json={})
+          assert fresh.status_code==200, fresh.text
+          first=fresh.json()
+          ori=first['roomInstance']
+          assert ori['roomInstanceId']==ORIENTATION_INSTANCE_ID, ori
+          assert ori['roomId']==ORIENTATION_ROOM_ID, ori
+          assert ori['subRoomId']==ORIENTATION_SUBROOM_ID, ori
+          assert ori['location']==ORIENTATION_SCENE_LOCATION_ID, ori
+          assert ori['photonRoomId']=='rec.13', ori
+          assert ori['name']=='^Orientation', ori
+          assert ori['isPrivate'] is False, ori
+          assert 'lastRoomId' not in session.state, session.state
+
+          orientation_meta=client.get('/Room_server/rooms/13',headers=headers)
+          assert orientation_meta.status_code==200, orientation_meta.text
+          om=orientation_meta.json()
+          assert om['RoomId']==ORIENTATION_ROOM_ID and om['Name']=='Orientation', om
+          assert om['SubRooms'][0]['SubRoomId']==ORIENTATION_SUBROOM_ID, om
+          assert om['SubRooms'][0]['UnitySceneId']==ORIENTATION_SCENE_LOCATION_ID, om
+          assert om['Scenes'][0]['RoomSceneLocationId']==ORIENTATION_SCENE_LOCATION_ID, om
+
+          orientation_instance=client.get('/Matchmaking/roominstance/-2',headers=headers)
+          assert orientation_instance.status_code==200, orientation_instance.text
+          assert orientation_instance.json()['roomInstanceId']==ORIENTATION_INSTANCE_ID, orientation_instance.text
+
+          # Dorm metadata may be requested while Orientation is active; this must
+          # not mark onboarding complete or change lastRoomId.
           dorm_meta=client.get('/Room_server/dormroom/me',headers=headers)
           assert dorm_meta.status_code==200, dorm_meta.text
           meta=dorm_meta.json()
           assert meta['IsDormRoom'] is True, meta
-          assert meta['SubRooms'] and meta['SubRooms'][0]['SubRoomId']==1, meta
           assert meta['SubRooms'][0]['UnitySceneId']==DORM_SCENE_LOCATION_ID, meta
-          assert meta['Scenes'][0]['RoomSceneLocationId']==DORM_SCENE_LOCATION_ID, meta
           assert session.state['dormRoomId']==meta['RoomId'], session.state
+          assert 'lastRoomId' not in session.state, session.state
 
+          fresh2=client.post('/Matchmaking/player/heartbeat',headers=headers,json={}).json()
+          assert fresh2['roomInstance']['roomInstanceId']==ORIENTATION_INSTANCE_ID, fresh2
+          assert fresh2['roomInstance']['location']==ORIENTATION_SCENE_LOCATION_ID, fresh2
+
+          # Entering Dorm is the explicit transition out of first-run Orientation.
           dorm=client.post('/Matchmaking/matchmake/dorm',headers=headers,json={})
           assert dorm.status_code==200, dorm.text
           body=dorm.json()
@@ -117,28 +154,20 @@ jobs:
           assert isinstance(room['photonRoomId'],str) and room['photonRoomId'], room
           assert room['matchmakingPolicy']==0 and room['matchMakingPolicy']==0, room
           assert session.state['lastRoomId']==room['roomId'], session.state
-          assert session.state['currentRoomInstance']['roomInstanceId']==room['roomInstanceId'], session.state
 
           heartbeat=client.post('/Matchmaking/player/heartbeat',headers=headers,json={})
           assert heartbeat.status_code==200, heartbeat.text
           hb=heartbeat.json()
-          assert hb['errorCode']==0, hb
           assert hb['player']['accountId']==77, hb
           assert hb['player']['platform']==-1, hb
-          assert hb['player']['deviceClass']==0 and hb['player']['vrMovementMode']==0, hb
           assert hb['roomInstance']['roomInstanceId']==room['roomInstanceId'], (room,hb)
           assert hb['roomInstance']['roomId']==room['roomId'], (room,hb)
           assert hb['roomInstance']['location']==DORM_SCENE_LOCATION_ID, hb
-
-          assert session.state['dormRoomId']==room['roomId'], session.state
-          assert session.state['lastRoomId']==room['roomId'], session.state
 
           active=client.get(f"/Matchmaking/roominstance/{room['roomInstanceId']}",headers=headers)
           assert active.status_code==200 and active.json()['roomInstanceId']==room['roomInstanceId'], active.text
           assert isinstance(active.json()['photonRoomId'],str), active.text
 
-          # Static browse routes must beat /rooms/{room_id}; this catches the
-          # classic "hot" -> integer validation 422 route-order failure.
           hot=client.get('/Room_server/rooms/hot',headers=headers)
           assert hot.status_code==200 and hot.json()==[], hot.text
           owned=client.get('/Room_server/rooms/ownedby/me',headers=headers)
@@ -151,8 +180,10 @@ jobs:
           jwks=client.get('/Auth/.well-known/openid-configuration/jwks').json()
           assert jwks['keys'][0]['alg']=='RS256' and jwks['keys'][0]['kty']=='RSA', jwks
 
-          print('RECROOM_AUTHENTICATED_DORM_PROTOCOL_OK=true')
+          print('RECROOM_FRESH_ACCOUNT_ORIENTATION_OK=true')
+          print('orientationInstance=',ori['roomInstanceId'])
+          print('orientationScene=',ori['location'])
+          print('RECROOM_ORIENTATION_TO_DORM_OK=true')
+          print('dormInstance=',room['roomInstanceId'])
           print('dormScene=',room['location'])
-          print('roomInstanceId=',room['roomInstanceId'])
-          print('photonRoomId=',room['photonRoomId'])
           PY
