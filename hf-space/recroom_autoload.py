@@ -34,14 +34,8 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
 
         admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
         if admin_token:
-            os.environ.setdefault(
-                "RECROOM_BROKER_KEY",
-                _derived_key(admin_token, b"ripo-recroom-broker-v1"),
-            )
-            os.environ.setdefault(
-                "RECROOM_HOST_KEY",
-                _derived_key(admin_token, b"ripo-recroom-host-v1"),
-            )
+            os.environ.setdefault("RECROOM_BROKER_KEY", _derived_key(admin_token, b"ripo-recroom-broker-v1"))
+            os.environ.setdefault("RECROOM_HOST_KEY", _derived_key(admin_token, b"ripo-recroom-host-v1"))
 
         from recroom_gateway import RecRoomGateway, install_recroom_gateway_routes
         from recroom_compat import install_recroom_compat_routes
@@ -51,6 +45,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         from recroom_photon_compat import install_recroom_photon_compat_routes
         from recroom_service_aliases import install_recroom_service_alias_routes
         from recroom_service_extra_aliases import install_recroom_service_extra_alias_routes
+        from recroom_leaderboard_compat import install_recroom_leaderboard_compat_routes
         from recroom_route_order import stabilize_recroom_route_order
         from recroom_broker import install_recroom_broker_routes
         from recroom_capture import install_recroom_capture_routes
@@ -68,6 +63,9 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         # paths such as /player/login, /account/me, /roomInventory/player, etc.
         install_recroom_service_alias_routes(application, gateway)
         install_recroom_service_extra_alias_routes(application, gateway)
+        # leaderboard.rec.net is another dedicated host. Its empty response DTOs
+        # are object wrappers, not bare arrays; wrong shapes can break watch UI.
+        install_recroom_leaderboard_compat_routes(application, gateway)
         # Dynamic room-id routes must remain behind search/hot/bulk/etc aliases.
         stabilize_recroom_route_order(application)
 
