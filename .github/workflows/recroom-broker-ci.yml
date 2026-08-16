@@ -9,7 +9,10 @@ on:
       - "hf-space/recroom_autoload.py"
       - "hf-space/recroom_compat.py"
       - "hf-space/recroom_compat_extra.py"
+      - "hf-space/recroom_room_compat.py"
+      - "hf-space/recroom_match_model.py"
       - "hf-space/recroom_match_compat.py"
+      - "hf-space/recroom_photon_compat.py"
       - "hf-space/recroom_broker.py"
       - "hf-space/recroom_capture.py"
       - "hf-space/recroom_gateway.py"
@@ -23,7 +26,10 @@ on:
       - "hf-space/recroom_autoload.py"
       - "hf-space/recroom_compat.py"
       - "hf-space/recroom_compat_extra.py"
+      - "hf-space/recroom_room_compat.py"
+      - "hf-space/recroom_match_model.py"
       - "hf-space/recroom_match_compat.py"
+      - "hf-space/recroom_photon_compat.py"
       - "hf-space/recroom_broker.py"
       - "hf-space/recroom_capture.py"
       - "hf-space/recroom_gateway.py"
@@ -51,7 +57,10 @@ jobs:
           hf-space/recroom_autoload.py
           hf-space/recroom_compat.py
           hf-space/recroom_compat_extra.py
+          hf-space/recroom_room_compat.py
+          hf-space/recroom_match_model.py
           hf-space/recroom_match_compat.py
+          hf-space/recroom_photon_compat.py
           hf-space/recroom_broker.py
           hf-space/recroom_capture.py
           hf-space/recroom_gateway.py
@@ -70,16 +79,26 @@ jobs:
           grep -q 'api/relationships/v2/get' hf-space/recroom_compat_extra.py
           grep -q 'outfits/me/saved' hf-space/recroom_compat_extra.py
           grep -q 'econ/roomInventory/room/{room_id}' hf-space/recroom_compat_extra.py
+          grep -q 'c79709d8-a31b-48aa-9eb8-cc31ba9505e8' hf-space/recroom_match_model.py
+          grep -q '76d98498-60a1-430c-ab76-b54a29b7a163' hf-space/recroom_match_model.py
+          grep -q 'Room_server/dormroom/me' hf-space/recroom_room_compat.py
+          grep -q 'Room_server/rooms/{room_id}' hf-space/recroom_room_compat.py
           grep -q 'Matchmaking/matchmake/dorm' hf-space/recroom_match_compat.py
           grep -q 'Matchmaking/player/heartbeat' hf-space/recroom_match_compat.py
           grep -q 'roomInstance' hf-space/recroom_match_compat.py
           grep -q 'photonRoomId' hf-space/recroom_match_compat.py
           grep -q 'matchMakingPolicy' hf-space/recroom_match_compat.py
+          grep -q 'Room_server/photon_access_token' hf-space/recroom_photon_compat.py
+          grep -q 'api/rooms/v1/photon_access_token' hf-space/recroom_photon_compat.py
+          grep -q 'PhotonAccessToken' hf-space/recroom_photon_compat.py
+          grep -q 'RoomInstanceId' hf-space/recroom_photon_compat.py
+          grep -q 'Permissions' hf-space/recroom_photon_compat.py
       - name: Validate Windows agent PowerShell syntax
         shell: pwsh
         run: |
           foreach ($script in @(
             "windows-live-agent/install-recroom-host.ps1",
+            "windows-live-agent/identify-recroom-client.ps1",
             "windows-live-agent/recroom-agent.ps1",
             "windows-live-agent/recroom-capture-agent.ps1",
             "windows-live-agent/playtest-recroom-client.ps1",
@@ -111,6 +130,7 @@ jobs:
       - name: Verify automatic host assets are present
         run: |
           test -f windows-live-agent/install-recroom-host.ps1
+          test -f windows-live-agent/identify-recroom-client.ps1
           test -f windows-live-agent/recroom-web-stream.py
           test -f windows-live-agent/playtest-recroom-client.ps1
           test -f windows-live-agent/bootstrap-recroom-host.ps1
@@ -119,5 +139,7 @@ jobs:
           test -f windows-live-agent/stop-recroom-browser-stream.ps1
           grep -q 'Pillow' windows-live-agent/requirements.txt
           grep -q '6337851004861751095' windows-live-agent/download-recroom-client.ps1
+          grep -q 'identify-recroom-client.ps1' windows-live-agent/install-recroom-host.ps1
+          grep -q 'identify-recroom-client.ps1' windows-live-agent/update-recroom-host.ps1
           grep -q 'redirect-client-urls.mjs' windows-live-agent/install-recroom-host.ps1
           grep -q 'playtest-recroom-client.ps1' windows-live-agent/update-recroom-host.ps1
