@@ -180,13 +180,10 @@ function Candidate-Roots {
 
   foreach ($searchRoot in $searchRoots | Select-Object -Unique) {
     if (-not (Test-Path -LiteralPath $searchRoot -PathType Container)) { continue }
-    # First prefer directories explicitly naming one of our known builds/manifests.
     Get-ChildItem -LiteralPath $searchRoot -Directory -Recurse -ErrorAction SilentlyContinue |
       Where-Object { $_.FullName -match '(8751857|6337851004861751095|10679392|7859140924515540835|May[ _.-]*19[ _.-]*2022|Mar(ch)?[ _.-]*7[ _.-]*2023)' } |
       ForEach-Object { Add-Candidate $_.FullName }
 
-    # Then collect parents of actual Rec Room executables so unknown builds are
-    # reported rather than silently ignored. Limit the list to avoid huge scans.
     Get-ChildItem -LiteralPath $searchRoot -File -Recurse -ErrorAction SilentlyContinue |
       Where-Object { $_.Name -in @("RecRoom.exe", "Recroom_Release.exe") } |
       Select-Object -First 50 |
@@ -208,7 +205,6 @@ if ($Scan -or -not $Root) {
   if ($layout) { $results.Add((Identify-Layout $layout)) }
 }
 
-# Rank exact/target builds before unknown folders.
 $rank = @{ 'target-2022' = 0; 'fluxrec-2023' = 1; 'unverified-2023' = 2; 'unknown' = 9 }
 $ordered = @($results | Sort-Object @{ Expression = { if ($rank.ContainsKey($_.kind)) { $rank[$_.kind] } else { 99 } } }, root)
 $output = [pscustomobject]@{
@@ -218,19 +214,21 @@ $output = [pscustomobject]@{
   clients = $ordered
 }
 
-if ($AsJson) { $output | ConvertTo-Json -Depth 8 -Compress }
-else {
-  if (-not $ordered.Count) {
-    Write-Host "No complete Rec Room IL2CPP client layouts were found." -ForegroundColor Yellow
-  } else {
-    foreach ($item in $ordered) {
-      $color = if ($item.kind -eq 'target-2022') { 'Green' } elseif ($item.kind -eq 'fluxrec-2023') { 'Cyan' } else { 'Yellow' }
-      Write-Host "[$($item.kind)] $($item.root)" -ForegroundColor $color
-      Write-Host "  confidence: $($item.confidence)"
-      Write-Host "  exe sha256: $($item.fingerprint.exeSha256)"
-      Write-Host "  $($item.reason)"
-    }
+if ($AsJson) {
+  Write-Output ($output | ConvertTo-Json -Depth 8 -Compress)
+  exit 0
+}
+
+if (-not $ordered.Count) {
+  Write-Host "No complete Rec Room IL2CPP client layouts were found." -ForegroundColor Yellow
+} else {
+  foreach ($item in $ordered) {
+    $color = if ($item.kind -eq 'target-2022') { 'Green' } elseif ($item.kind -eq 'fluxrec-2023') { 'Cyan' } else { 'Yellow' }
+    Write-Host "[$($item.kind)] $($item.root)" -ForegroundColor $color
+    Write-Host "  confidence: $($item.confidence)"
+    Write-Host "  exe sha256: $($item.fingerprint.exeSha256)"
+    Write-Host "  $($item.reason)"
   }
 }
 
-return $output
+Write-Output $output
