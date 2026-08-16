@@ -50,6 +50,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         from recroom_broker import install_recroom_broker_routes
         from recroom_vm_bridge import attach_recroom_vm_pool
         from recroom_client_installer import install_recroom_client_installer_routes
+        from recroom_steam_recovery import install_recroom_steam_recovery_routes
         from recroom_capture import install_recroom_capture_routes
         from recroom_public import install_recroom_public_routes
 
@@ -74,12 +75,19 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         vm_pool = attach_recroom_vm_pool(application, broker, root)
         wine_pool = getattr(broker, "wine_pool", None)
         client_installer = None
+        steam_recovery = None
         if wine_pool is not None:
             client_installer = install_recroom_client_installer_routes(
                 application,
                 broker,
                 wine_pool,
                 root / "recroom-client-installer",
+            )
+            steam_recovery = install_recroom_steam_recovery_routes(
+                application,
+                broker,
+                wine_pool,
+                root / "recroom-steam-recovery",
             )
         capture = install_recroom_capture_routes(application, broker, root / "recroom-captures")
         install_recroom_public_routes(application, broker, capture)
@@ -93,6 +101,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
             "vmPool": vm_pool,
             "winePool": wine_pool,
             "clientInstaller": client_installer,
+            "steamRecovery": steam_recovery,
             "capture": capture,
         }
 
@@ -114,6 +123,7 @@ def _mount_when_app_exists() -> None:
                 module.RIPO_RECROOM_VM_POOL = result["vmPool"]
                 module.RIPO_RECROOM_WINE_POOL = result.get("winePool")
                 module.RIPO_RECROOM_CLIENT_INSTALLER = result.get("clientInstaller")
+                module.RIPO_RECROOM_STEAM_RECOVERY = result.get("steamRecovery")
                 module.RIPO_RECROOM_CAPTURE = result["capture"]
             print(f"Rec Room May 2022 server-stream routes mounted: {result.get('ok')}")
             return
