@@ -9,6 +9,7 @@ from recroom_broker import install_recroom_broker_routes
 from recroom_capture import install_recroom_capture_routes
 from recroom_gateway import RecRoomGateway, install_recroom_gateway_routes
 from recroom_public import install_recroom_public_routes
+from recroom_vm_bridge import attach_recroom_vm_pool
 from server_live_broadcaster import ServerLiveBroadcaster, install_server_live_routes
 
 _DEFAULT_CORS_ORIGINS = (
@@ -25,7 +26,8 @@ RECROOM_CORS_ORIGINS = [
 # The live compatibility gateway is hosted by this same Space. Reuse the
 # existing ADMIN_TOKEN as the private host/broker key when dedicated Rec Room
 # keys have not been configured, so the deployment does not require another HF
-# secret just to start. Windows hosts still need the matching private key.
+# secret just to start. Disposable Windows VMs receive this key only through
+# their per-session read-only configuration ISO.
 _SPACE_URL = os.environ.get("RECROOM_PUBLIC_BASE_URL", "https://echoxr-ripoteam-cloud-pc.hf.space").rstrip("/")
 os.environ.setdefault("RECROOM_GATEWAY_URL", _SPACE_URL)
 _admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
@@ -55,10 +57,11 @@ SERVER_LIVE_BROADCASTER = ServerLiveBroadcaster(
 install_server_live_routes(app, SERVER_LIVE_BROADCASTER)
 
 # Firebase-token exchange, profile/save state, May-2022 compatibility routes and
-# Photon config live on the same public service the Windows loopback proxy uses.
+# Photon config live on the same public service the Windows guest uses.
 RECROOM_GATEWAY = RecRoomGateway(DATA_DIR / "recroom-gateway")
 install_recroom_gateway_routes(app, RECROOM_GATEWAY)
 
 RECROOM_BROKER = install_recroom_broker_routes(app, DATA_DIR / "recroom-broker")
+RECROOM_VM_POOL = attach_recroom_vm_pool(app, RECROOM_BROKER, DATA_DIR)
 RECROOM_CAPTURE = install_recroom_capture_routes(app, RECROOM_BROKER, DATA_DIR / "recroom-captures")
 install_recroom_public_routes(app, RECROOM_BROKER, RECROOM_CAPTURE)
