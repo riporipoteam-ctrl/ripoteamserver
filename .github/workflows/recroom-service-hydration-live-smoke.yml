@@ -1,0 +1,64 @@
+name: Rec Room Service Hydration Live Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/recroom-service-hydration-live-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  live-hydration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Verify live stripped hydration routes and broker
+        run: |
+          set -euo pipefail
+          base='https://echoxr-ripoteam-cloud-pc.hf.space'
+
+          for path in \
+            '/playersettings' \
+            '/playersettings/playersettings' \
+            '/roomInventory/player' \
+            '/roomInventory/room/13' \
+            '/roomOffer/room/13' \
+            '/roomEconConfig/13' \
+            '/api/catalog/v1/all' \
+            '/purchasecampaign/allcurrent/v2' \
+            '/hub/v1' \
+            '/crm/me/config/v3' \
+            '/club/home/me' \
+            '/club/mine/member'; do
+            code="$(curl --silent --show-error --output /tmp/rr-hydration.json --write-out '%{http_code}' "$base$path")"
+            echo "GET $path -> HTTP $code"
+            cat /tmp/rr-hydration.json || true
+            test "$code" = '401'
+          done
+
+          code="$(curl --silent --show-error --output /tmp/rr-hydration.json --write-out '%{http_code}' \
+            --request PUT --header 'content-type: application/x-www-form-urlencoded' \
+            --data 'key=LocomotionMode&value=Walk' "$base/playersettings")"
+          echo "PUT /playersettings -> HTTP $code"
+          cat /tmp/rr-hydration.json || true
+          test "$code" = '401'
+
+          code="$(curl --silent --show-error --output /tmp/rr-hydration.json --write-out '%{http_code}' \
+            --request POST --header 'content-type: application/json' --data '{}' "$base/hub/v1/negotiate")"
+          echo "POST /hub/v1/negotiate -> HTTP $code"
+          cat /tmp/rr-hydration.json || true
+          test "$code" = '401'
+
+          curl --fail --silent --show-error "$base/api/recroom-public/status" -o /tmp/rr-status.json
+          cat /tmp/rr-status.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/rr-status.json'))
+          assert d.get('ok') is True,d
+          print('RECROOM_SERVICE_HYDRATION_LIVE_OK=true')
+          print('RECROOM_ONLINE_HOSTS=',int(d.get('onlineHosts') or 0),sep='')
+          print('RECROOM_LIVE_SESSIONS=',int(d.get('sessions') or 0),sep='')
+          PY
