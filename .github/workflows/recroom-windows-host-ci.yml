@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "windows-live-agent/**"
+      - ".github/scripts/add-recroom-ci-manifest-evidence.ps1"
       - ".github/workflows/recroom-windows-host-ci.yml"
   workflow_dispatch:
 
@@ -30,6 +31,7 @@ jobs:
           New-Item -ItemType File -Force -Path (Join-Path $fake "Recroom_Release.exe") | Out-Null
           New-Item -ItemType File -Force -Path (Join-Path $fake "GameAssembly.dll") | Out-Null
           New-Item -ItemType File -Force -Path (Join-Path $fake "Recroom_Release_Data\il2cpp_data\Metadata\global-metadata.dat") | Out-Null
+          & .\.github\scripts\add-recroom-ci-manifest-evidence.ps1 -ClientDir $fake
           $env:FLUX_RECROOM_CLIENT_DIR = $fake
           $env:RECROOM_HOST_KEY = "ci-test-only"
           $installDir = Join-Path $env:RUNNER_TEMP "RipoTeamRecRoomHost"
@@ -52,6 +54,7 @@ jobs:
           if (-not $preferred) { throw "Installed client identifier did not return a preferred client." }
           if ($preferred.kind -ne "target-2022") { throw "Strict client identifier classified the May 19 2022 fixture as '$($preferred.kind)'." }
           if (-not $preferred.playableBy2022Agent) { throw "Strict client identifier did not mark the May 19 2022 fixture playable by the 2022 agent." }
+          if ($preferred.confidence -ne "verified-steam-manifest-cache") { throw "Strict client identifier did not require verified manifest evidence." }
           if ($preferred.buildId -ne "8751857" -or $preferred.manifestId -ne "6337851004861751095") { throw "Strict client identifier returned the wrong target build/manifest." }
           Write-Host "STRICT_CLIENT_IDENTITY_OK=true kind=$($preferred.kind) confidence=$($preferred.confidence)"
 
