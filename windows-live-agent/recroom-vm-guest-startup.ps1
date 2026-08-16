@@ -31,15 +31,16 @@ try {
     New-Item -ItemType Directory -Path $AgentDir -Force | Out-Null
     $configPath = Join-Path $AgentDir "recroom-agent-config.json"
     Copy-Item -LiteralPath $configSource -Destination $configPath -Force
+    $cfg = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
   }
 
   $repo = "https://raw.githubusercontent.com/riporipoteam-ctrl/ripoteamserver/main/windows-live-agent"
   $required = @(
     "recroom-agent.ps1",
     "identify-recroom-client.ps1",
-    "start-recroom-browser-stream.ps1",
+    "start-recroom-vm-browser-stream.ps1",
     "stop-recroom-browser-stream.ps1",
-    "recroom-web-stream.py",
+    "recroom-vm-web-stream.py",
     "recroom-capture-agent.ps1"
   )
   foreach ($name in $required) {
@@ -65,14 +66,13 @@ try {
   $env:RECROOM_HOST_KEY = [string]$cfg.hostKey
   $env:FLUX_RECROOM_CLIENT_DIR = [string]$cfg.clientDir
 
-  # The KVM host forwards guest TCP 6081 to a unique loopback port and proxies
-  # it through RipoTeamServer. Keep the guest streamer local-only; the broker
-  # rewrites its returned 127.0.0.1 URL into the authenticated public proxy URL.
-  if (-not $cfg.streamStartCommand) {
-    $cfg | Add-Member -NotePropertyName streamStartCommand -NotePropertyValue (
-      'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%RECROOM_AGENT_DIR%\start-recroom-browser-stream.ps1" -LocalOnly'
-    ) -Force
-  }
+  # Force the server-owned VM path to use the local-only streamer. QEMU forwards
+  # guest :6081 to a unique loopback port on RipoTeamServer; the broker rewrites
+  # the local stream URL into the public per-VM proxy URL. This streamer carries
+  # video, keyboard/mouse/touch input and Windows loopback audio.
+  $streamCommand = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%RECROOM_AGENT_DIR%\start-recroom-vm-browser-stream.ps1"'
+  if ($cfg.PSObject.Properties["streamStartCommand"]) { $cfg.streamStartCommand = $streamCommand }
+  else { $cfg | Add-Member -NotePropertyName streamStartCommand -NotePropertyValue $streamCommand }
   $cfg | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $configPath -Encoding UTF8
 
   $agent = Join-Path $AgentDir "recroom-agent.ps1"
