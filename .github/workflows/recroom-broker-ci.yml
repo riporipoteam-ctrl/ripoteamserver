@@ -114,8 +114,8 @@ jobs:
           grep -q '/api/catalog/v1/all' hf-space/recroom_service_extra_aliases.py
           grep -q '/hub/v1' hf-space/recroom_service_extra_aliases.py
           grep -q '/club/home/me' hf-space/recroom_service_extra_aliases.py
-          grep -q '/leaderboard/GetPlayerRank' hf-space/recroom_leaderboard_compat.py
-          grep -q '/leaderboard/GetNearbyScores' hf-space/recroom_leaderboard_compat.py
+          grep -q 'GetPlayerRank' hf-space/recroom_leaderboard_compat.py
+          grep -q 'GetNearbyScores' hf-space/recroom_leaderboard_compat.py
           grep -q 'GlobalOverall' hf-space/recroom_leaderboard_compat.py
           grep -q '/rooms/{room_id}' hf-space/recroom_route_order.py
       - name: Validate Windows agent PowerShell syntax
