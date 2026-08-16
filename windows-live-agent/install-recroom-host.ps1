@@ -11,6 +11,7 @@ $Repo = "riporipoteam-ctrl/ripoteamserver"
 $Ref = "main"
 $ToolsRepo = "riporipoteam-ctrl/recroomfluxgame"
 $ToolsRef = "main"
+$cacheBust = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 
@@ -31,10 +32,10 @@ $files = @(
 )
 
 foreach ($name in $files) {
-  $url = "https://raw.githubusercontent.com/$Repo/$Ref/windows-live-agent/$name"
+  $url = "https://raw.githubusercontent.com/$Repo/$Ref/windows-live-agent/$name?cb=$cacheBust-$([Uri]::EscapeDataString($name))"
   $destination = Join-Path $InstallDir $name
   Write-Host "Fetching $name..." -ForegroundColor DarkCyan
-  Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $destination -TimeoutSec 60
+  Invoke-WebRequest -UseBasicParsing -Headers @{ "Cache-Control" = "no-cache" } -Uri $url -OutFile $destination -TimeoutSec 60
   if (-not (Test-Path $destination) -or (Get-Item $destination).Length -le 0) {
     throw "Host tool download failed: $name"
   }
@@ -43,10 +44,10 @@ foreach ($name in $files) {
 $toolsDir = Join-Path $InstallDir "recroom-tools"
 New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
 foreach ($name in @("host-proxy.mjs", "redirect-client-urls.mjs", "verify-client.mjs", "scan-client-urls.mjs")) {
-  $url = "https://raw.githubusercontent.com/$ToolsRepo/$ToolsRef/scripts/$name"
+  $url = "https://raw.githubusercontent.com/$ToolsRepo/$ToolsRef/scripts/$name?cb=$cacheBust-$([Uri]::EscapeDataString($name))"
   $destination = Join-Path $toolsDir $name
   Write-Host "Fetching tool $name..." -ForegroundColor DarkCyan
-  Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $destination -TimeoutSec 60
+  Invoke-WebRequest -UseBasicParsing -Headers @{ "Cache-Control" = "no-cache" } -Uri $url -OutFile $destination -TimeoutSec 60
   if (-not (Test-Path $destination) -or (Get-Item $destination).Length -le 0) {
     throw "Rec Room client tool download failed: $name"
   }
