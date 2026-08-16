@@ -12,6 +12,7 @@ $Target2022 = [ordered]@{
   buildId = "8751857"
   manifestId = "6337851004861751095"
   runtimeId = "recroom-2022-05-19"
+  depotId = "471711"
 }
 
 $FluxRec2023 = [ordered]@{
@@ -19,6 +20,7 @@ $FluxRec2023 = [ordered]@{
   buildId = "10679392"
   manifestId = "7859140924515540835"
   runtimeId = "recroom-2023-03-07"
+  depotId = "471711"
   exeSha256 = "EA53A04EE3E35C8239266D737D44EF4323563C1B862D3F24C5A111D50A547BB1"
   gameAssemblySha256 = "DA7649561A940FE1EC3DEF4EBE85AF11C7518AA3D0FE923CF04D168AA3F84ECF"
   metadataSha256 = "588953ABFD91DD45F798F26CABDA5DD62572933207886CAE44FCA9A7828AA617"
@@ -54,8 +56,61 @@ function Find-Layout([string]$Candidate) {
   }
 }
 
-function Hash-File([string]$Path) {
-  return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()
+function Hash-File([string]$Path, [string]$Algorithm = "SHA256") {
+  return (Get-FileHash -LiteralPath $Path -Algorithm $Algorithm).Hash.ToUpperInvariant()
+}
+
+function Bytes-ToHex([byte[]]$Bytes) {
+  if (-not $Bytes) { return "" }
+  return (($Bytes | ForEach-Object { $_.ToString("X2") }) -join "")
+}
+
+function Get-DepotManifestEvidence([string]$ClientRoot, [string]$DepotId, [string]$ManifestId) {
+  $roots = New-Object System.Collections.Generic.List[string]
+  $cursor = Get-Item -LiteralPath $ClientRoot
+  for ($i = 0; $i -lt 4 -and $cursor; $i++) {
+    $roots.Add($cursor.FullName)
+    $cursor = $cursor.Parent
+  }
+
+  foreach ($base in $roots | Select-Object -Unique) {
+    $configDir = Join-Path $base ".DepotDownloader"
+    if (-not (Test-Path -LiteralPath $configDir -PathType Container)) { continue }
+    foreach ($extension in @("manifest", "bin")) {
+      $manifestPath = Join-Path $configDir ("{0}_{1}.{2}" -f $DepotId, $ManifestId, $extension)
+      if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { continue }
+      $shaPath = "$manifestPath.sha"
+      $shaPresent = Test-Path -LiteralPath $shaPath -PathType Leaf
+      $shaValid = $false
+      $actualSha1 = Hash-File $manifestPath "SHA1"
+      $storedSha1 = ""
+      if ($shaPresent) {
+        try {
+          $storedSha1 = Bytes-ToHex ([IO.File]::ReadAllBytes($shaPath))
+          $shaValid = ($storedSha1 -eq $actualSha1)
+        } catch { $shaValid = $false }
+      }
+      return [pscustomobject]@{
+        found = $true
+        path = $manifestPath
+        shaPath = if ($shaPresent) { $shaPath } else { "" }
+        shaPresent = [bool]$shaPresent
+        shaValid = [bool]$shaValid
+        actualSha1 = $actualSha1
+        storedSha1 = $storedSha1
+      }
+    }
+  }
+
+  return [pscustomobject]@{
+    found = $false
+    path = ""
+    shaPath = ""
+    shaPresent = $false
+    shaValid = $false
+    actualSha1 = ""
+    storedSha1 = ""
+  }
 }
 
 function Identify-Layout($Layout) {
@@ -75,13 +130,15 @@ function Identify-Layout($Layout) {
     $metadataHash -eq $FluxRec2023.metadataSha256
   )
 
-  $marker2022 = (
+  $evidence2022 = Get-DepotManifestEvidence $Layout.root $Target2022.depotId $Target2022.manifestId
+  $evidence2023 = Get-DepotManifestEvidence $Layout.root $FluxRec2023.depotId $FluxRec2023.manifestId
+
+  $pathClaims2022 = (
     $pathText -match [regex]::Escape($Target2022.buildId) -or
     $pathText -match [regex]::Escape($Target2022.manifestId) -or
     $pathText -match '(?i)May[ _.-]*19[ _.-]*2022'
   )
-
-  $marker2023 = (
+  $pathClaims2023 = (
     $pathText -match [regex]::Escape($FluxRec2023.buildId) -or
     $pathText -match [regex]::Escape($FluxRec2023.manifestId) -or
     $pathText -match '(?i)Mar(ch)?[ _.-]*7[ _.-]*2023'
@@ -95,28 +152,49 @@ function Identify-Layout($Layout) {
   $playableBy2022Agent = $false
   $reason = "Client layout is complete, but this binary is not a recognized build."
 
-  if ($exact2023) {
-    $kind = "fluxrec-2023"
-    $runtimeId = $FluxRec2023.runtimeId
-    $buildId = $FluxRec2023.buildId
-    $manifestId = $FluxRec2023.manifestId
-    $confidence = "exact-hash"
-    $reason = "Exact RecRoom.exe + GameAssembly.dll + global-metadata.dat hashes match the FluxRec March 7 2023 development client."
-  } elseif ($marker2022) {
+  if ($evidence2022.found -and $evidence2022.shaValid) {
     $kind = "target-2022"
     $runtimeId = $Target2022.runtimeId
     $buildId = $Target2022.buildId
     $manifestId = $Target2022.manifestId
-    $confidence = "exact-build-path-marker"
+    $confidence = "verified-steam-manifest-cache"
     $playableBy2022Agent = $true
-    $reason = "Complete IL2CPP layout is inside a path that explicitly identifies build 8751857 / manifest 6337851004861751095."
-  } elseif ($marker2023) {
+    $reason = "Exact depot 471711 / manifest 6337851004861751095 cache exists and its DepotDownloader SHA-1 sidecar validates."
+  } elseif ($exact2023) {
+    $kind = "fluxrec-2023"
+    $runtimeId = $FluxRec2023.runtimeId
+    $buildId = $FluxRec2023.buildId
+    $manifestId = $FluxRec2023.manifestId
+    $confidence = "exact-three-file-sha256"
+    $reason = "RecRoom.exe + GameAssembly.dll + global-metadata.dat exactly match the pinned March 7 2023 FluxRec client hashes."
+  } elseif ($evidence2022.found) {
+    $kind = "unverified-2022"
+    $runtimeId = $Target2022.runtimeId
+    $buildId = $Target2022.buildId
+    $manifestId = $Target2022.manifestId
+    $confidence = "manifest-cache-integrity-failed"
+    $reason = "The May 2022 manifest cache is present, but its DepotDownloader .sha sidecar is missing or does not validate. Host launch is blocked."
+  } elseif ($evidence2023.found -and $evidence2023.shaValid) {
     $kind = "unverified-2023"
     $runtimeId = $FluxRec2023.runtimeId
     $buildId = $FluxRec2023.buildId
     $manifestId = $FluxRec2023.manifestId
-    $confidence = "path-marker-hash-mismatch"
-    $reason = "Folder claims the March 2023 build, but one or more pinned FluxRec hashes do not match."
+    $confidence = "steam-manifest-cache-but-hash-mismatch"
+    $reason = "The March 2023 manifest cache is valid, but one or more pinned client hashes differ. Host launch is blocked."
+  } elseif ($pathClaims2022) {
+    $kind = "unverified-2022"
+    $runtimeId = $Target2022.runtimeId
+    $buildId = $Target2022.buildId
+    $manifestId = $Target2022.manifestId
+    $confidence = "path-claim-only"
+    $reason = "Folder name claims May 19 2022, but no verified DepotDownloader manifest cache exists. Folder names are not trusted."
+  } elseif ($pathClaims2023) {
+    $kind = "unverified-2023"
+    $runtimeId = $FluxRec2023.runtimeId
+    $buildId = $FluxRec2023.buildId
+    $manifestId = $FluxRec2023.manifestId
+    $confidence = "path-claim-only"
+    $reason = "Folder name claims March 7 2023, but the exact three-file hashes do not match the pinned FluxRec client."
   }
 
   $version = $null
@@ -133,6 +211,10 @@ function Identify-Layout($Layout) {
     confidence = $confidence
     playableBy2022Agent = $playableBy2022Agent
     reason = $reason
+    manifestEvidence = [pscustomobject]@{
+      target2022 = $evidence2022
+      fluxrec2023 = $evidence2023
+    }
     fingerprint = [pscustomobject]@{
       exeSha256 = $exeHash
       gameAssemblySha256 = $assemblyHash
@@ -168,25 +250,20 @@ function Candidate-Roots {
   if ($env:USERPROFILE) {
     $searchRoots += (Join-Path $env:USERPROFILE "Downloads")
     $searchRoots += (Join-Path $env:USERPROFILE "Desktop")
+    $searchRoots += (Join-Path $env:USERPROFILE "Downloads\DepotDownloader-windows-x64\depots\471711")
+    $searchRoots += (Join-Path $env:USERPROFILE "Downloads\DepotDownloader\depots\471711")
   }
   foreach ($drive in @("C:", "D:", "E:")) {
     $searchRoots += (Join-Path $drive "DepotDownloader-windows-x64\depots\471711")
     $searchRoots += (Join-Path $drive "DepotDownloader\depots\471711")
-  }
-  if ($env:USERPROFILE) {
-    $searchRoots += (Join-Path $env:USERPROFILE "Downloads\DepotDownloader-windows-x64\depots\471711")
-    $searchRoots += (Join-Path $env:USERPROFILE "Downloads\DepotDownloader\depots\471711")
+    $searchRoots += (Join-Path $drive "Games\FluxRecRoom")
   }
 
   foreach ($searchRoot in $searchRoots | Select-Object -Unique) {
     if (-not (Test-Path -LiteralPath $searchRoot -PathType Container)) { continue }
-    Get-ChildItem -LiteralPath $searchRoot -Directory -Recurse -ErrorAction SilentlyContinue |
-      Where-Object { $_.FullName -match '(8751857|6337851004861751095|10679392|7859140924515540835|May[ _.-]*19[ _.-]*2022|Mar(ch)?[ _.-]*7[ _.-]*2023)' } |
-      ForEach-Object { Add-Candidate $_.FullName }
-
     Get-ChildItem -LiteralPath $searchRoot -File -Recurse -ErrorAction SilentlyContinue |
       Where-Object { $_.Name -in @("RecRoom.exe", "Recroom_Release.exe") } |
-      Select-Object -First 50 |
+      Select-Object -First 100 |
       ForEach-Object { Add-Candidate $_.Directory.FullName }
   }
   return $items
@@ -205,7 +282,7 @@ if ($Scan -or -not $Root) {
   if ($layout) { $results.Add((Identify-Layout $layout)) }
 }
 
-$rank = @{ 'target-2022' = 0; 'fluxrec-2023' = 1; 'unverified-2023' = 2; 'unknown' = 9 }
+$rank = @{ 'target-2022' = 0; 'fluxrec-2023' = 1; 'unverified-2022' = 7; 'unverified-2023' = 8; 'unknown' = 9 }
 $ordered = @($results | Sort-Object @{ Expression = { if ($rank.ContainsKey($_.kind)) { $rank[$_.kind] } else { 99 } } }, root)
 $output = [pscustomobject]@{
   ok = $true
@@ -215,7 +292,7 @@ $output = [pscustomobject]@{
 }
 
 if ($AsJson) {
-  Write-Output ($output | ConvertTo-Json -Depth 8 -Compress)
+  Write-Output ($output | ConvertTo-Json -Depth 12 -Compress)
   exit 0
 }
 
