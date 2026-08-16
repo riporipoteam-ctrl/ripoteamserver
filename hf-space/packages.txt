@@ -12,10 +12,15 @@ gcc-mingw-w64-x86-64-win32
 git
 htop
 jq
+libgl1-mesa-dri
+libglx-mesa0
+libvulkan1
 lsof
 lxappearance
 lxpanel
 lxterminal
+mesa-utils
+mesa-vulkan-drivers
 mousepad
 novnc
 openbox
