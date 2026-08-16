@@ -7,6 +7,7 @@ from fastapi import Header
 from fastapi.responses import JSONResponse
 
 from recroom_gateway import PHOTON_REGION, NativeSession, RecRoomGateway
+from recroom_match_model import DORM_SCENE_LOCATION_ID, build_player, build_room_instance
 
 
 def _remove_exact_route(app: Any, path: str, methods: set[str]) -> None:
@@ -26,50 +27,30 @@ def _remove_exact_route(app: Any, path: str, methods: set[str]) -> None:
 
 def _room_instance(session: NativeSession, room_id: int, location: str, *, private: bool) -> dict[str, Any]:
     current = session.state.get("currentRoomInstance")
-    if isinstance(current, dict) and int(current.get("roomId") or -1) == room_id:
-        return current
-
-    room_instance_id = int(session.account_id * 100_000 + (room_id % 100_000))
-    instance = {
-        "roomInstanceId": room_instance_id,
-        "roomId": room_id,
-        "subRoomId": 1,
-        "location": location,
-        "photonRegionId": PHOTON_REGION,
-        "photonRoomId": room_instance_id,
-        "name": location,
-        "maxCapacity": 4 if private else 8,
-        "isFull": False,
-        "isPrivate": private,
-        "isInProgress": False,
-        "roomInstanceType": 0,
-        "isMatchmakingSocial": False,
-        "dataBlobName": "",
-        "dataBlobChecksum": "",
-        "dataBlob": None,
-        "matchMakingPolicy": 0,
-        "inviteCode": str(room_instance_id),
-    }
+    instance = build_room_instance(
+        account_id=session.account_id,
+        room_id=room_id,
+        location=location,
+        photon_region=PHOTON_REGION,
+        private=private,
+        existing=current if isinstance(current, dict) else None,
+    )
     session.state["currentRoomInstance"] = instance
-    session.state["lastRoomId"] = room_id
+    session.state["lastRoomId"] = int(room_id)
     return instance
 
 
 def _player(session: NativeSession) -> dict[str, Any]:
-    return {
-        "playerId": session.account_id,
-        "accountId": session.account_id,
-        "username": session.username,
-        "displayName": session.display_name,
-        "statusVisibility": 1,
-        "platform": "Steam",
-        "isOnline": True,
-        "lastHeartbeatAt": int(time.time() * 1000),
-    }
+    return build_player(
+        account_id=session.account_id,
+        username=session.username,
+        display_name=session.display_name,
+        now_ms=int(time.time() * 1000),
+    )
 
 
 def install_recroom_match_compat_routes(app: Any, gateway: RecRoomGateway) -> None:
-    """Override join/heartbeat DTOs with the room-instance shape old clients use."""
+    """Override join/heartbeat DTOs with the recovered room-instance shape."""
 
     for path, methods in [
         ("/Matchmaking/matchmake/dorm", {"POST"}),
@@ -89,7 +70,9 @@ def install_recroom_match_compat_routes(app: Any, gateway: RecRoomGateway) -> No
         session = session_for(authorization)
         room_id = int(session.state.get("dormRoomId") or session.account_id + 1_000_000_000)
         gateway.save(session, {"dormRoomId": room_id, "lastRoomId": room_id})
-        instance = _room_instance(session, room_id, "DormRoom", private=True)
+        # Critical: location is the Unity scene location GUID used by the real
+        # Dorm subroom, not the human-readable room name.
+        instance = _room_instance(session, room_id, DORM_SCENE_LOCATION_ID, private=True)
         return JSONResponse({"errorCode": 0, "roomInstance": instance})
 
     @app.post("/Matchmaking/matchmake/v2/room/{room_id}")
@@ -102,11 +85,19 @@ def install_recroom_match_compat_routes(app: Any, gateway: RecRoomGateway) -> No
     @app.post("/Matchmaking/player/heartbeat")
     async def rr2022_player_heartbeat(authorization: str | None = Header(default=None)) -> JSONResponse:
         session = session_for(authorization)
-        room_id = int(session.state.get("lastRoomId") or session.state.get("dormRoomId") or session.account_id + 1_000_000_000)
+        dorm_id = int(session.state.get("dormRoomId") or session.account_id + 1_000_000_000)
+        room_id = int(session.state.get("lastRoomId") or dorm_id)
         current = session.state.get("currentRoomInstance")
-        if not isinstance(current, dict) or int(current.get("roomId") or -1) != room_id:
-            location = "DormRoom" if room_id == int(session.state.get("dormRoomId") or -1) else f"FluxRoom_{room_id}"
-            current = _room_instance(session, room_id, location, private=location == "DormRoom")
+        location = DORM_SCENE_LOCATION_ID if room_id == dorm_id else f"FluxRoom_{room_id}"
+        current = build_room_instance(
+            account_id=session.account_id,
+            room_id=room_id,
+            location=location,
+            photon_region=PHOTON_REGION,
+            private=room_id == dorm_id,
+            existing=current if isinstance(current, dict) else None,
+        )
+        session.state["currentRoomInstance"] = current
         return JSONResponse(
             {
                 "errorCode": 0,
@@ -119,15 +110,24 @@ def install_recroom_match_compat_routes(app: Any, gateway: RecRoomGateway) -> No
     @app.get("/Matchmaking/roominstance/{instance_id}")
     async def rr2022_room_instance(instance_id: int, authorization: str | None = Header(default=None)) -> JSONResponse:
         session = session_for(authorization)
+        dorm_id = int(session.state.get("dormRoomId") or session.account_id + 1_000_000_000)
+        room_id = int(session.state.get("lastRoomId") or dorm_id)
         current = session.state.get("currentRoomInstance")
-        if not isinstance(current, dict):
-            room_id = int(session.state.get("lastRoomId") or session.state.get("dormRoomId") or session.account_id + 1_000_000_000)
-            current = _room_instance(session, room_id, "DormRoom", private=True)
-        # If the client asks for the active instance, return the active typed DTO.
-        # If it asks for another id, preserve the requested id but keep neutral data.
+        location = DORM_SCENE_LOCATION_ID if room_id == dorm_id else f"FluxRoom_{room_id}"
+        current = build_room_instance(
+            account_id=session.account_id,
+            room_id=room_id,
+            location=location,
+            photon_region=PHOTON_REGION,
+            private=room_id == dorm_id,
+            existing=current if isinstance(current, dict) else None,
+        )
+        # Do not mutate the active session when the client asks about another
+        # instance id. Return a normalized copy with a string Photon room name.
         if int(current.get("roomInstanceId") or -1) != instance_id:
             current = dict(current)
-            current["roomInstanceId"] = instance_id
-            current["photonRoomId"] = instance_id
+            current["roomInstanceId"] = int(instance_id)
+            room_name = "DormRoom" if room_id == dorm_id else f"FluxRoom_{room_id}"
+            current["photonRoomId"] = f"FluxRecRoom2022-{room_name}-1-{room_id}-{instance_id}"
             current["inviteCode"] = str(instance_id)
         return JSONResponse(current)
