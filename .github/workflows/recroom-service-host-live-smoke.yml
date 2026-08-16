@@ -1,0 +1,60 @@
+name: Rec Room Service Host Live Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/recroom-service-host-live-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  live-aliases:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Verify live stripped service-host aliases are mounted
+        run: |
+          set -euo pipefail
+          base='https://echoxr-ripoteam-cloud-pc.hf.space'
+
+          for path in \
+            '/account/me' \
+            '/parentalcontrol/me' \
+            '/player' \
+            '/player/avoidjuniors' \
+            '/rooms/13' \
+            '/rooms/search' \
+            '/dormroom/me' \
+            '/photon_access_token'; do
+            code="$(curl --silent --show-error --output /tmp/rr-alias.json --write-out '%{http_code}' "$base$path")"
+            echo "GET $path -> HTTP $code"
+            cat /tmp/rr-alias.json || true
+            test "$code" = '401'
+          done
+
+          for path in \
+            '/connect/token' \
+            '/player/login' \
+            '/player/logout' \
+            '/player/exclusivelogin' \
+            '/player/heartbeat' \
+            '/matchmake/dorm'; do
+            code="$(curl --silent --show-error --output /tmp/rr-alias.json --write-out '%{http_code}' \
+              --request POST --header 'content-type: application/x-www-form-urlencoded' \
+              --data 'LoginLock=00000000-0000-0000-0000-000000000000' "$base$path")"
+            echo "POST $path -> HTTP $code"
+            cat /tmp/rr-alias.json || true
+            test "$code" = '401'
+          done
+
+          code="$(curl --silent --show-error --output /tmp/rr-alias.json --write-out '%{http_code}' \
+            --request PUT --header 'content-type: application/x-www-form-urlencoded' \
+            --data 'avoidJuniors=false' "$base/player/avoidjuniors")"
+          echo "PUT /player/avoidjuniors -> HTTP $code"
+          cat /tmp/rr-alias.json || true
+          test "$code" = '401'
+
+          echo 'RECROOM_LIVE_SERVICE_HOST_ALIASES_OK=true'
