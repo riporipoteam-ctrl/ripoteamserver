@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-      - name: Compile fake Windows client with Rec Room endpoints
+      - name: Compile fake Windows client with Rec Room endpoints and exact manifest evidence
         shell: pwsh
         run: |
           $gameDir = Join-Path $env:RUNNER_TEMP "May 19 2022 Agent Fixture"
@@ -43,7 +43,33 @@ jobs:
           $s=[IO.File]::Open($exe,[IO.FileMode]::Append,[IO.FileAccess]::Write); try{$s.Write($overlay,0,$overlay.Length)}finally{$s.Dispose()}
           [IO.File]::WriteAllBytes((Join-Path $gameDir "GameAssembly.dll"), [Text.Encoding]::Unicode.GetBytes("https://match.rec.net/Matchmaking/player/login"))
           [IO.File]::WriteAllBytes((Join-Path $gameDir "Recroom_Release_Data\il2cpp_data\Metadata\global-metadata.dat"), [Text.Encoding]::ASCII.GetBytes("metadata"))
+
+          # Mimic the exact local evidence DepotDownloader writes for a requested
+          # old manifest. The identifier validates the sidecar SHA-1 before the
+          # fixture may be treated as the May 19 2022 target.
+          $configDir = Join-Path $gameDir ".DepotDownloader"
+          New-Item -ItemType Directory -Force -Path $configDir | Out-Null
+          $manifest = Join-Path $configDir "471711_6337851004861751095.manifest"
+          [IO.File]::WriteAllBytes($manifest, [Text.Encoding]::ASCII.GetBytes("CI ONLY - depot 471711 manifest 6337851004861751095 fixture"))
+          $hex = (Get-FileHash -LiteralPath $manifest -Algorithm SHA1).Hash
+          [byte[]]$shaBytes = for($i=0; $i -lt $hex.Length; $i+=2){ [Convert]::ToByte($hex.Substring($i,2),16) }
+          [IO.File]::WriteAllBytes("$manifest.sha", $shaBytes)
           "AGENT_GAME_DIR=$gameDir" | Out-File $env:GITHUB_ENV -Append
+      - name: Prove path names alone are rejected and manifest evidence is accepted
+        shell: pwsh
+        run: |
+          $identifier = ".\windows-live-agent\identify-recroom-client.ps1"
+          $good = (& $identifier -Root $env:AGENT_GAME_DIR -AsJson | Select-Object -Last 1) | ConvertFrom-Json
+          if (-not $good.preferred.playableBy2022Agent) { throw "Strict identifier rejected valid manifest-cache fixture." }
+          if ($good.preferred.confidence -ne "verified-steam-manifest-cache") { throw "Unexpected confidence: $($good.preferred.confidence)" }
+          $sha = Join-Path $env:AGENT_GAME_DIR ".DepotDownloader\471711_6337851004861751095.manifest.sha"
+          $backup = "$sha.ci-backup"; Move-Item $sha $backup -Force
+          try {
+            $bad = (& $identifier -Root $env:AGENT_GAME_DIR -AsJson | Select-Object -Last 1) | ConvertFrom-Json
+            if ($bad.preferred.playableBy2022Agent) { throw "Identifier trusted a May-2022-looking folder without validated manifest evidence." }
+            if ($bad.preferred.kind -ne "unverified-2022") { throw "Expected unverified-2022 after removing manifest checksum evidence." }
+          } finally { Move-Item $backup $sha -Force }
+          Write-Host "RECROOM_STRICT_BUILD_IDENTITY_OK=true"
       - name: Install host package and configure mock session
         shell: pwsh
         run: |
