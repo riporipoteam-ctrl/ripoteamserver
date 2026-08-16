@@ -25,6 +25,7 @@ function Download-RepoSnapshot([string]$Repository, [string]$Reference, [string]
   $parts = $Repository.Split('/')
   if ($parts.Count -ne 2) { throw "Invalid GitHub repository: $Repository" }
   $owner = $parts[0]; $name = $parts[1]
+  New-Item -ItemType Directory -Path $DestinationRoot -Force | Out-Null
   $zip = Join-Path $DestinationRoot ($name + ".zip")
   $extract = Join-Path $DestinationRoot ($name + "-extract")
   $nonce = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
