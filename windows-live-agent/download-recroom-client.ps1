@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 $AppId = "471710"
 $DepotId = "471711"
 $ManifestId = "6337851004861751095"
+$identifier = Join-Path $PSScriptRoot "identify-recroom-client.ps1"
 
 function Test-ClientLayout([string]$Root) {
   if (-not $Root -or -not (Test-Path $Root)) { return $false }
@@ -18,8 +19,18 @@ function Test-ClientLayout([string]$Root) {
   return Test-Path (Join-Path $data "il2cpp_data\Metadata\global-metadata.dat")
 }
 
-if (Test-ClientLayout $Destination) {
-  Write-Host "May 19 2022 Rec Room client is already present at $Destination" -ForegroundColor Green
+function Test-VerifiedTarget([string]$Root) {
+  if (-not (Test-Path $identifier)) { return $false }
+  try {
+    $json = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $identifier -Root $Root -AsJson) | Select-Object -Last 1
+    if (-not $json) { return $false }
+    $result = $json | ConvertFrom-Json
+    return [bool]($result.preferred -and $result.preferred.kind -eq "target-2022" -and $result.preferred.playableBy2022Agent)
+  } catch { return $false }
+}
+
+if ((Test-ClientLayout $Destination) -and (Test-VerifiedTarget $Destination)) {
+  Write-Host "Verified May 19 2022 Rec Room client is already present at $Destination" -ForegroundColor Green
   Write-Output $Destination
   exit 0
 }
@@ -52,7 +63,7 @@ if (-not $SteamUsername) { throw "Steam username is required for the licensed de
 
 New-Item -ItemType Directory -Path $Destination -Force | Out-Null
 Write-Host "Steam will now authenticate locally. Scan/approve the QR prompt in your Steam mobile app." -ForegroundColor Cyan
-Write-Host "No Steam password is stored in Flux or sent to RipoTeamServer." -ForegroundColor DarkGray
+Write-Host "No Steam password is stored in Flux, GitHub, or RipoTeamServer." -ForegroundColor DarkGray
 
 $arguments = @(
   "-app", $AppId,
@@ -82,6 +93,9 @@ if (-not (Test-ClientLayout $Destination)) {
 if (-not (Test-ClientLayout $Destination)) {
   throw "Depot download completed, but the expected Rec Room IL2CPP client layout was not found."
 }
+if (-not (Test-VerifiedTarget $Destination)) {
+  throw "Depot download completed, but strict identification could not verify depot 471711 / manifest 6337851004861751095 and its manifest checksum sidecar. Refusing to launch an ambiguous client."
+}
 
-Write-Host "May 19 2022 Rec Room client downloaded and verified at $Destination" -ForegroundColor Green
+Write-Host "May 19 2022 Rec Room client downloaded and strictly verified at $Destination" -ForegroundColor Green
 Write-Output $Destination
