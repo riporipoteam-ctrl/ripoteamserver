@@ -19,38 +19,52 @@ $hostRepo = if ($cfg.updateRepository) { [string]$cfg.updateRepository } else { 
 $hostRef = if ($cfg.updateRef) { [string]$cfg.updateRef } else { "main" }
 $toolsRepo = if ($cfg.toolsRepository) { [string]$cfg.toolsRepository } else { "riporipoteam-ctrl/recroomfluxgame" }
 $toolsRef = if ($cfg.toolsRef) { [string]$cfg.toolsRef } else { "main" }
-$cacheBust = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 
 if ($hostRepo -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "Invalid updateRepository." }
 if ($toolsRepo -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "Invalid toolsRepository." }
 if ($hostRef -notmatch '^[A-Za-z0-9_./-]+$') { throw "Invalid updateRef." }
 if ($toolsRef -notmatch '^[A-Za-z0-9_./-]+$') { throw "Invalid toolsRef." }
 
+function Resolve-GitHubCommit([string]$Repository, [string]$Reference) {
+  $encodedRef = [Uri]::EscapeDataString($Reference)
+  $uri = "https://api.github.com/repos/$Repository/commits/$encodedRef"
+  $result = Invoke-RestMethod -UseBasicParsing -Headers @{
+    "User-Agent" = "RipoTeam-RecRoom-Host"
+    "Accept" = "application/vnd.github+json"
+    "Cache-Control" = "no-cache"
+  } -Uri $uri -TimeoutSec 30
+  $sha = [string]$result.sha
+  if ($sha -notmatch '^[0-9a-fA-F]{40}$') { throw "Could not resolve $Repository@$Reference to an immutable Git commit." }
+  return $sha.ToLowerInvariant()
+}
+
+$hostSha = Resolve-GitHubCommit $hostRepo $hostRef
+$toolsSha = Resolve-GitHubCommit $toolsRepo $toolsRef
 $toolDir = Join-Path $PSScriptRoot "recroom-tools"
 New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
 
-function Raw-Url([string]$Repo, [string]$Ref, [string]$Path, [string]$Name) {
-  return "https://raw.githubusercontent.com/$Repo/$Ref/$Path?cb=$cacheBust-$([Uri]::EscapeDataString($Name))"
+function Raw-Url([string]$Repo, [string]$Sha, [string]$Path) {
+  return "https://raw.githubusercontent.com/$Repo/$Sha/$Path"
 }
 
 $targets = @(
-  [pscustomobject]@{ Name="start-recroom-host.ps1"; Url=(Raw-Url $hostRepo $hostRef "windows-live-agent/start-recroom-host.ps1" "start-recroom-host.ps1"); Destination=(Join-Path $PSScriptRoot "start-recroom-host.ps1"); Kind="powershell" },
-  [pscustomobject]@{ Name="identify-recroom-client.ps1"; Url=(Raw-Url $hostRepo $hostRef "windows-live-agent/identify-recroom-client.ps1" "identify-recroom-client.ps1"); Destination=(Join-Path $PSScriptRoot "identify-recroom-client.ps1"); Kind="powershell" },
-  [pscustomobject]@{ Name="update-recroom-host.ps1"; Url=(Raw-Url $hostRepo $hostRef "windows-live-agent/update-recroom-host.ps1" "update-recroom-host.ps1"); Destination=(Join-Path $PSScriptRoot "update-recroom-host.ps1"); Kind="powershell" },
-  [pscustomobject]@{ Name="recroom-agent.ps1"; Url=(Raw-Url $hostRepo $hostRef "windows-live-agent/recroom-agent.ps1" "recroom-agent.ps1"); Destination=(Join-Path $PSScriptRoot "recroom-agent.ps1"); Kind="powershell" },
-  [pscustomobject]@{ Name="recroom-capture-agent.ps1"; Url=(Raw-Url $hostRepo $hostRef "windows-live-agent/recroom-capture-agent.ps1" "recroom-capture-agent.ps1"); Destination=(Join-Path $PSScriptRoot "recroom-capture-agent.ps1"); Kind="powershell" },
-  [pscustomobject]@{ Name="playtest-recroom-client.ps1"; Url=(Raw-Url $hostRepo $hostRef "windows-live-agent/playtest-recroom-client.ps1" "playtest-recroom-client.ps1"); Destination=(Join-Path $PSScriptRoot "playtest-recroom-client.ps1"); Kind="powershell" },
-  [pscustomobject]@{ Name="bootstrap-recroom-host.ps1"; Url=(Raw-Url $hostRepo $hostRef "windows-live-agent/bootstrap-recroom-host.ps1" "bootstrap-recroom-host.ps1"); Destination=(Join-Path $PSScriptRoot "bootstrap-recroom-host.ps1"); Kind="powershell" },
-  [pscustomobject]@{ Name="download-recroom-client.ps1"; Url=(Raw-Url $hostRepo $hostRef "windows-live-agent/download-recroom-client.ps1" "download-recroom-client.ps1"); Destination=(Join-Path $PSScriptRoot "download-recroom-client.ps1"); Kind="powershell" },
-  [pscustomobject]@{ Name="start-recroom-browser-stream.ps1"; Url=(Raw-Url $hostRepo $hostRef "windows-live-agent/start-recroom-browser-stream.ps1" "start-recroom-browser-stream.ps1"); Destination=(Join-Path $PSScriptRoot "start-recroom-browser-stream.ps1"); Kind="powershell" },
-  [pscustomobject]@{ Name="stop-recroom-browser-stream.ps1"; Url=(Raw-Url $hostRepo $hostRef "windows-live-agent/stop-recroom-browser-stream.ps1" "stop-recroom-browser-stream.ps1"); Destination=(Join-Path $PSScriptRoot "stop-recroom-browser-stream.ps1"); Kind="powershell" },
-  [pscustomobject]@{ Name="recroom-web-stream.py"; Url=(Raw-Url $hostRepo $hostRef "windows-live-agent/recroom-web-stream.py" "recroom-web-stream.py"); Destination=(Join-Path $PSScriptRoot "recroom-web-stream.py"); Kind="raw" },
-  [pscustomobject]@{ Name="requirements.txt"; Url=(Raw-Url $hostRepo $hostRef "windows-live-agent/requirements.txt" "requirements.txt"); Destination=(Join-Path $PSScriptRoot "requirements.txt"); Kind="raw" },
-  [pscustomobject]@{ Name="host-proxy.mjs"; Url=(Raw-Url $toolsRepo $toolsRef "scripts/host-proxy.mjs" "host-proxy.mjs"); Destination=(Join-Path $toolDir "host-proxy.mjs"); Kind="node" },
-  [pscustomobject]@{ Name="redirect-client-urls.mjs"; Url=(Raw-Url $toolsRepo $toolsRef "scripts/redirect-client-urls.mjs" "redirect-client-urls.mjs"); Destination=(Join-Path $toolDir "redirect-client-urls.mjs"); Kind="node" },
-  [pscustomobject]@{ Name="verify-client.mjs"; Url=(Raw-Url $toolsRepo $toolsRef "scripts/verify-client.mjs" "verify-client.mjs"); Destination=(Join-Path $toolDir "verify-client.mjs"); Kind="node" },
-  [pscustomobject]@{ Name="scan-client-urls.mjs"; Url=(Raw-Url $toolsRepo $toolsRef "scripts/scan-client-urls.mjs" "scan-client-urls.mjs"); Destination=(Join-Path $toolDir "scan-client-urls.mjs"); Kind="node" },
-  [pscustomobject]@{ Name="patch-client-urls.mjs"; Url=(Raw-Url $toolsRepo $toolsRef "scripts/patch-client-urls.mjs" "patch-client-urls.mjs"); Destination=(Join-Path $toolDir "patch-client-urls.mjs"); Kind="node" }
+  [pscustomobject]@{ Name="start-recroom-host.ps1"; Url=(Raw-Url $hostRepo $hostSha "windows-live-agent/start-recroom-host.ps1"); Destination=(Join-Path $PSScriptRoot "start-recroom-host.ps1"); Kind="powershell" },
+  [pscustomobject]@{ Name="identify-recroom-client.ps1"; Url=(Raw-Url $hostRepo $hostSha "windows-live-agent/identify-recroom-client.ps1"); Destination=(Join-Path $PSScriptRoot "identify-recroom-client.ps1"); Kind="powershell" },
+  [pscustomobject]@{ Name="update-recroom-host.ps1"; Url=(Raw-Url $hostRepo $hostSha "windows-live-agent/update-recroom-host.ps1"); Destination=(Join-Path $PSScriptRoot "update-recroom-host.ps1"); Kind="powershell" },
+  [pscustomobject]@{ Name="recroom-agent.ps1"; Url=(Raw-Url $hostRepo $hostSha "windows-live-agent/recroom-agent.ps1"); Destination=(Join-Path $PSScriptRoot "recroom-agent.ps1"); Kind="powershell" },
+  [pscustomobject]@{ Name="recroom-capture-agent.ps1"; Url=(Raw-Url $hostRepo $hostSha "windows-live-agent/recroom-capture-agent.ps1"); Destination=(Join-Path $PSScriptRoot "recroom-capture-agent.ps1"); Kind="powershell" },
+  [pscustomobject]@{ Name="playtest-recroom-client.ps1"; Url=(Raw-Url $hostRepo $hostSha "windows-live-agent/playtest-recroom-client.ps1"); Destination=(Join-Path $PSScriptRoot "playtest-recroom-client.ps1"); Kind="powershell" },
+  [pscustomobject]@{ Name="bootstrap-recroom-host.ps1"; Url=(Raw-Url $hostRepo $hostSha "windows-live-agent/bootstrap-recroom-host.ps1"); Destination=(Join-Path $PSScriptRoot "bootstrap-recroom-host.ps1"); Kind="powershell" },
+  [pscustomobject]@{ Name="download-recroom-client.ps1"; Url=(Raw-Url $hostRepo $hostSha "windows-live-agent/download-recroom-client.ps1"); Destination=(Join-Path $PSScriptRoot "download-recroom-client.ps1"); Kind="powershell" },
+  [pscustomobject]@{ Name="start-recroom-browser-stream.ps1"; Url=(Raw-Url $hostRepo $hostSha "windows-live-agent/start-recroom-browser-stream.ps1"); Destination=(Join-Path $PSScriptRoot "start-recroom-browser-stream.ps1"); Kind="powershell" },
+  [pscustomobject]@{ Name="stop-recroom-browser-stream.ps1"; Url=(Raw-Url $hostRepo $hostSha "windows-live-agent/stop-recroom-browser-stream.ps1"); Destination=(Join-Path $PSScriptRoot "stop-recroom-browser-stream.ps1"); Kind="powershell" },
+  [pscustomobject]@{ Name="recroom-web-stream.py"; Url=(Raw-Url $hostRepo $hostSha "windows-live-agent/recroom-web-stream.py"); Destination=(Join-Path $PSScriptRoot "recroom-web-stream.py"); Kind="raw" },
+  [pscustomobject]@{ Name="requirements.txt"; Url=(Raw-Url $hostRepo $hostSha "windows-live-agent/requirements.txt"); Destination=(Join-Path $PSScriptRoot "requirements.txt"); Kind="raw" },
+  [pscustomobject]@{ Name="host-proxy.mjs"; Url=(Raw-Url $toolsRepo $toolsSha "scripts/host-proxy.mjs"); Destination=(Join-Path $toolDir "host-proxy.mjs"); Kind="node" },
+  [pscustomobject]@{ Name="redirect-client-urls.mjs"; Url=(Raw-Url $toolsRepo $toolsSha "scripts/redirect-client-urls.mjs"); Destination=(Join-Path $toolDir "redirect-client-urls.mjs"); Kind="node" },
+  [pscustomobject]@{ Name="verify-client.mjs"; Url=(Raw-Url $toolsRepo $toolsSha "scripts/verify-client.mjs"); Destination=(Join-Path $toolDir "verify-client.mjs"); Kind="node" },
+  [pscustomobject]@{ Name="scan-client-urls.mjs"; Url=(Raw-Url $toolsRepo $toolsSha "scripts/scan-client-urls.mjs"); Destination=(Join-Path $toolDir "scan-client-urls.mjs"); Kind="node" },
+  [pscustomobject]@{ Name="patch-client-urls.mjs"; Url=(Raw-Url $toolsRepo $toolsSha "scripts/patch-client-urls.mjs"); Destination=(Join-Path $toolDir "patch-client-urls.mjs"); Kind="node" }
 )
 
 function Get-Hash([string]$Path) {
@@ -88,7 +102,7 @@ try {
   foreach ($target in $targets) {
     $temp = Join-Path $tempRoot $target.Name
     Write-Host "Checking $($target.Name)..." -ForegroundColor DarkCyan
-    Invoke-WebRequest -UseBasicParsing -Headers @{ "Cache-Control" = "no-cache" } -Uri $target.Url -OutFile $temp -TimeoutSec 30
+    Invoke-WebRequest -UseBasicParsing -Uri $target.Url -OutFile $temp -TimeoutSec 30
     $downloadedHash = Get-Hash $temp
     if (-not $downloadedHash) { throw "Downloaded update is empty: $($target.Name)" }
     if ($target.Kind -eq "powershell") { Test-PowerShellSyntax $temp }
@@ -108,8 +122,10 @@ try {
     checkedAt = [DateTimeOffset]::UtcNow.ToString("o")
     hostRepository = $hostRepo
     hostRef = $hostRef
+    hostCommit = $hostSha
     toolsRepository = $toolsRepo
     toolsRef = $toolsRef
+    toolsCommit = $toolsSha
     changed = @($changed)
   }
   $state | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $PSScriptRoot "recroom-agent-state.json") -Encoding UTF8
@@ -117,7 +133,7 @@ try {
     Write-Host ("Updated Rec Room host tools: " + ($changed -join ", ")) -ForegroundColor Green
     exit 10
   }
-  Write-Host "Rec Room host tools are current." -ForegroundColor Green
+  Write-Host "Rec Room host tools are current at $hostSha / $toolsSha." -ForegroundColor Green
   exit 0
 } finally {
   Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
