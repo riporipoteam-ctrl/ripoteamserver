@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "hf-space/recroom_vm_*.py"
+      - "hf-space/recroom_autoload.py"
       - "hf-space/app_server_v2.py"
       - ".github/workflows/recroom-vm-capability.yml"
   workflow_dispatch:
@@ -26,12 +27,13 @@ jobs:
             hf-space/recroom_vm_pool.py \
             hf-space/recroom_vm_bridge.py \
             hf-space/recroom_public.py \
+            hf-space/recroom_autoload.py \
             hf-space/app_server_v2.py
       - name: Read live RipoTeamServer VM capability
         run: |
           set -euo pipefail
           URL="https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-vm/capabilities"
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if curl -fsS -H 'Cache-Control: no-cache' "$URL?ts=$(date +%s)" -o /tmp/vm.json; then
               cat /tmp/vm.json | python -m json.tool
               python - <<'PY'
@@ -49,5 +51,5 @@ jobs:
             fi
             sleep 5
           done
-          echo "Live VM capability endpoint never became reachable" >&2
+          echo "Live VM capability endpoint never became reachable after the Space deployment window" >&2
           exit 1
