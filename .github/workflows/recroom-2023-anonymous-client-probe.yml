@@ -28,7 +28,6 @@ jobs:
           Invoke-WebRequest -Headers @{ 'User-Agent' = 'RipoTeam-RecRoom-Probe' } `
             -Uri $asset.browser_download_url -OutFile depotdownloader.zip
           Expand-Archive depotdownloader.zip -DestinationPath depotdownloader -Force
-          Get-ChildItem depotdownloader
 
       - name: Ask Steam anonymously for three known files from the FluxRec-compatible manifest
         id: depot
@@ -45,11 +44,12 @@ jobs:
           $exe = Get-ChildItem depotdownloader -Recurse -File | Where-Object { $_.Name -in @('DepotDownloader.exe','DepotDownloader') } | Select-Object -First 1
           if (-not $exe) { throw 'DepotDownloader executable was not found after extraction.' }
 
+          # DepotDownloader uses Steam's anonymous account by default. Passing
+          # '-username anonymous' incorrectly treats it as a normal username.
           & $exe.FullName `
             -app 471710 `
             -depot 471711 `
             -manifest 7859140924515540835 `
-            -username anonymous `
             -filelist (Resolve-Path filelist.txt) `
             -dir (Join-Path $PWD 'client') 2>&1 | Tee-Object depot-output.txt
           $code = $LASTEXITCODE
