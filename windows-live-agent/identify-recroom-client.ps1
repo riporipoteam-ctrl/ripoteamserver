@@ -57,7 +57,24 @@ function Find-Layout([string]$Candidate) {
 }
 
 function Hash-File([string]$Path, [string]$Algorithm = "SHA256") {
-  return (Get-FileHash -LiteralPath $Path -Algorithm $Algorithm).Hash.ToUpperInvariant()
+  $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+  try {
+    if ($Algorithm -eq "SHA1") {
+      $hasher = [Security.Cryptography.SHA1]::Create()
+    } elseif ($Algorithm -eq "SHA256") {
+      $hasher = [Security.Cryptography.SHA256]::Create()
+    } else {
+      throw "Unsupported hash algorithm: $Algorithm"
+    }
+    try {
+      $bytes = $hasher.ComputeHash($stream)
+      return (($bytes | ForEach-Object { $_.ToString("X2") }) -join "")
+    } finally {
+      $hasher.Dispose()
+    }
+  } finally {
+    $stream.Dispose()
+  }
 }
 
 function Bytes-ToHex([byte[]]$Bytes) {
