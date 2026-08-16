@@ -1,0 +1,89 @@
+name: Rec Room 2023 Anonymous Client Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/recroom-2023-anonymous-client-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download official DepotDownloader release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'RipoTeam-RecRoom-Probe' } `
+            'https://api.github.com/repos/SteamRE/DepotDownloader/releases/latest'
+          $asset = $release.assets | Where-Object { $_.name -match 'windows-x64.*\.zip$' } | Select-Object -First 1
+          if (-not $asset) { throw 'Could not find the Windows x64 DepotDownloader release asset.' }
+          Invoke-WebRequest -Headers @{ 'User-Agent' = 'RipoTeam-RecRoom-Probe' } `
+            -Uri $asset.browser_download_url -OutFile depotdownloader.zip
+          Expand-Archive depotdownloader.zip -DestinationPath depotdownloader -Force
+          Get-ChildItem depotdownloader
+
+      - name: Ask Steam anonymously for three known files from the FluxRec-compatible manifest
+        id: depot
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          @(
+            'RecRoom.exe',
+            'GameAssembly.dll',
+            'RecRoom_Data/il2cpp_data/Metadata/global-metadata.dat'
+          ) | Set-Content filelist.txt -Encoding ASCII
+
+          $exe = Get-ChildItem depotdownloader -Recurse -File | Where-Object { $_.Name -in @('DepotDownloader.exe','DepotDownloader') } | Select-Object -First 1
+          if (-not $exe) { throw 'DepotDownloader executable was not found after extraction.' }
+
+          & $exe.FullName `
+            -app 471710 `
+            -depot 471711 `
+            -manifest 7859140924515540835 `
+            -username anonymous `
+            -filelist (Resolve-Path filelist.txt) `
+            -dir (Join-Path $PWD 'client') 2>&1 | Tee-Object depot-output.txt
+          $code = $LASTEXITCODE
+          "DEPOT_EXIT_CODE=$code" | Out-File -FilePath $env:GITHUB_ENV -Append
+          if ($code -ne 0) { exit $code }
+
+      - name: Report Steam decision without uploading proprietary files
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host '=== DepotDownloader result ==='
+          if (Test-Path depot-output.txt) {
+            Get-Content depot-output.txt | Select-Object -Last 120
+          }
+
+          $targets = @(
+            @{ Path = 'client/RecRoom.exe'; Expected = 'EA53A04EE3E35C8239266D737D44EF4323563C1B862D3F24C5A111D50A547BB1' },
+            @{ Path = 'client/GameAssembly.dll'; Expected = 'DA7649561A940FE1EC3DEF4EBE85AF11C7518AA3D0FE923CF04D168AA3F84ECF' },
+            @{ Path = 'client/RecRoom_Data/il2cpp_data/Metadata/global-metadata.dat'; Expected = '588953ABFD91DD45F798F26CABDA5DD62572933207886CAE44FCA9A7828AA617' }
+          )
+          $all = $true
+          foreach ($target in $targets) {
+            if (-not (Test-Path $target.Path)) {
+              Write-Host "MISSING: $($target.Path)"
+              $all = $false
+              continue
+            }
+            $file = Get-Item $target.Path
+            $hash = (Get-FileHash $target.Path -Algorithm SHA256).Hash
+            Write-Host "FOUND: $($target.Path) size=$($file.Length) sha256=$hash"
+            if ($hash -ne $target.Expected) {
+              Write-Host "HASH_MISMATCH expected=$($target.Expected)"
+              $all = $false
+            }
+          }
+          Write-Host "RECROOM_2023_ANONYMOUS_DEPOT_ACCESS=$($all.ToString().ToLowerInvariant())"
+          # Intentionally do not upload client files as Actions artifacts.
