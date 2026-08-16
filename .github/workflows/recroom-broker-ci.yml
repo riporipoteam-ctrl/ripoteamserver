@@ -13,6 +13,10 @@ on:
       - "hf-space/recroom_match_model.py"
       - "hf-space/recroom_match_compat.py"
       - "hf-space/recroom_photon_compat.py"
+      - "hf-space/recroom_service_aliases.py"
+      - "hf-space/recroom_service_extra_aliases.py"
+      - "hf-space/recroom_leaderboard_compat.py"
+      - "hf-space/recroom_route_order.py"
       - "hf-space/recroom_broker.py"
       - "hf-space/recroom_capture.py"
       - "hf-space/recroom_gateway.py"
@@ -30,6 +34,10 @@ on:
       - "hf-space/recroom_match_model.py"
       - "hf-space/recroom_match_compat.py"
       - "hf-space/recroom_photon_compat.py"
+      - "hf-space/recroom_service_aliases.py"
+      - "hf-space/recroom_service_extra_aliases.py"
+      - "hf-space/recroom_leaderboard_compat.py"
+      - "hf-space/recroom_route_order.py"
       - "hf-space/recroom_broker.py"
       - "hf-space/recroom_capture.py"
       - "hf-space/recroom_gateway.py"
@@ -61,6 +69,10 @@ jobs:
           hf-space/recroom_match_model.py
           hf-space/recroom_match_compat.py
           hf-space/recroom_photon_compat.py
+          hf-space/recroom_service_aliases.py
+          hf-space/recroom_service_extra_aliases.py
+          hf-space/recroom_leaderboard_compat.py
+          hf-space/recroom_route_order.py
           hf-space/recroom_broker.py
           hf-space/recroom_capture.py
           hf-space/recroom_gateway.py
@@ -93,6 +105,19 @@ jobs:
           grep -q 'PhotonAccessToken' hf-space/recroom_photon_compat.py
           grep -q 'RoomInstanceId' hf-space/recroom_photon_compat.py
           grep -q 'Permissions' hf-space/recroom_photon_compat.py
+          grep -q '/player/login' hf-space/recroom_service_aliases.py
+          grep -q '/account/me' hf-space/recroom_service_aliases.py
+          grep -q '/matchmake/dorm' hf-space/recroom_service_aliases.py
+          grep -q '/photon_access_token' hf-space/recroom_service_aliases.py
+          grep -q '/playersettings' hf-space/recroom_service_extra_aliases.py
+          grep -q '/roomInventory/player' hf-space/recroom_service_extra_aliases.py
+          grep -q '/api/catalog/v1/all' hf-space/recroom_service_extra_aliases.py
+          grep -q '/hub/v1' hf-space/recroom_service_extra_aliases.py
+          grep -q '/club/home/me' hf-space/recroom_service_extra_aliases.py
+          grep -q '/leaderboard/GetPlayerRank' hf-space/recroom_leaderboard_compat.py
+          grep -q '/leaderboard/GetNearbyScores' hf-space/recroom_leaderboard_compat.py
+          grep -q 'GlobalOverall' hf-space/recroom_leaderboard_compat.py
+          grep -q '/rooms/{room_id}' hf-space/recroom_route_order.py
       - name: Validate Windows agent PowerShell syntax
         shell: pwsh
         run: |
@@ -111,11 +136,7 @@ jobs:
           )) {
             $tokens = $null
             $errors = $null
-            [void][System.Management.Automation.Language.Parser]::ParseFile(
-              (Resolve-Path $script),
-              [ref]$tokens,
-              [ref]$errors
-            )
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script), [ref]$tokens, [ref]$errors)
             if ($errors.Count -gt 0) {
               $errors | ForEach-Object { Write-Error "$script :: $($_.Message)" }
               exit 1
