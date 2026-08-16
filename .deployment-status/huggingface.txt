@@ -2,9 +2,9 @@ Hugging Face deployment: success
 Hugging Face runtime wait: cancelled
 Hugging Face Space health: skipped
 TikTok OAuth verification: skipped
-Source commit: 66a5747483e7798d8f4c2d51c37c13548b6a94e1
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31935004883
-Recorded at: 2026-08-16T07:53:09Z
+Source commit: 6fef409ec30b871277f7e383b40d3bdcd6b80f8b
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/31935019385
+Recorded at: 2026-08-16T07:53:51Z
 
 ===== space-info.txt =====
 {
@@ -15,7 +15,7 @@ Recorded at: 2026-08-16T07:53:09Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-16T07:52:50+00:00",
+  "last_modified": "2026-08-16T07:53:26+00:00",
   "likes": 0,
   "models": [
     "Salesforce/ctrl"
@@ -51,7 +51,7 @@ Recorded at: 2026-08-16T07:53:09Z
     }
   },
   "sdk": "gradio",
-  "sha": "a1f99c1b3c528adc8da8fc1aa8a82ceacfd1ae4a",
+  "sha": "6388eb9f22e2c2fd074eaf17ec1692d533516edd",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
