@@ -7,6 +7,8 @@ on:
       - "hf-space/recroom_autoload.py"
       - "hf-space/recroom_compat.py"
       - "hf-space/recroom_compat_extra.py"
+      - "hf-space/recroom_room_compat.py"
+      - "hf-space/recroom_match_model.py"
       - "hf-space/recroom_match_compat.py"
       - "hf-space/recroom_gateway.py"
       - "hf-space/recroom_broker.py"
@@ -93,19 +95,22 @@ jobs:
           print('Local OIDC/JWKS token-validation surface is live.')
           PY
 
-      - name: Verify expanded post-login and matchmaking route layers are mounted
+      - name: Verify expanded post-login, Orientation and matchmaking routes are mounted
         run: |
           set -euo pipefail
           base='https://echoxr-ripoteam-cloud-pc.hf.space'
           # Protected routes should be 401 without a native Flux session. A 404
-          # means the compatibility layer did not mount after deployment.
+          # means the corresponding compatibility layer did not mount.
           for path in \
             '/api/gameconfigs/v1/all' \
             '/api/relationships/v2/get' \
             '/outfits/me/saved' \
-            '/econ/roomInventory/player'; do
+            '/econ/roomInventory/player' \
+            '/Room_server/dormroom/me' \
+            '/Room_server/rooms/13'; do
             code="$(curl --silent --show-error --output /tmp/extra-route.json --write-out '%{http_code}' "$base$path")"
             echo "$path -> HTTP $code"
+            cat /tmp/extra-route.json || true
             test "$code" = "401"
           done
           for path in \
@@ -114,9 +119,10 @@ jobs:
             code="$(curl --silent --show-error --output /tmp/match-route.json --write-out '%{http_code}' \
               --request POST --header 'content-type: application/json' --data '{}' "$base$path")"
             echo "$path -> HTTP $code"
+            cat /tmp/match-route.json || true
             test "$code" = "401"
           done
-          echo 'Expanded RecNet and recovered roomInstance matchmaking layers are mounted.'
+          echo 'Orientation, Dorm and recovered roomInstance matchmaking layers are mounted.'
 
       - name: Verify live browser session broker
         run: |
@@ -132,7 +138,9 @@ jobs:
           assert data.get('targetBuild') == 'recroom-2022-05-19', data
           assert data.get('configured') is True, data
           hosts=int(data.get('onlineHosts') or 0)
+          sessions=int(data.get('sessions') or 0)
           print(f'RECROOM_ONLINE_HOSTS={hosts}')
+          print(f'RECROOM_LIVE_SESSIONS={sessions}')
           print('Broker is live and configured.')
           PY
 
@@ -142,11 +150,13 @@ jobs:
           create_status="$(curl --silent --show-error --output /tmp/pair-create.json --write-out '%{http_code}' \
             --request POST --header 'content-type: application/json' --data '{}' \
             'https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/host-pairing')"
+          cat /tmp/pair-create.json
           test "$create_status" = "401"
           claim_status="$(curl --silent --show-error --output /tmp/pair-claim.json --write-out '%{http_code}' \
             --request POST --header 'content-type: application/json' \
             --data '{"pairingCode":"definitely-not-a-real-pairing-code"}' \
             'https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/host-pairing/claim')"
+          cat /tmp/pair-claim.json
           test "$claim_status" = "401"
           echo "Host pairing endpoints are live and reject unauthenticated/invalid claims."
 
@@ -160,6 +170,7 @@ jobs:
               --header 'Access-Control-Request-Method: POST' \
               --header 'Access-Control-Request-Headers: authorization,content-type' \
               "https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/$endpoint"
+            cat "/tmp/recroom-cors-$endpoint.txt"
             ENDPOINT="$endpoint" python - <<'PY'
           import os
           headers={}
