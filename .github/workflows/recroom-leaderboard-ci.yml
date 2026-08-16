@@ -1,0 +1,75 @@
+name: Rec Room Leaderboard CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hf-space/recroom_leaderboard_compat.py"
+      - "hf-space/recroom_autoload.py"
+      - ".github/workflows/recroom-leaderboard-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  leaderboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check fastapi 'httpx<0.28'
+      - name: Exercise leaderboard object wrappers
+        run: |
+          set -euo pipefail
+          PYTHONPATH=hf-space python - <<'PY'
+          import hashlib,tempfile,time
+          from pathlib import Path
+          from fastapi import FastAPI
+          from fastapi.testclient import TestClient
+          from recroom_gateway import NativeSession,RecRoomGateway
+          from recroom_leaderboard_compat import install_recroom_leaderboard_compat_routes
+
+          g=RecRoomGateway(Path(tempfile.mkdtemp(prefix='rr-lb-')))
+          g._write_recroom_state=lambda _s: None
+          token='lb-token'
+          s=NativeSession(token=token,uid='lb',email='lb@example.com',username='lb_player',display_name='LB',account_id=987,is_admin=False,firebase_token='ci',expires_at=time.time()+3600,state={})
+          g.sessions[hashlib.sha256(token.encode()).hexdigest()]=s
+          app=FastAPI(); install_recroom_leaderboard_compat_routes(app,g)
+          c=TestClient(app); h={'authorization':f'Bearer {token}'}
+
+          for prefix in ('/leaderboard','/api/leaderboard'):
+              rank=c.post(prefix+'/GetPlayerRank',headers=h,json={'PlayerId':987,'StatChannel':7,'RoomId':13})
+              assert rank.status_code==200,rank.text
+              assert rank.json()=={'playerId':987,'score':0,'rank':0},rank.text
+
+              near=c.post(prefix+'/GetNearbyScores',headers=h,json={'PlayerId':987,'StatChannel':7,'RoomId':13,'WindowSize':5})
+              assert near.status_code==200 and near.json()=={'rows':[]},near.text
+              ranks=c.post(prefix+'/GetRanks',headers=h,json={'PlayerId':987,'StatChannel':7,'RoomId':13,'RankStart':1,'RankEnd':10})
+              assert ranks.status_code==200 and ranks.json()=={'rows':[]},ranks.text
+
+              top=c.get(prefix+'/Top?channel=7&roomId=13',headers=h)
+              assert top.status_code==200,top.text
+              tp=top.json()
+              assert set(tp)=={'GlobalOverall','GlobalPeriodic','FriendsOverall','FriendsPeriodic','NextResetUTC'},tp
+              assert tp['GlobalOverall']==[] and tp['FriendsOverall']==[],tp
+
+              setr=c.post(prefix+'/SetStat',headers=h,json={'StatChannel':7,'RoomId':13,'StatValue':42})
+              assert setr.status_code==200 and setr.json()=={'success':True,'error':''},setr.text
+              rank2=c.post(prefix+'/GetPlayerRank',headers=h,json={'PlayerId':987,'StatChannel':7,'RoomId':13})
+              assert rank2.json()=={'playerId':987,'score':42,'rank':1},rank2.text
+              near2=c.post(prefix+'/GetNearbyScores',headers=h,json={'PlayerId':987,'StatChannel':7,'RoomId':13,'WindowSize':5})
+              assert near2.json()=={'rows':[{'playerId':987,'score':42,'rank':1}]},near2.text
+
+              mismatch=c.post(prefix+'/CheckAndSetStat',headers=h,json={'StatChannel':7,'RoomId':13,'StatValue':50,'CurrentStatValue':999})
+              assert mismatch.status_code==200 and mismatch.json()['success'] is False,mismatch.text
+              ok=c.post(prefix+'/CheckAndSetStat',headers=h,json={'StatChannel':7,'RoomId':13,'StatValue':50,'CurrentStatValue':42})
+              assert ok.status_code==200 and ok.json()['success'] is True,ok.text
+
+          print('RECROOM_LEADERBOARD_EMPTY_OBJECT_SHAPES_OK=true')
+          print('RECROOM_LEADERBOARD_WRITE_READ_OK=true')
+          PY
