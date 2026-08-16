@@ -17,13 +17,10 @@ PAIRING_TTL_SECONDS = 10 * 60
 def install_recroom_public_routes(app: Any, broker: Any, capture: Any) -> None:
     """Install browser-facing Rec Room routes for static Flux deployments.
 
-    These routes deliberately do not accept the private Flux broker key. Creating
-    a game session requires a Firebase ID token that the broker verifies through
-    the Rec Room gateway. Once allocated, session/capture operations require the
-    opaque, high-entropy per-session access token returned only to that player.
-
-    Host registration, job polling, stream-ready callbacks and screenshot upload
-    remain on the private host-key routes in recroom_broker.py/recroom_capture.py.
+    Creating a game session requires a Firebase ID token that the broker verifies
+    through the Rec Room gateway. Public sessions use the RipoTeamServer VM pool
+    when RECROOM_VM_ONLY is enabled; legacy host pairing remains available for
+    admin diagnostics but is not required by the Flux player.
     """
 
     pairing_lock = threading.RLock()
@@ -45,6 +42,9 @@ def install_recroom_public_routes(app: Any, broker: Any, capture: Any) -> None:
                 "configured": bool(status.get("configured")),
                 "onlineHosts": int(status.get("onlineHosts") or 0),
                 "sessions": int(status.get("sessions") or 0),
+                "mode": status.get("mode", "remote"),
+                "vmReadyForGame": bool(status.get("vmReadyForGame")),
+                "vmRuntime": status.get("vmRuntime"),
             },
             headers={"Cache-Control": "no-store"},
         )
@@ -127,7 +127,6 @@ def install_recroom_public_routes(app: Any, broker: Any, capture: Any) -> None:
         )
 
     def release_for_player(session_id: str, access_token: str) -> JSONResponse:
-        # Validate ownership before releasing the allocation.
         broker.session_for_access(session_id, access_token)
         broker.release(session_id)
         return JSONResponse(
@@ -142,9 +141,6 @@ def install_recroom_public_routes(app: Any, broker: Any, capture: Any) -> None:
     ) -> JSONResponse:
         return release_for_player(session_id, access_token)
 
-    # GitHub Pages calls the Space cross-origin. The live Space intentionally
-    # allows browser GET/POST/OPTIONS only, so expose an equivalent POST release
-    # route rather than widening CORS to destructive methods globally.
     @app.post("/api/recroom-public/sessions/{session_id}/release")
     async def post_public_recroom_session_release(
         session_id: str,
