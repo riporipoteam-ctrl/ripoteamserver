@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import threading
 import time
 import types
 import uuid
@@ -16,16 +17,19 @@ from recroom_vm_pool import RecRoomVmPool, install_recroom_vm_routes
 def attach_recroom_vm_pool(app: Any, broker: Any, data_dir: Any) -> RecRoomVmPool:
     """Make RipoTeamServer itself provision one disposable Windows VM/player.
 
-    This replaces the old requirement that a separately paired Windows PC must
-    already be online. Existing manual-host routes remain available for admin
-    diagnostics, but public allocations prefer/require the server-owned VM pool
-    by default.
+    Public Flux allocations create an ephemeral KVM guest instead of requiring a
+    player's Windows PC. A single immutable Windows+Rec Room golden image is
+    shared; every player gets only a disposable qcow2 overlay. The browser stream
+    itself acts as a liveness heartbeat, so an abandoned tab cannot leave a VM
+    consuming RAM/GPU indefinitely.
     """
 
     public_base = os.environ.get("RECROOM_PUBLIC_BASE_URL", "https://echoxr-ripoteam-cloud-pc.hf.space").rstrip("/")
     pool = RecRoomVmPool(data_dir / "recroom-vms", public_base, broker.host_key)
     broker.vm_pool = pool
     vm_only = os.environ.get("RECROOM_VM_ONLY", "1").strip() not in {"0", "false", "False"}
+    browser_idle_seconds = max(30, int(os.environ.get("RECROOM_VM_BROWSER_IDLE_SECONDS", "75")))
+    browser_seen: dict[str, float] = {}
 
     original_allocate = broker.allocate
     original_release_locked = broker._release_locked
@@ -33,6 +37,15 @@ def attach_recroom_vm_pool(app: Any, broker: Any, data_dir: Any) -> RecRoomVmPoo
     original_heartbeat = broker.heartbeat
     original_mark_ready = broker.mark_ready
     original_public_session = broker.public_session
+    original_proxy_target = pool.proxy_target
+
+    # Every frame/audio/input request refreshes this timestamp. It is deliberately
+    # server-side rather than trusting a JavaScript unload event alone.
+    def tracked_proxy_target(host_id: str, path: str, query: str = "") -> str:
+        browser_seen[host_id] = time.time()
+        return original_proxy_target(host_id, path, query)
+
+    pool.proxy_target = tracked_proxy_target  # type: ignore[method-assign]
 
     def allocate(self: Any, identity_payload: dict[str, Any], build_id: str):
         if not vm_only:
@@ -115,6 +128,7 @@ def attach_recroom_vm_pool(app: Any, broker: Any, data_dir: Any) -> RecRoomVmPoo
         with self.lock:
             self.hosts[host_id] = host
             self.sessions[session_id] = session
+        browser_seen[host_id] = now
 
         def on_progress(phase: str, progress: int) -> None:
             with self.lock:
@@ -136,6 +150,7 @@ def attach_recroom_vm_pool(app: Any, broker: Any, data_dir: Any) -> RecRoomVmPoo
             with self.lock:
                 self.sessions.pop(session_id, None)
                 self.hosts.pop(host_id, None)
+            browser_seen.pop(host_id, None)
             raise HTTPException(status_code=503, detail=start_error or "RipoTeamServer could not start the Windows VM.")
 
         self._audit(
@@ -155,6 +170,7 @@ def attach_recroom_vm_pool(app: Any, broker: Any, data_dir: Any) -> RecRoomVmPoo
         original_release_locked(session_id, reason)
         if server_vm and host_id:
             self.hosts.pop(host_id, None)
+            browser_seen.pop(host_id, None)
             pool.destroy(host_id)
             self._audit("session.vm.destroy", session_id=session_id, host_id=host_id, reason=reason)
 
@@ -176,6 +192,8 @@ def attach_recroom_vm_pool(app: Any, broker: Any, data_dir: Any) -> RecRoomVmPoo
             rewritten["streamUrl"] = pool.rewrite_stream_url(host_id, stream_url)
         session = original_mark_ready(host_id, session_id, rewritten)
         session.host_details.update({"provider": "ripoteam-kvm", "phase": "ready", "progress": 100})
+        # Start the browser-disconnect grace window only after the guest is ready.
+        browser_seen[host_id] = time.time()
         return session
 
     def public_session(self: Any, session: Any, access_token: str | None = None) -> dict[str, Any]:
@@ -202,6 +220,30 @@ def attach_recroom_vm_pool(app: Any, broker: Any, data_dir: Any) -> RecRoomVmPoo
     broker.mark_ready = types.MethodType(mark_ready, broker)
     broker.public_session = types.MethodType(public_session, broker)
     broker.status = types.MethodType(status, broker)
+
+    def reap_disconnected_browsers() -> None:
+        while True:
+            time.sleep(15)
+            now = time.time()
+            stale: list[str] = []
+            with broker.lock:
+                for session_id, session in list(broker.sessions.items()):
+                    host = broker.hosts.get(session.host_id)
+                    if not host or not host.metadata.get("vmPool") or session.state != "ready":
+                        continue
+                    last_seen = browser_seen.get(session.host_id, session.created_at)
+                    if now - last_seen > browser_idle_seconds:
+                        stale.append(session_id)
+                for session_id in stale:
+                    broker._release_locked(session_id, "browser-disconnected")
+            for session_id in stale:
+                broker._audit("session.vm.browser-timeout", session_id=session_id, idle_seconds=browser_idle_seconds)
+
+    threading.Thread(
+        target=reap_disconnected_browsers,
+        name="recroom-vm-browser-reaper",
+        daemon=True,
+    ).start()
 
     install_recroom_vm_routes(app, pool)
     return pool
