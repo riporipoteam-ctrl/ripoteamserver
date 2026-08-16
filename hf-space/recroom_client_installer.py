@@ -63,11 +63,15 @@ def _validate_source_url(value: str) -> str:
 def _safe_extract_zip(archive: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     root = destination.resolve()
+    total_uncompressed = 0
     with zipfile.ZipFile(archive) as zf:
         for info in zf.infolist():
             name = info.filename.replace("\\", "/")
             if not name or name.endswith("/"):
                 continue
+            total_uncompressed += max(0, int(info.file_size))
+            if total_uncompressed > MAX_ARCHIVE_BYTES:
+                raise RuntimeError("Expanded client archive exceeds the configured server limit.")
             target = (destination / name).resolve()
             try:
                 target.relative_to(root)
@@ -195,6 +199,9 @@ class RecRoomClientInstaller:
         archive = job_dir / "client.zip"
         extracted = job_dir / "extracted"
         install_tmp = self.pool.client_dir.with_name(self.pool.client_dir.name + ".installing")
+        old = self.pool.client_dir.with_name(self.pool.client_dir.name + ".previous")
+        old_moved = False
+        swapped = False
         try:
             shutil.rmtree(job_dir, ignore_errors=True)
             job_dir.mkdir(parents=True, exist_ok=True)
@@ -207,25 +214,46 @@ class RecRoomClientInstaller:
             root = _find_client_root(extracted)
             shutil.rmtree(install_tmp, ignore_errors=True)
             self._set(job_id, state="installing", progress=88)
-            shutil.copytree(root, install_tmp, symlinks=False)
+            try:
+                root.replace(install_tmp)
+            except OSError:
+                shutil.move(str(root), str(install_tmp))
             check_manifest = install_tmp / ".DepotDownloader" / f"{TARGET_DEPOT}_{TARGET_MANIFEST}.manifest"
             if not check_manifest.is_file():
                 raise RuntimeError("Exact May 19 2022 DepotDownloader manifest disappeared during install.")
-            old = self.pool.client_dir.with_name(self.pool.client_dir.name + ".previous")
+
             shutil.rmtree(old, ignore_errors=True)
             if self.pool.client_dir.exists():
                 self.pool.client_dir.replace(old)
+                old_moved = True
             install_tmp.replace(self.pool.client_dir)
-            shutil.rmtree(old, ignore_errors=True)
+            swapped = True
+
             capability = self.pool.capability()
             if not capability.get("readyForGame"):
                 raise RuntimeError(str(capability.get("reason") or "Installed client did not make Wine runtime game-ready."))
+
+            shutil.rmtree(old, ignore_errors=True)
+            old_moved = False
             self._set(job_id, state="ready", progress=100, installed=True, capability=capability)
         except Exception as exc:
-            self._set(job_id, ok=False, state="failed", error=str(exc)[:1000])
+            if swapped:
+                shutil.rmtree(self.pool.client_dir, ignore_errors=True)
             shutil.rmtree(install_tmp, ignore_errors=True)
+            if old_moved and old.exists():
+                try:
+                    old.replace(self.pool.client_dir)
+                    old_moved = False
+                except OSError:
+                    pass
+            self._set(job_id, ok=False, state="failed", error=str(exc)[:1000])
         finally:
             shutil.rmtree(job_dir, ignore_errors=True)
+            if old_moved and old.exists() and not self.pool.client_dir.exists():
+                try:
+                    old.replace(self.pool.client_dir)
+                except OSError:
+                    pass
             with self.lock:
                 if self.active_job_id == job_id:
                     self.active_job_id = None
