@@ -12,82 +12,85 @@ $Ref = "main"
 $ToolsRepo = "riporipoteam-ctrl/recroomfluxgame"
 $ToolsRef = "main"
 
-function Resolve-GitHubCommit([string]$Repository, [string]$Reference) {
-  $encodedRef = [Uri]::EscapeDataString($Reference)
-  $uri = "https://api.github.com/repos/$Repository/commits/$encodedRef"
-  $result = Invoke-RestMethod -UseBasicParsing -Headers @{
-    "User-Agent" = "RipoTeam-RecRoom-Host"
-    "Accept" = "application/vnd.github+json"
-    "Cache-Control" = "no-cache"
-  } -Uri $uri -TimeoutSec 30
-  $sha = [string]$result.sha
-  if ($sha -notmatch '^[0-9a-fA-F]{40}$') { throw "Could not resolve $Repository@$Reference to an immutable Git commit." }
-  return $sha.ToLowerInvariant()
+function Get-FileSha256([string]$Path) {
+  $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+  try {
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { $bytes = $sha.ComputeHash($stream) } finally { $sha.Dispose() }
+  } finally { $stream.Dispose() }
+  return (($bytes | ForEach-Object { $_.ToString("x2") }) -join "")
 }
 
-$hostSha = Resolve-GitHubCommit $Repo $Ref
-$toolsSha = Resolve-GitHubCommit $ToolsRepo $ToolsRef
-Write-Host "Host tools revision: $hostSha" -ForegroundColor DarkGray
-Write-Host "Rec Room proxy tools revision: $toolsSha" -ForegroundColor DarkGray
+function Download-RepoSnapshot([string]$Repository, [string]$Reference, [string]$DestinationRoot) {
+  $parts = $Repository.Split('/')
+  if ($parts.Count -ne 2) { throw "Invalid GitHub repository: $Repository" }
+  $owner = $parts[0]; $name = $parts[1]
+  $zip = Join-Path $DestinationRoot ($name + ".zip")
+  $extract = Join-Path $DestinationRoot ($name + "-extract")
+  $nonce = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+  $uri = "https://github.com/$owner/$name/archive/refs/heads/$Reference.zip?download=$nonce"
+  Write-Host "Downloading coherent snapshot $Repository@$Reference..." -ForegroundColor DarkCyan
+  Invoke-WebRequest -UseBasicParsing -Headers @{ "Cache-Control" = "no-cache" } -Uri $uri -OutFile $zip -TimeoutSec 120
+  if (-not (Test-Path $zip) -or (Get-Item $zip).Length -lt 256) { throw "GitHub snapshot download failed for $Repository@$Reference" }
+  Expand-Archive -Path $zip -DestinationPath $extract -Force
+  $root = Get-ChildItem -LiteralPath $extract -Directory | Select-Object -First 1
+  if (-not $root) { throw "GitHub snapshot for $Repository@$Reference had no repository root." }
+  return [pscustomobject]@{ Root=$root.FullName; Zip=$zip; Sha256=(Get-FileSha256 $zip) }
+}
 
-New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+$tempRoot = Join-Path $env:TEMP ("FluxRecRoomInstall-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
+try {
+  $hostSnapshot = Download-RepoSnapshot $Repo $Ref (Join-Path $tempRoot "host")
+  $toolsSnapshot = Download-RepoSnapshot $ToolsRepo $ToolsRef (Join-Path $tempRoot "tools")
 
-$files = @(
-  "start-recroom-host.ps1",
-  "bootstrap-recroom-host.ps1",
-  "download-recroom-client.ps1",
-  "identify-recroom-client.ps1",
-  "update-recroom-host.ps1",
-  "recroom-agent.ps1",
-  "recroom-capture-agent.ps1",
-  "playtest-recroom-client.ps1",
-  "start-recroom-browser-stream.ps1",
-  "stop-recroom-browser-stream.ps1",
-  "recroom-web-stream.py",
-  "requirements.txt",
-  "recroom-agent-config.example.json"
-)
-
-foreach ($name in $files) {
-  $url = "https://raw.githubusercontent.com/$Repo/$hostSha/windows-live-agent/$name"
-  $destination = Join-Path $InstallDir $name
-  Write-Host "Fetching $name..." -ForegroundColor DarkCyan
-  Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $destination -TimeoutSec 60
-  if (-not (Test-Path $destination) -or (Get-Item $destination).Length -le 0) {
-    throw "Host tool download failed: $name"
+  New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+  $files = @(
+    "start-recroom-host.ps1",
+    "bootstrap-recroom-host.ps1",
+    "download-recroom-client.ps1",
+    "identify-recroom-client.ps1",
+    "update-recroom-host.ps1",
+    "recroom-agent.ps1",
+    "recroom-capture-agent.ps1",
+    "playtest-recroom-client.ps1",
+    "start-recroom-browser-stream.ps1",
+    "stop-recroom-browser-stream.ps1",
+    "recroom-web-stream.py",
+    "requirements.txt",
+    "recroom-agent-config.example.json"
+  )
+  foreach ($name in $files) {
+    $source = Join-Path $hostSnapshot.Root ("windows-live-agent\" + $name)
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Host snapshot omitted $name" }
+    Copy-Item -LiteralPath $source -Destination (Join-Path $InstallDir $name) -Force
   }
-}
 
-$toolsDir = Join-Path $InstallDir "recroom-tools"
-New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
-foreach ($name in @("host-proxy.mjs", "redirect-client-urls.mjs", "verify-client.mjs", "scan-client-urls.mjs")) {
-  $url = "https://raw.githubusercontent.com/$ToolsRepo/$toolsSha/scripts/$name"
-  $destination = Join-Path $toolsDir $name
-  Write-Host "Fetching tool $name..." -ForegroundColor DarkCyan
-  Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $destination -TimeoutSec 60
-  if (-not (Test-Path $destination) -or (Get-Item $destination).Length -le 0) {
-    throw "Rec Room client tool download failed: $name"
+  $toolsDir = Join-Path $InstallDir "recroom-tools"
+  New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
+  foreach ($name in @("host-proxy.mjs", "redirect-client-urls.mjs", "verify-client.mjs", "scan-client-urls.mjs", "patch-client-urls.mjs")) {
+    $source = Join-Path $toolsSnapshot.Root ("scripts\" + $name)
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Rec Room proxy snapshot omitted $name" }
+    Copy-Item -LiteralPath $source -Destination (Join-Path $toolsDir $name) -Force
   }
-}
 
-$installState = [ordered]@{
-  installedAt = [DateTimeOffset]::UtcNow.ToString("o")
-  hostRepository = $Repo
-  hostRef = $Ref
-  hostCommit = $hostSha
-  toolsRepository = $ToolsRepo
-  toolsRef = $ToolsRef
-  toolsCommit = $toolsSha
+  $installState = [ordered]@{
+    installedAt = [DateTimeOffset]::UtcNow.ToString("o")
+    hostRepository = $Repo
+    hostRef = $Ref
+    hostSnapshotSha256 = $hostSnapshot.Sha256
+    toolsRepository = $ToolsRepo
+    toolsRef = $ToolsRef
+    toolsSnapshotSha256 = $toolsSnapshot.Sha256
+  }
+  $installState | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $InstallDir "recroom-install-state.json") -Encoding UTF8
+} finally {
+  Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
-$installState | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $InstallDir "recroom-install-state.json") -Encoding UTF8
 
 $bootstrap = Join-Path $InstallDir "bootstrap-recroom-host.ps1"
 $config = Join-Path $InstallDir "recroom-agent-config.json"
-$arguments = @(
-  "-NoProfile", "-ExecutionPolicy", "Bypass",
-  "-File", $bootstrap,
-  "-Config", $config
-)
+$arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $bootstrap, "-Config", $config)
 if ($TrySteamDownload) { $arguments += "-TrySteamDownload" }
 if ($SteamUsername) { $arguments += @("-SteamUsername", $SteamUsername) }
 if ($PairingCode) { $arguments += @("-PairingCode", $PairingCode) }
