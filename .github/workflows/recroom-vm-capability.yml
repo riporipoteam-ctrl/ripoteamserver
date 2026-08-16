@@ -1,12 +1,14 @@
-name: Verify Rec Room VM Runtime
+name: Verify Rec Room Server Runtime
 
 on:
   push:
     branches: [main]
     paths:
       - "hf-space/recroom_vm_*.py"
+      - "hf-space/recroom_wine_*.py"
       - "hf-space/recroom_autoload.py"
       - "hf-space/app_server_v2.py"
+      - "hf-space/packages.txt"
       - ".github/workflows/recroom-vm-capability.yml"
   workflow_dispatch:
 
@@ -14,42 +16,56 @@ permissions:
   contents: read
 
 jobs:
-  verify-vm-control-plane:
+  verify-server-runtime:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Compile VM control-plane modules
+      - name: Compile server game runtime modules
         run: |
           python -m py_compile \
             hf-space/recroom_vm_pool.py \
+            hf-space/recroom_wine_pool.py \
+            hf-space/recroom_wine_stream.py \
             hf-space/recroom_vm_bridge.py \
             hf-space/recroom_public.py \
             hf-space/recroom_autoload.py \
             hf-space/app_server_v2.py
-      - name: Read live RipoTeamServer VM capability
+      - name: Read live RipoTeamServer Wine capability
         run: |
           set -euo pipefail
-          URL="https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-vm/capabilities"
-          for i in $(seq 1 60); do
-            if curl -fsS -H 'Cache-Control: no-cache' "$URL?ts=$(date +%s)" -o /tmp/vm.json; then
-              cat /tmp/vm.json | python -m json.tool
+          URL="https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-wine/capabilities"
+          for i in $(seq 1 90); do
+            if curl -fsS -H 'Cache-Control: no-cache' "$URL?ts=$(date +%s)" -o /tmp/wine.json; then
+              cat /tmp/wine.json | python -m json.tool
               python - <<'PY'
           import json
-          p=json.load(open('/tmp/vm.json'))
+          p=json.load(open('/tmp/wine.json'))
           assert p.get('ok') is True, p
-          assert p.get('provider') == 'kvm', p
+          assert p.get('provider') == 'wine', p
+          checks=p.get('checks') or {}
+          # The managed Linux host itself must expose the KVM-free runtime tools.
+          # The proprietary Rec Room client is intentionally NOT stored in Git.
+          for key in ('wine','wineboot','xvfb','xdotool','ffmpeg','pulse','python','streamWorker'):
+              assert checks.get(key) is True, (key,p)
           print('supported=', p.get('supported'))
           print('readyForGame=', p.get('readyForGame'))
           print('reason=', p.get('reason'))
-          print('warning=', p.get('warning'))
-          print('checks=', p.get('checks'))
+          print('checks=', checks)
+          print('clientDir=', p.get('clientDir'))
           PY
               exit 0
             fi
             sleep 5
           done
-          echo "Live VM capability endpoint never became reachable after the Space deployment window" >&2
+          echo "Live Wine capability endpoint never became reachable after the Space deployment window" >&2
           exit 1
+      - name: Keep KVM capability diagnostic available
+        run: |
+          set -euo pipefail
+          curl -fsS -H 'Cache-Control: no-cache' \
+            "https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-vm/capabilities?ts=$(date +%s)" \
+            -o /tmp/kvm.json
+          python -m json.tool /tmp/kvm.json
