@@ -1,0 +1,120 @@
+name: Rec Room First Login CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hf-space/recroom_gateway.py"
+      - "hf-space/recroom_match_model.py"
+      - "hf-space/recroom_match_compat.py"
+      - ".github/workflows/recroom-first-login-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  first-login:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install protocol test dependencies
+        run: python -m pip install --disable-pip-version-check fastapi 'httpx<0.28' python-multipart
+      - name: Reproduce account creation login logout Orientation flow
+        env:
+          RECROOM_PHOTON_REGION: eu
+        run: |
+          set -euo pipefail
+          PYTHONPATH=hf-space python - <<'PY'
+          import hashlib
+          import tempfile
+          import time
+          from pathlib import Path
+
+          from fastapi import FastAPI
+          from fastapi.testclient import TestClient
+
+          from recroom_gateway import NativeSession, RecRoomGateway, install_recroom_gateway_routes
+          from recroom_match_compat import install_recroom_match_compat_routes
+          from recroom_match_model import (
+              ORIENTATION_INSTANCE_ID,
+              ORIENTATION_ROOM_ID,
+              ORIENTATION_SCENE_LOCATION_ID,
+          )
+
+          root=Path(tempfile.mkdtemp(prefix='rr-first-login-'))
+          gateway=RecRoomGateway(root)
+          gateway._write_recroom_state=lambda _session: None
+          token='first-login-native-token'
+          session=NativeSession(
+              token=token,
+              uid='new-user',
+              email='new@example.com',
+              username='new_player',
+              display_name='New Player',
+              account_id=12345,
+              is_admin=False,
+              firebase_token='ci-firebase-token',
+              expires_at=time.time()+3600,
+              state={},
+          )
+          gateway.sessions[hashlib.sha256(token.encode()).hexdigest()]=session
+
+          app=FastAPI()
+          install_recroom_gateway_routes(app,gateway)
+          install_recroom_match_compat_routes(app,gateway)
+          client=TestClient(app)
+          headers={'authorization':f'Bearer {token}'}
+          lock='11111111-2222-3333-4444-555555555555'
+
+          # Recovered behavior: login is an EMPTY 200 acknowledgment. In our
+          # unified gateway it also seeds the equivalent Orientation -2 presence.
+          login=client.post('/Matchmaking/player/login',headers=headers,data={'LoginLock':lock})
+          assert login.status_code==200, login.text
+          assert login.content==b'', repr(login.content)
+          assert session.state.get('loginLock')==lock, session.state
+          seeded=session.state.get('currentRoomInstance')
+          assert seeded and seeded['roomInstanceId']==ORIENTATION_INSTANCE_ID, session.state
+          assert seeded['roomId']==ORIENTATION_ROOM_ID, seeded
+          assert seeded['location']==ORIENTATION_SCENE_LOCATION_ID, seeded
+          assert 'lastRoomId' not in session.state, session.state
+
+          # Exclusive login is not the normal player DTO either; it is a tiny
+          # errorCode acknowledgment and must not alter Orientation.
+          exclusive=client.post('/Matchmaking/player/exclusivelogin',headers=headers,data={'LoginLock':lock})
+          assert exclusive.status_code==200, exclusive.text
+          assert exclusive.json()=={'errorCode':0}, exclusive.text
+          assert session.state['currentRoomInstance']['roomInstanceId']==ORIENTATION_INSTANCE_ID, session.state
+          assert 'lastRoomId' not in session.state, session.state
+
+          # Stock account creation can issue a spurious logout immediately after
+          # seeding Orientation. This MUST be an empty no-op while presence is -2.
+          logout=client.post('/Matchmaking/player/logout',headers=headers,data={'LoginLock':lock})
+          assert logout.status_code==200, logout.text
+          assert logout.content==b'', repr(logout.content)
+          after_logout=session.state.get('currentRoomInstance')
+          assert after_logout and after_logout['roomInstanceId']==ORIENTATION_INSTANCE_ID, session.state
+          assert after_logout['roomId']==ORIENTATION_ROOM_ID, after_logout
+          assert after_logout['location']==ORIENTATION_SCENE_LOCATION_ID, after_logout
+          assert 'lastRoomId' not in session.state, session.state
+
+          # The first heartbeat after that logout must still report Orientation,
+          # which is the exact ordering that used to lead to the black/empty land.
+          heartbeat=client.post('/Matchmaking/player/heartbeat',headers=headers,json={})
+          assert heartbeat.status_code==200, heartbeat.text
+          hb=heartbeat.json()
+          assert hb['roomInstance']['roomInstanceId']==ORIENTATION_INSTANCE_ID, hb
+          assert hb['roomInstance']['roomId']==ORIENTATION_ROOM_ID, hb
+          assert hb['roomInstance']['location']==ORIENTATION_SCENE_LOCATION_ID, hb
+          assert 'lastRoomId' not in session.state, session.state
+
+          print('RECROOM_LOGIN_EMPTY_ACK_OK=true')
+          print('RECROOM_SPURIOUS_LOGOUT_ORIENTATION_PRESERVED=true')
+          print('RECROOM_POST_LOGOUT_HEARTBEAT_ORIENTATION=true')
+          print('orientationInstance=',hb['roomInstance']['roomInstanceId'])
+          print('orientationScene=',hb['roomInstance']['location'])
+          PY
