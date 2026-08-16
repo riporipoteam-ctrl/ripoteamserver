@@ -10,6 +10,7 @@ on:
       - "hf-space/recroom_room_compat.py"
       - "hf-space/recroom_match_model.py"
       - "hf-space/recroom_match_compat.py"
+      - "hf-space/recroom_photon_compat.py"
       - ".github/workflows/recroom-protocol-ci.yml"
   workflow_dispatch:
 
@@ -27,7 +28,7 @@ jobs:
           python-version: "3.12"
       - name: Install protocol test dependencies
         run: python -m pip install --disable-pip-version-check fastapi 'httpx<0.28' requests cryptography
-      - name: Exercise fresh-account Orientation then Dorm flow
+      - name: Exercise fresh-account Orientation then Dorm and Photon flow
         env:
           RECROOM_PHOTON_APP_ID: ci-photon-app
           RECROOM_PHOTON_APP_VERSION: "0.2"
@@ -47,6 +48,7 @@ jobs:
           from recroom_compat_extra import install_recroom_extra_routes
           from recroom_room_compat import install_recroom_room_compat_routes
           from recroom_match_compat import install_recroom_match_compat_routes
+          from recroom_photon_compat import install_recroom_photon_compat_routes
           from recroom_match_model import (
               DORM_SCENE_LOCATION_ID,
               ORIENTATION_INSTANCE_ID,
@@ -80,6 +82,7 @@ jobs:
           install_recroom_extra_routes(app,gateway)
           install_recroom_room_compat_routes(app,gateway)
           install_recroom_match_compat_routes(app,gateway)
+          install_recroom_photon_compat_routes(app,gateway)
           client=TestClient(app)
           headers={'authorization':f'Bearer {token}'}
 
@@ -88,6 +91,9 @@ jobs:
           values={x['Key']:x['Value'] for x in cfg}
           assert values['BuildId']=='8751857', values
           assert values['Screens.ForceVerification']=='0', values
+          assert values['Photon.AppId']=='ci-photon-app', values
+          assert values['Photon.AppVersion']=='0.2', values
+          assert values['Photon.Region']=='eu', values
 
           me=client.get('/Accounts/account/me',headers=headers)
           assert me.status_code==200, me.text
@@ -120,6 +126,16 @@ jobs:
           orientation_instance=client.get('/Matchmaking/roominstance/-2',headers=headers)
           assert orientation_instance.status_code==200, orientation_instance.text
           assert orientation_instance.json()['roomInstanceId']==ORIENTATION_INSTANCE_ID, orientation_instance.text
+
+          # If the client asks for Photon permissions during client-local
+          # Orientation, the per-room DTO must still reference the sentinel -2.
+          ori_photon=client.get('/Room_server/photon_access_token',headers=headers)
+          assert ori_photon.status_code==200, ori_photon.text
+          op=ori_photon.json()
+          assert set(op)=={'RoomInstanceId','PhotonAccessToken','Permissions'}, op
+          assert op['RoomInstanceId']==ORIENTATION_INSTANCE_ID, op
+          assert op['PhotonAccessToken']=='', op
+          assert isinstance(op['Permissions'],list), op
 
           # Dorm metadata may be requested while Orientation is active; this must
           # not mark onboarding complete or change lastRoomId.
@@ -168,6 +184,22 @@ jobs:
           assert active.status_code==200 and active.json()['roomInstanceId']==room['roomInstanceId'], active.text
           assert isinstance(active.json()['photonRoomId'],str), active.text
 
+          # Old clients deserialize room permissions + Photon token as a
+          # per-instance DTO. Both endpoint generations are kept as aliases.
+          for photon_path in ('/Room_server/photon_access_token','/api/rooms/v1/photon_access_token'):
+              photon=client.get(photon_path,headers=headers)
+              assert photon.status_code==200, (photon_path,photon.text)
+              p=photon.json()
+              assert set(p)=={'RoomInstanceId','PhotonAccessToken','Permissions'}, (photon_path,p)
+              assert p['RoomInstanceId']==room['roomInstanceId'], (room,p)
+              assert p['PhotonAccessToken']=='', p
+              assert isinstance(p['Permissions'],list) and p['Permissions'], p
+              keys={(x['Permission'],x['Role']):x for x in p['Permissions']}
+              assert ('CAN_USE_MAKER_PEN',0) in keys, keys
+              assert keys[('CAN_USE_MAKER_PEN',0)]['Override'] is True, keys
+              assert ('CAN_USE_ROOM_RESET_BUTTON',30) in keys, keys
+              assert all(x['Type']==0 and isinstance(x['Value'],str) for x in p['Permissions']), p
+
           hot=client.get('/Room_server/rooms/hot',headers=headers)
           assert hot.status_code==200 and hot.json()==[], hot.text
           owned=client.get('/Room_server/rooms/ownedby/me',headers=headers)
@@ -186,4 +218,6 @@ jobs:
           print('RECROOM_ORIENTATION_TO_DORM_OK=true')
           print('dormInstance=',room['roomInstanceId'])
           print('dormScene=',room['location'])
+          print('RECROOM_PHOTON_ACCESS_DTO_OK=true')
+          print('photonRoomInstance=',room['roomInstanceId'])
           PY
