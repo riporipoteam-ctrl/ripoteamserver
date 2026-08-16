@@ -82,42 +82,56 @@ jobs:
           windows-live-agent/recroom-web-stream.py
       - name: Validate compatibility route source invariants
         run: |
-          grep -q 'VersionStatus' hf-space/recroom_compat.py
-          grep -q 'Screens.ForceVerification' hf-space/recroom_compat.py
-          grep -q 'openid-configuration/jwks' hf-space/recroom_compat.py
-          grep -q 'Matchmaking/player/qos' hf-space/recroom_compat.py
-          grep -q 'Room_server/rooms/{room_id}' hf-space/recroom_compat.py
-          grep -q 'api/gameconfigs/v1/all' hf-space/recroom_compat_extra.py
-          grep -q 'api/relationships/v2/get' hf-space/recroom_compat_extra.py
-          grep -q 'outfits/me/saved' hf-space/recroom_compat_extra.py
-          grep -q 'econ/roomInventory/room/{room_id}' hf-space/recroom_compat_extra.py
-          grep -q 'c79709d8-a31b-48aa-9eb8-cc31ba9505e8' hf-space/recroom_match_model.py
-          grep -q '76d98498-60a1-430c-ab76-b54a29b7a163' hf-space/recroom_match_model.py
-          grep -q 'Room_server/dormroom/me' hf-space/recroom_room_compat.py
-          grep -q 'Room_server/rooms/{room_id}' hf-space/recroom_room_compat.py
-          grep -q 'Matchmaking/matchmake/dorm' hf-space/recroom_match_compat.py
-          grep -q 'Matchmaking/player/heartbeat' hf-space/recroom_match_compat.py
-          grep -q 'roomInstance' hf-space/recroom_match_compat.py
-          grep -q 'photonRoomId' hf-space/recroom_match_compat.py
-          grep -q 'matchMakingPolicy' hf-space/recroom_match_compat.py
-          grep -q 'Room_server/photon_access_token' hf-space/recroom_photon_compat.py
-          grep -q 'api/rooms/v1/photon_access_token' hf-space/recroom_photon_compat.py
-          grep -q 'PhotonAccessToken' hf-space/recroom_photon_compat.py
-          grep -q 'RoomInstanceId' hf-space/recroom_photon_compat.py
-          grep -q 'Permissions' hf-space/recroom_photon_compat.py
-          grep -q '/player/login' hf-space/recroom_service_aliases.py
-          grep -q '/account/me' hf-space/recroom_service_aliases.py
-          grep -q '/matchmake/dorm' hf-space/recroom_service_aliases.py
-          grep -q '/photon_access_token' hf-space/recroom_service_aliases.py
-          grep -q '/playersettings' hf-space/recroom_service_extra_aliases.py
-          grep -q '/roomInventory/player' hf-space/recroom_service_extra_aliases.py
-          grep -q '/api/catalog/v1/all' hf-space/recroom_service_extra_aliases.py
-          grep -q '/hub/v1' hf-space/recroom_service_extra_aliases.py
-          grep -q '/club/home/me' hf-space/recroom_service_extra_aliases.py
-          grep -q 'GetPlayerRank' hf-space/recroom_leaderboard_compat.py
-          grep -q 'GetNearbyScores' hf-space/recroom_leaderboard_compat.py
-          grep -q 'GlobalOverall' hf-space/recroom_leaderboard_compat.py
-          grep -q '/rooms/{room_id}' hf-space/recroom_route_order.py
+          python - <<'PY'
+          from pathlib import Path
+
+          required = {
+              "hf-space/recroom_compat.py": [
+                  "VersionStatus", "Screens.ForceVerification", "openid-configuration/jwks",
+                  "Matchmaking/player/qos", "Room_server/rooms/{room_id}",
+              ],
+              "hf-space/recroom_compat_extra.py": [
+                  "api/gameconfigs/v1/all", "api/relationships/v2/get", "outfits/me/saved",
+                  "econ/roomInventory/room/{room_id}",
+              ],
+              "hf-space/recroom_match_model.py": [
+                  "c79709d8-a31b-48aa-9eb8-cc31ba9505e8",
+                  "76d98498-60a1-430c-ab76-b54a29b7a163",
+              ],
+              "hf-space/recroom_room_compat.py": [
+                  "Room_server/dormroom/me", "Room_server/rooms/{room_id}",
+              ],
+              "hf-space/recroom_match_compat.py": [
+                  "Matchmaking/matchmake/dorm", "Matchmaking/player/heartbeat",
+                  "roomInstance", "photonRoomId", "matchMakingPolicy",
+              ],
+              "hf-space/recroom_photon_compat.py": [
+                  "Room_server/photon_access_token", "api/rooms/v1/photon_access_token",
+                  "PhotonAccessToken", "RoomInstanceId", "Permissions",
+              ],
+              "hf-space/recroom_service_aliases.py": [
+                  "/player/login", "/account/me", "/matchmake/dorm", "/photon_access_token",
+              ],
+              "hf-space/recroom_service_extra_aliases.py": [
+                  "/playersettings", "/roomInventory/player", "/api/catalog/v1/all",
+                  "/hub/v1", "/club/home/me",
+              ],
+              "hf-space/recroom_leaderboard_compat.py": [
+                  "GetPlayerRank", "GetNearbyScores", "GlobalOverall",
+              ],
+              "hf-space/recroom_route_order.py": ["/rooms/{room_id}"],
+          }
+
+          missing = []
+          for filename, tokens in required.items():
+              text = Path(filename).read_text(encoding="utf-8")
+              for token in tokens:
+                  if token not in text:
+                      missing.append(f"{filename}: {token}")
+          if missing:
+              raise SystemExit("Missing Rec Room compatibility invariants:\n - " + "\n - ".join(missing))
+          print("RECROOM_COMPATIBILITY_SOURCE_INVARIANTS_OK=true")
+          PY
       - name: Validate Windows agent PowerShell syntax
         shell: pwsh
         run: |
