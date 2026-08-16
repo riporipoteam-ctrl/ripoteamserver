@@ -22,7 +22,7 @@ jobs:
           python-version: "3.12"
       - name: Install stream dependency
         run: python -m pip install "Pillow>=10,<12"
-      - name: Exercise real one-command installer and client discovery
+      - name: Exercise real one-command installer and strict client discovery
         shell: pwsh
         run: |
           $fake = Join-Path $env:RUNNER_TEMP "May 19 2022"
@@ -42,6 +42,22 @@ jobs:
           if ($cfg.updateRef -ne "main") { throw "Installer generated a stale update ref." }
           if ($cfg.hostKey -ne "ci-test-only") { throw "Installer did not preserve the paired host credential." }
           if (-not $cfg.streamStartCommand -or -not $cfg.streamStopCommand) { throw "Installer did not configure automatic streaming." }
+
+          $finder = Join-Path $installDir "identify-recroom-client.ps1"
+          if (-not (Test-Path -LiteralPath $finder -PathType Leaf)) { throw "Installer did not ship identify-recroom-client.ps1." }
+          $rawIdentity = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $finder -Root $fake -AsJson
+          if ($LASTEXITCODE -ne 0) { throw "Installed client identifier failed with exit $LASTEXITCODE." }
+          try { $identity = ([string]($rawIdentity -join "`n")) | ConvertFrom-Json } catch { throw "Installed client identifier returned invalid JSON: $rawIdentity" }
+          $preferred = $identity.preferred
+          if (-not $preferred) { throw "Installed client identifier did not return a preferred client." }
+          if ($preferred.kind -ne "target-2022") { throw "Strict client identifier classified the May 19 2022 fixture as '$($preferred.kind)'." }
+          if (-not $preferred.playableBy2022Agent) { throw "Strict client identifier did not mark the May 19 2022 fixture playable by the 2022 agent." }
+          if ($preferred.buildId -ne "8751857" -or $preferred.manifestId -ne "6337851004861751095") { throw "Strict client identifier returned the wrong target build/manifest." }
+          Write-Host "STRICT_CLIENT_IDENTITY_OK=true kind=$($preferred.kind) confidence=$($preferred.confidence)"
+
+          foreach ($required in @("start-recroom-host.ps1","update-recroom-host.ps1","identify-recroom-client.ps1","recroom-agent.ps1")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $installDir $required))) { throw "Installed host is missing $required." }
+          }
           "RECROOM_INSTALL_DIR=$installDir" | Out-File $env:GITHUB_ENV -Append
       - name: Launch an input-aware Windows test game window
         shell: pwsh
