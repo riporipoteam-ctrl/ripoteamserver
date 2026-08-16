@@ -49,6 +49,8 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         from recroom_room_compat import install_recroom_room_compat_routes
         from recroom_match_compat import install_recroom_match_compat_routes
         from recroom_photon_compat import install_recroom_photon_compat_routes
+        from recroom_service_aliases import install_recroom_service_alias_routes
+        from recroom_route_order import stabilize_recroom_route_order
         from recroom_broker import install_recroom_broker_routes
         from recroom_capture import install_recroom_capture_routes
         from recroom_public import install_recroom_public_routes
@@ -66,6 +68,13 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         # Photon access is presence-dependent. Mount it after matchmaking so its
         # RoomInstanceId always matches the active Orientation/Dorm/room presence.
         install_recroom_photon_compat_routes(application, gateway)
+        # The binary host patch preserves the path after each legacy service host
+        # (match.rec.net, rooms.rec.net, accounts.rec.net, auth.rec.net). Expose
+        # those stripped paths in addition to the newer unified API family.
+        install_recroom_service_alias_routes(application, gateway)
+        # Dynamic `/rooms/{room_id}` routes must come after static search/hot/etc.
+        stabilize_recroom_route_order(application)
+
         broker = install_recroom_broker_routes(application, root / "recroom-broker")
         capture = install_recroom_capture_routes(application, broker, root / "recroom-captures")
         install_recroom_public_routes(application, broker, capture)
