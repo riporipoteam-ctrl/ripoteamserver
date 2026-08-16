@@ -9,43 +9,30 @@ param(
 $ErrorActionPreference = "Stop"
 $TargetBuild = "recroom-2022-05-19"
 $canonicalRoot = Join-Path $env:LOCALAPPDATA "FluxRecRoom\May 19 2022"
+$identifier = Join-Path $PSScriptRoot "identify-recroom-client.ps1"
 
-function Test-ClientLayout([string]$Root) {
-  if (-not $Root -or -not (Test-Path $Root)) { return $false }
-  $exe = @("RecRoom.exe", "Recroom_Release.exe") | ForEach-Object { Join-Path $Root $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
-  if (-not $exe) { return $false }
-  if (-not (Test-Path (Join-Path $Root "GameAssembly.dll"))) { return $false }
-  $data = @("RecRoom_Data", "Recroom_Release_Data") | ForEach-Object { Join-Path $Root $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
-  if (-not $data) { return $false }
-  return Test-Path (Join-Path $data "il2cpp_data\Metadata\global-metadata.dat")
+if (-not (Test-Path $identifier)) {
+  throw "Missing strict Rec Room build identifier: $identifier"
 }
 
-function Find-ClientDirectory {
-  $candidates = New-Object System.Collections.Generic.List[string]
-  if ($env:FLUX_RECROOM_CLIENT_DIR) { $candidates.Add([string]$env:FLUX_RECROOM_CLIENT_DIR) }
-  if (Test-Path $Config) {
-    try {
-      $existing = Get-Content $Config -Raw | ConvertFrom-Json
-      if ($existing.clientDir) { $candidates.Add([string]$existing.clientDir) }
-    } catch {}
+function Get-IdentifiedClients {
+  try {
+    $json = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $identifier -Scan -AsJson) | Select-Object -Last 1
+    if (-not $json) { return @() }
+    $parsed = $json | ConvertFrom-Json
+    return @($parsed.clients)
+  } catch {
+    Write-Host ("Client identification failed: " + $_.Exception.Message) -ForegroundColor Yellow
+    return @()
   }
-  $candidates.Add($canonicalRoot)
-  $candidates.Add("C:\Games\FluxRecRoom\May 19 2022")
+}
 
-  foreach ($candidate in $candidates | Select-Object -Unique) {
-    if (Test-ClientLayout $candidate) { return (Resolve-Path $candidate).Path }
+function Find-Verified2022Client {
+  foreach ($item in Get-IdentifiedClients) {
+    if ($item.kind -eq "target-2022" -and $item.playableBy2022Agent) {
+      return [string]$item.root
+    }
   }
-
-  foreach ($root in @((Join-Path $env:USERPROFILE "Downloads"), (Join-Path $env:USERPROFILE "Desktop"))) {
-    if (-not (Test-Path $root)) { continue }
-    $exe = Get-ChildItem -Path $root -File -Recurse -ErrorAction SilentlyContinue |
-      Where-Object {
-        $_.Name -in @("RecRoom.exe", "Recroom_Release.exe") -and
-        $_.DirectoryName -match '(?i)(8751857|2022|May.?19|Rec.?Room)'
-      } | Select-Object -First 1
-    if ($exe -and (Test-ClientLayout $exe.Directory.FullName)) { return $exe.Directory.FullName }
-  }
-
   return ""
 }
 
@@ -60,18 +47,21 @@ function Find-TargetArchive {
   return ""
 }
 
-$clientDir = Find-ClientDirectory
+$clientDir = Find-Verified2022Client
+
+# A locally supplied archive is allowed to be unpacked, but it is still not
+# trusted merely because of its name. identify-recroom-client.ps1 must find the
+# exact validated DepotDownloader manifest evidence before it can be selected.
 if (-not $clientDir) {
   $archive = Find-TargetArchive
   if ($archive) {
+    Write-Host "Found a May-2022-looking archive. Extracting it for strict verification..." -ForegroundColor DarkCyan
     New-Item -ItemType Directory -Path $canonicalRoot -Force | Out-Null
     Expand-Archive -Path $archive -DestinationPath $canonicalRoot -Force
-    if (Test-ClientLayout $canonicalRoot) {
-      $clientDir = $canonicalRoot
-    } else {
-      $nestedExe = Get-ChildItem -Path $canonicalRoot -File -Recurse -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -in @("RecRoom.exe", "Recroom_Release.exe") } | Select-Object -First 1
-      if ($nestedExe -and (Test-ClientLayout $nestedExe.Directory.FullName)) { $clientDir = $nestedExe.Directory.FullName }
+    $env:FLUX_RECROOM_CLIENT_DIR = $canonicalRoot
+    $clientDir = Find-Verified2022Client
+    if (-not $clientDir) {
+      Write-Host "Archive extracted, but strict manifest verification did not accept it. Folder/archive names alone are never trusted." -ForegroundColor Yellow
     }
   }
 }
@@ -79,16 +69,19 @@ if (-not $clientDir) {
 if (-not $clientDir -and $TrySteamDownload) {
   $downloadScript = Join-Path $PSScriptRoot "download-recroom-client.ps1"
   if (-not (Test-Path $downloadScript)) { throw "Missing $downloadScript" }
-  Write-Host "No local May 2022 client found; trying the exact Steam depot with your own Steam account..." -ForegroundColor Cyan
+  Write-Host "No strictly verified local May 2022 client found; trying the exact Steam depot with your own Steam account..." -ForegroundColor Cyan
   $downloaded = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $downloadScript -SteamUsername $SteamUsername -Destination $canonicalRoot)
   if ($LASTEXITCODE -ne 0) { throw "Licensed Steam client download attempt failed." }
   $candidate = [string]($downloaded | Select-Object -Last 1)
-  if ($candidate -and (Test-ClientLayout $candidate)) { $clientDir = $candidate }
-  elseif (Test-ClientLayout $canonicalRoot) { $clientDir = $canonicalRoot }
+  if ($candidate) { $env:FLUX_RECROOM_CLIENT_DIR = $candidate }
+  $clientDir = Find-Verified2022Client
 }
 
 if (-not $clientDir) {
-  throw "May 19 2022 Rec Room client not found. Put your legally obtained build 8751857 folder/ZIP in Downloads/Desktop, set FLUX_RECROOM_CLIENT_DIR, or rerun bootstrap with -TrySteamDownload and your Steam username."
+  $identified = Get-IdentifiedClients
+  $details = @($identified | ForEach-Object { "[$($_.kind)] $($_.root) — $($_.reason)" }) -join "`n"
+  if (-not $details) { $details = "No complete Rec Room IL2CPP clients were detected." }
+  throw "No strictly verified May 19 2022 client is available. A playable host requires depot 471711 / manifest 6337851004861751095 with a valid DepotDownloader manifest checksum, or a licensed Steam download through -TrySteamDownload.`n$details"
 }
 
 $server = if ($env:RECROOM_BROKER_URL) { [string]$env:RECROOM_BROKER_URL } else { "https://echoxr-ripoteam-cloud-pc.hf.space" }
@@ -135,7 +128,7 @@ Set-Property "toolsRepository" "riporipoteam-ctrl/recroomfluxgame"
 Set-Property "toolsRef" "main"
 
 $cfg | ConvertTo-Json -Depth 8 | Set-Content $Config -Encoding UTF8
-Write-Host "Rec Room host configured." -ForegroundColor Green
+Write-Host "Rec Room host configured with a strictly verified May 19 2022 client." -ForegroundColor Green
 Write-Host "Client: $clientDir"
 Write-Host "Config: $Config"
 if (-not $hostKey -and ([string]$cfg.hostKey) -match '^SET_') {
