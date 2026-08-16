@@ -50,6 +50,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         from recroom_match_compat import install_recroom_match_compat_routes
         from recroom_photon_compat import install_recroom_photon_compat_routes
         from recroom_service_aliases import install_recroom_service_alias_routes
+        from recroom_service_extra_aliases import install_recroom_service_extra_alias_routes
         from recroom_route_order import stabilize_recroom_route_order
         from recroom_broker import install_recroom_broker_routes
         from recroom_capture import install_recroom_capture_routes
@@ -59,20 +60,15 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         install_recroom_gateway_routes(application, gateway)
         install_recroom_compat_routes(application, gateway)
         install_recroom_extra_routes(application, gateway)
-        # Replace the generic Dorm resource with the recovered room/subroom
-        # hierarchy before matchmaking starts returning that scene location.
         install_recroom_room_compat_routes(application, gateway)
-        # Matchmaking/heartbeat intentionally replaces the earlier generic join
-        # DTOs with the recovered roomInstance structure used by old clients.
         install_recroom_match_compat_routes(application, gateway)
-        # Photon access is presence-dependent. Mount it after matchmaking so its
-        # RoomInstanceId always matches the active Orientation/Dorm/room presence.
         install_recroom_photon_compat_routes(application, gateway)
-        # The binary host patch preserves the path after each legacy service host
-        # (match.rec.net, rooms.rec.net, accounts.rec.net, auth.rec.net). Expose
-        # those stripped paths in addition to the newer unified API family.
+        # Old dedicated service hosts are patched to same-length localhost
+        # prefixes. The Windows proxy removes the prefix, leaving service-native
+        # paths such as /player/login, /account/me, /roomInventory/player, etc.
         install_recroom_service_alias_routes(application, gateway)
-        # Dynamic `/rooms/{room_id}` routes must come after static search/hot/etc.
+        install_recroom_service_extra_alias_routes(application, gateway)
+        # Dynamic room-id routes must remain behind search/hot/bulk/etc aliases.
         stabilize_recroom_route_order(application)
 
         broker = install_recroom_broker_routes(application, root / "recroom-broker")
