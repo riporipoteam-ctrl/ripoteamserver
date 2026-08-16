@@ -46,6 +46,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         from recroom_gateway import RecRoomGateway, install_recroom_gateway_routes
         from recroom_compat import install_recroom_compat_routes
         from recroom_compat_extra import install_recroom_extra_routes
+        from recroom_room_compat import install_recroom_room_compat_routes
         from recroom_match_compat import install_recroom_match_compat_routes
         from recroom_broker import install_recroom_broker_routes
         from recroom_capture import install_recroom_capture_routes
@@ -55,6 +56,9 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         install_recroom_gateway_routes(application, gateway)
         install_recroom_compat_routes(application, gateway)
         install_recroom_extra_routes(application, gateway)
+        # Replace the generic Dorm resource with the recovered room/subroom
+        # hierarchy before matchmaking starts returning that scene location.
+        install_recroom_room_compat_routes(application, gateway)
         # Matchmaking/heartbeat is mounted last among RecNet compatibility layers
         # because it intentionally replaces the earlier generic join DTOs with
         # the recovered roomInstance structure used by old clients.
