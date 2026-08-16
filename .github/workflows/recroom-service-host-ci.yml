@@ -1,0 +1,180 @@
+name: Rec Room Service Host CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hf-space/recroom_autoload.py"
+      - "hf-space/recroom_compat.py"
+      - "hf-space/recroom_room_compat.py"
+      - "hf-space/recroom_match_model.py"
+      - "hf-space/recroom_match_compat.py"
+      - "hf-space/recroom_photon_compat.py"
+      - "hf-space/recroom_service_aliases.py"
+      - "hf-space/recroom_route_order.py"
+      - ".github/workflows/recroom-service-host-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  service-hosts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install protocol dependencies
+        run: python -m pip install --disable-pip-version-check fastapi 'httpx<0.28' cryptography python-multipart
+      - name: Exercise stripped match rooms accounts and auth host paths
+        env:
+          RECROOM_PHOTON_APP_ID: ci-photon-app
+          RECROOM_PHOTON_APP_VERSION: "0.2"
+          RECROOM_PHOTON_REGION: eu
+        run: |
+          set -euo pipefail
+          PYTHONPATH=hf-space python - <<'PY'
+          import hashlib
+          import tempfile
+          import time
+          from pathlib import Path
+
+          from fastapi import FastAPI
+          from fastapi.testclient import TestClient
+
+          from recroom_gateway import NativeSession, RecRoomGateway, install_recroom_gateway_routes
+          from recroom_compat import install_recroom_compat_routes
+          from recroom_compat_extra import install_recroom_extra_routes
+          from recroom_room_compat import install_recroom_room_compat_routes
+          from recroom_match_compat import install_recroom_match_compat_routes
+          from recroom_photon_compat import install_recroom_photon_compat_routes
+          from recroom_service_aliases import install_recroom_service_alias_routes
+          from recroom_route_order import stabilize_recroom_route_order
+          from recroom_match_model import (
+              DORM_SCENE_LOCATION_ID,
+              ORIENTATION_INSTANCE_ID,
+              ORIENTATION_ROOM_ID,
+              ORIENTATION_SCENE_LOCATION_ID,
+          )
+
+          gateway=RecRoomGateway(Path(tempfile.mkdtemp(prefix='rr-service-hosts-')))
+          gateway._write_recroom_state=lambda _session: None
+          token='service-host-ci-token'
+          session=NativeSession(
+              token=token,
+              uid='service-user',
+              email='service@example.com',
+              username='service_player',
+              display_name='Service Player',
+              account_id=24680,
+              is_admin=False,
+              firebase_token='firebase-ci',
+              expires_at=time.time()+3600,
+              state={},
+          )
+          gateway.sessions[hashlib.sha256(token.encode()).hexdigest()]=session
+
+          app=FastAPI()
+          install_recroom_gateway_routes(app,gateway)
+          install_recroom_compat_routes(app,gateway)
+          install_recroom_extra_routes(app,gateway)
+          install_recroom_room_compat_routes(app,gateway)
+          install_recroom_match_compat_routes(app,gateway)
+          install_recroom_photon_compat_routes(app,gateway)
+          install_recroom_service_alias_routes(app,gateway)
+          stabilize_recroom_route_order(app)
+          client=TestClient(app)
+          headers={'authorization':f'Bearer {token}'}
+          lock='aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+
+          # accounts.rec.net -> /acct prefix -> proxy strips it -> /account/me
+          account=client.get('/account/me',headers=headers)
+          assert account.status_code==200, account.text
+          assert account.json()['accountId']==24680, account.text
+          assert account.json()['username']=='service_player', account.text
+          parental=client.get('/parentalcontrol/me',headers=headers)
+          assert parental.status_code==200 and parental.json()['IsJunior'] is False, parental.text
+
+          # match.rec.net -> /m prefix -> proxy strips it -> /player/login
+          login=client.post('/player/login',headers=headers,data={'LoginLock':lock})
+          assert login.status_code==200 and login.content==b'', repr(login.content)
+          assert session.state.get('loginLock')==lock, session.state
+          assert session.state['currentRoomInstance']['roomInstanceId']==ORIENTATION_INSTANCE_ID, session.state
+          assert 'lastRoomId' not in session.state, session.state
+
+          # rooms.rec.net -> /r prefix -> /rooms/13. Static room-list aliases must
+          # also beat the dynamic integer route after ordering is stabilized.
+          orientation=client.get('/rooms/13',headers=headers)
+          assert orientation.status_code==200, orientation.text
+          om=orientation.json()
+          assert om['RoomId']==ORIENTATION_ROOM_ID, om
+          assert om['SubRooms'][0]['UnitySceneId']==ORIENTATION_SCENE_LOCATION_ID, om
+          for static_path in ('/rooms/search','/rooms/bulk','/rooms/hot','/rooms/ownedby/me'):
+              resp=client.get(static_path,headers=headers)
+              assert resp.status_code==200, (static_path,resp.status_code,resp.text)
+              assert isinstance(resp.json(),list), (static_path,resp.text)
+
+          photon=client.get('/photon_access_token',headers=headers)
+          assert photon.status_code==200, photon.text
+          assert photon.json()['RoomInstanceId']==ORIENTATION_INSTANCE_ID, photon.text
+
+          # DorkNet's reverse-engineering notes show this must be a primitive bool.
+          avoid=client.get('/player/avoidjuniors',headers=headers)
+          assert avoid.status_code==200 and avoid.json() is False, avoid.text
+          avoid_set=client.put('/player/avoidjuniors',headers=headers,data={'avoidJuniors':'true'})
+          assert avoid_set.status_code==200 and avoid_set.json() is True, avoid_set.text
+          avoid2=client.get('/player/avoidjuniors',headers=headers)
+          assert avoid2.json() is True, avoid2.text
+
+          # Both old region-ping spellings/method families are accepted.
+          for path in ('/player/photonregionpings','/player/gameserverregionpings'):
+              for method in ('get','post','put'):
+                  resp=getattr(client,method)(path,headers=headers,data={'region':'eu','ping':'42'} if method!='get' else None)
+                  assert resp.status_code==200, (path,method,resp.status_code,resp.text)
+
+          # Critical stock signup quirk: service-host logout must not erase -2.
+          logout=client.post('/player/logout',headers=headers,data={'LoginLock':lock})
+          assert logout.status_code==200 and logout.content==b'', repr(logout.content)
+          beat=client.post('/player/heartbeat',headers=headers,data={'LoginLock':lock})
+          assert beat.status_code==200, beat.text
+          bp=beat.json()
+          assert bp['roomInstance']['roomInstanceId']==ORIENTATION_INSTANCE_ID, bp
+          assert bp['roomInstance']['location']==ORIENTATION_SCENE_LOCATION_ID, bp
+
+          # auth.rec.net can arrive as /connect/token rather than /Auth/connect/token.
+          oauth=client.post('/connect/token',headers=headers,data={})
+          assert oauth.status_code==200, oauth.text
+          assert oauth.json()['access_token'].count('.')==2, oauth.text
+
+          # The old service-host Dorm transition must match the same stable scene
+          # and Photon instance as the unified route family.
+          dorm=client.post('/matchmake/dorm',headers=headers,data={})
+          assert dorm.status_code==200, dorm.text
+          room=dorm.json()['roomInstance']
+          assert room['location']==DORM_SCENE_LOCATION_ID, room
+          assert 1 <= int(room['roomInstanceId']) <= 999_999_999, room
+          dorm_meta=client.get('/dormroom/me',headers=headers)
+          assert dorm_meta.status_code==200, dorm_meta.text
+          assert dorm_meta.json()['SubRooms'][0]['UnitySceneId']==DORM_SCENE_LOCATION_ID, dorm_meta.text
+          photon2=client.get('/photon_access_token',headers=headers)
+          assert photon2.status_code==200, photon2.text
+          assert photon2.json()['RoomInstanceId']==room['roomInstanceId'], (room,photon2.text)
+
+          # Unified paths remain consistent with the same live session.
+          unified_beat=client.post('/Matchmaking/player/heartbeat',headers=headers,json={})
+          assert unified_beat.status_code==200, unified_beat.text
+          assert unified_beat.json()['roomInstance']['roomInstanceId']==room['roomInstanceId'], unified_beat.text
+          unified_account=client.get('/Accounts/account/me',headers=headers)
+          assert unified_account.status_code==200 and unified_account.json()['accountId']==24680, unified_account.text
+
+          print('RECROOM_SERVICE_HOST_ACCOUNT_ALIAS_OK=true')
+          print('RECROOM_SERVICE_HOST_ORIENTATION_OK=true')
+          print('RECROOM_SERVICE_HOST_AVOID_JUNIORS_PRIMITIVE_OK=true')
+          print('RECROOM_SERVICE_HOST_AUTH_ALIAS_OK=true')
+          print('RECROOM_SERVICE_HOST_DORM_PHOTON_OK=true')
+          print('orientationInstance=',ORIENTATION_INSTANCE_ID)
+          print('dormInstance=',room['roomInstanceId'])
+          PY
