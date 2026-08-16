@@ -7,7 +7,14 @@ from fastapi import Header
 from fastapi.responses import JSONResponse
 
 from recroom_gateway import PHOTON_REGION, NativeSession, RecRoomGateway
-from recroom_match_model import DORM_SCENE_LOCATION_ID, build_player, build_room_instance
+from recroom_match_model import (
+    DORM_SCENE_LOCATION_ID,
+    ORIENTATION_INSTANCE_ID,
+    ORIENTATION_ROOM_ID,
+    build_orientation_instance,
+    build_player,
+    build_room_instance,
+)
 
 
 def _remove_exact_route(app: Any, path: str, methods: set[str]) -> None:
@@ -40,6 +47,18 @@ def _room_instance(session: NativeSession, room_id: int, location: str, *, priva
     return instance
 
 
+def _orientation_instance(session: NativeSession) -> dict[str, Any]:
+    # Orientation is a client-local onboarding room. Keep the recovered sentinel
+    # -2 and do NOT set lastRoomId here; setting it would make the next heartbeat
+    # look like normal matchmaking and prematurely kick a new player to Dorm.
+    current = session.state.get("currentRoomInstance")
+    if isinstance(current, dict) and int(current.get("roomInstanceId") or 0) == ORIENTATION_INSTANCE_ID:
+        return current
+    instance = build_orientation_instance(photon_region="us")
+    session.state["currentRoomInstance"] = instance
+    return instance
+
+
 def _player(session: NativeSession) -> dict[str, Any]:
     return build_player(
         account_id=session.account_id,
@@ -50,7 +69,7 @@ def _player(session: NativeSession) -> dict[str, Any]:
 
 
 def install_recroom_match_compat_routes(app: Any, gateway: RecRoomGateway) -> None:
-    """Override join/heartbeat DTOs with the recovered room-instance shape."""
+    """Override join/heartbeat DTOs with recovered old-client room presence."""
 
     for path, methods in [
         ("/Matchmaking/matchmake/dorm", {"POST"}),
@@ -69,9 +88,8 @@ def install_recroom_match_compat_routes(app: Any, gateway: RecRoomGateway) -> No
     async def rr2022_matchmake_dorm(authorization: str | None = Header(default=None)) -> JSONResponse:
         session = session_for(authorization)
         room_id = int(session.state.get("dormRoomId") or session.account_id + 1_000_000_000)
+        # Calling Dorm matchmaking is the transition out of first-run Orientation.
         gateway.save(session, {"dormRoomId": room_id, "lastRoomId": room_id})
-        # Critical: location is the Unity scene location GUID used by the real
-        # Dorm subroom, not the human-readable room name.
         instance = _room_instance(session, room_id, DORM_SCENE_LOCATION_ID, private=True)
         return JSONResponse({"errorCode": 0, "roomInstance": instance})
 
@@ -85,6 +103,22 @@ def install_recroom_match_compat_routes(app: Any, gateway: RecRoomGateway) -> No
     @app.post("/Matchmaking/player/heartbeat")
     async def rr2022_player_heartbeat(authorization: str | None = Header(default=None)) -> JSONResponse:
         session = session_for(authorization)
+
+        # Critical first-run behavior: newly created accounts have never entered
+        # a matched room. The 2022-era client loads Orientation locally and expects
+        # heartbeat to echo room 13 / instance -2. A normal Dorm instance here can
+        # produce the black/empty-world onboarding failure.
+        if "lastRoomId" not in session.state:
+            current = _orientation_instance(session)
+            return JSONResponse(
+                {
+                    "errorCode": 0,
+                    "player": _player(session),
+                    "roomInstance": current,
+                    "serverTime": int(time.time() * 1000),
+                }
+            )
+
         dorm_id = int(session.state.get("dormRoomId") or session.account_id + 1_000_000_000)
         room_id = int(session.state.get("lastRoomId") or dorm_id)
         current = session.state.get("currentRoomInstance")
@@ -110,6 +144,10 @@ def install_recroom_match_compat_routes(app: Any, gateway: RecRoomGateway) -> No
     @app.get("/Matchmaking/roominstance/{instance_id}")
     async def rr2022_room_instance(instance_id: int, authorization: str | None = Header(default=None)) -> JSONResponse:
         session = session_for(authorization)
+
+        if int(instance_id) == ORIENTATION_INSTANCE_ID and "lastRoomId" not in session.state:
+            return JSONResponse(_orientation_instance(session))
+
         dorm_id = int(session.state.get("dormRoomId") or session.account_id + 1_000_000_000)
         room_id = int(session.state.get("lastRoomId") or dorm_id)
         current = session.state.get("currentRoomInstance")
@@ -122,8 +160,6 @@ def install_recroom_match_compat_routes(app: Any, gateway: RecRoomGateway) -> No
             private=room_id == dorm_id,
             existing=current if isinstance(current, dict) else None,
         )
-        # Do not mutate the active session when the client asks about another
-        # instance id. Return a normalized copy with a string Photon room name.
         if int(current.get("roomInstanceId") or -1) != instance_id:
             current = dict(current)
             current["roomInstanceId"] = int(instance_id)
