@@ -10,6 +10,7 @@ on:
       - "hf-space/recroom_room_compat.py"
       - "hf-space/recroom_match_model.py"
       - "hf-space/recroom_match_compat.py"
+      - "hf-space/recroom_photon_compat.py"
       - "hf-space/recroom_gateway.py"
       - "hf-space/recroom_broker.py"
       - "hf-space/recroom_public.py"
@@ -69,7 +70,11 @@ jobs:
           assert values.get('BuildDate')=='2022-05-19', values
           assert values.get('Screens.ForceVerification')=='0', values
           assert values.get('Maintenance.Enabled')=='false', values
-          print('Typed config-v2 list is live.')
+          assert values.get('Photon.Enabled')=='true', values
+          assert values.get('Photon.AppId'), values
+          assert values.get('Photon.AppVersion'), values
+          assert values.get('Photon.Region'), values
+          print('Typed config-v2 list and Photon app config are live.')
           PY
 
           curl -fsS "$base/api/versioncheck/v4" -o /tmp/version.json
@@ -95,7 +100,7 @@ jobs:
           print('Local OIDC/JWKS token-validation surface is live.')
           PY
 
-      - name: Verify expanded post-login, Orientation and matchmaking routes are mounted
+      - name: Verify Orientation Dorm Photon and post-login routes are mounted
         run: |
           set -euo pipefail
           base='https://echoxr-ripoteam-cloud-pc.hf.space'
@@ -107,7 +112,9 @@ jobs:
             '/outfits/me/saved' \
             '/econ/roomInventory/player' \
             '/Room_server/dormroom/me' \
-            '/Room_server/rooms/13'; do
+            '/Room_server/rooms/13' \
+            '/Room_server/photon_access_token' \
+            '/api/rooms/v1/photon_access_token'; do
             code="$(curl --silent --show-error --output /tmp/extra-route.json --write-out '%{http_code}' "$base$path")"
             echo "$path -> HTTP $code"
             cat /tmp/extra-route.json || true
@@ -122,7 +129,7 @@ jobs:
             cat /tmp/match-route.json || true
             test "$code" = "401"
           done
-          echo 'Orientation, Dorm and recovered roomInstance matchmaking layers are mounted.'
+          echo 'Orientation, Dorm, Photon-access and recovered roomInstance matchmaking layers are mounted.'
 
       - name: Verify live browser session broker
         run: |
