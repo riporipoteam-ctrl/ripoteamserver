@@ -9,10 +9,15 @@ $script:AdapterProcess = $null
 $script:ActiveSessionId = ""
 $script:LastHeartbeat = [DateTimeOffset]::MinValue
 $script:RedirectState = $null
+$script:ClientIdentity = $null
 
 function Set-CfgProperty($cfg, [string]$Name, $Value) {
   if ($cfg.PSObject.Properties[$Name]) { $cfg.$Name = $Value }
   else { $cfg | Add-Member -NotePropertyName $Name -NotePropertyValue $Value }
+}
+
+function Save-Config($cfg) {
+  $cfg | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $Config -Encoding UTF8
 }
 
 function Load-Config {
@@ -34,38 +39,87 @@ function Require-Config($cfg) {
   if (($cfg.buildId) -and ([string]$cfg.buildId -ne $TargetBuild)) { throw "This agent currently targets $TargetBuild only." }
 }
 
-function Test-ClientLayoutAt([string]$Root) {
-  if (-not $Root -or -not (Test-Path $Root)) { return $false }
-  $exe = @("RecRoom.exe", "Recroom_Release.exe") | ForEach-Object { Join-Path $Root $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
-  if (-not $exe -or -not (Test-Path (Join-Path $Root "GameAssembly.dll"))) { return $false }
-  $data = @("RecRoom_Data", "Recroom_Release_Data") | ForEach-Object { Join-Path $Root $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
-  if (-not $data) { return $false }
-  return Test-Path (Join-Path $data "il2cpp_data\Metadata\global-metadata.dat")
+function Ensure-ClientIdentifier {
+  $finder = Join-Path $PSScriptRoot "identify-recroom-client.ps1"
+  if (Test-Path -LiteralPath $finder -PathType Leaf) { return $finder }
+
+  # Older host installations did not ship the identifier. The old updater
+  # already refreshes recroom-agent.ps1, so bootstrap the one missing helper
+  # here to make strict build validation self-healing without a reinstall.
+  $repo = if ($script:cfg.updateRepository) { [string]$script:cfg.updateRepository } else { "riporipoteam-ctrl/ripoteamserver" }
+  $ref = if ($script:cfg.updateRef) { [string]$script:cfg.updateRef } else { "main" }
+  if ($repo -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "Invalid updateRepository while retrieving client identifier." }
+  if ($ref -notmatch '^[A-Za-z0-9_./-]+$') { throw "Invalid updateRef while retrieving client identifier." }
+  $url = "https://raw.githubusercontent.com/$repo/$ref/windows-live-agent/identify-recroom-client.ps1"
+  Write-Host "Strict Rec Room client identifier is missing; retrieving it from the configured host repository..." -ForegroundColor DarkCyan
+  Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $finder -TimeoutSec 60
+  if (-not (Test-Path -LiteralPath $finder -PathType Leaf) -or (Get-Item -LiteralPath $finder).Length -le 0) {
+    throw "Could not retrieve strict Rec Room client identifier."
+  }
+  $tokens = $null; $errors = $null
+  [void][System.Management.Automation.Language.Parser]::ParseFile($finder, [ref]$tokens, [ref]$errors)
+  if ($errors.Count -gt 0) {
+    Remove-Item -LiteralPath $finder -Force -ErrorAction SilentlyContinue
+    throw "Downloaded strict Rec Room client identifier failed PowerShell syntax validation."
+  }
+  return $finder
+}
+
+function Invoke-ClientIdentifier([string]$Candidate = "") {
+  $finder = Ensure-ClientIdentifier
+  $stdout = Join-Path $env:TEMP ("flux-recroom-identify-" + [guid]::NewGuid().ToString("N") + ".json")
+  $stderr = "$stdout.err"
+  try {
+    $args = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$finder`"", "-AsJson")
+    if ($Candidate) { $args += @("-Root", "`"$Candidate`"") } else { $args += "-Scan" }
+    $process = Start-Process -FilePath "powershell.exe" -ArgumentList $args -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    if ($process.ExitCode -ne 0) {
+      $err = Get-Content -LiteralPath $stderr -Raw -ErrorAction SilentlyContinue
+      throw "Rec Room client identifier failed with exit $($process.ExitCode): $err"
+    }
+    $raw = Get-Content -LiteralPath $stdout -Raw
+    try { return $raw | ConvertFrom-Json } catch { throw "Rec Room client identifier returned invalid JSON: $raw" }
+  } finally {
+    Remove-Item -LiteralPath $stdout, $stderr -Force -ErrorAction SilentlyContinue
+  }
 }
 
 function Resolve-ClientDir {
-  $candidates = New-Object System.Collections.Generic.List[string]
-  if ($env:FLUX_RECROOM_CLIENT_DIR) { $candidates.Add([string]$env:FLUX_RECROOM_CLIENT_DIR) }
-  if ($script:cfg.clientDir) { $candidates.Add([string]$script:cfg.clientDir) }
-  if ($env:LOCALAPPDATA) { $candidates.Add((Join-Path $env:LOCALAPPDATA "FluxRecRoom\May 19 2022")) }
-  $candidates.Add("C:\Games\FluxRecRoom\May 19 2022")
-  foreach ($candidate in $candidates | Select-Object -Unique) {
-    if (Test-ClientLayoutAt $candidate) {
-      $resolved = (Resolve-Path $candidate).Path
-      Set-CfgProperty $script:cfg "clientDir" $resolved
-      return $resolved
-    }
+  if ($script:ClientIdentity -and $script:ClientIdentity.playableBy2022Agent) {
+    return [string]$script:ClientIdentity.root
   }
-  foreach ($root in @((Join-Path $env:USERPROFILE "Downloads"), (Join-Path $env:USERPROFILE "Desktop"))) {
-    if (-not (Test-Path $root)) { continue }
-    $exe = Get-ChildItem -Path $root -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -in @("RecRoom.exe", "Recroom_Release.exe") -and $_.DirectoryName -match '(?i)(8751857|2022|May.?19|Rec.?Room)' } | Select-Object -First 1
-    if ($exe -and (Test-ClientLayoutAt $exe.Directory.FullName)) {
-      $resolved = $exe.Directory.FullName
+
+  $candidate = ""
+  if ($env:FLUX_RECROOM_CLIENT_DIR) { $candidate = [string]$env:FLUX_RECROOM_CLIENT_DIR }
+  elseif ($script:cfg.clientDir) { $candidate = [string]$script:cfg.clientDir }
+
+  $scan = Invoke-ClientIdentifier $candidate
+  $target = @($scan.clients | Where-Object { $_.kind -eq "target-2022" -and $_.playableBy2022Agent }) | Select-Object -First 1
+  if ($target) {
+    $resolved = [string]$target.root
+    $script:ClientIdentity = $target
+    $env:FLUX_RECROOM_CLIENT_DIR = $resolved
+    if ([string]$script:cfg.clientDir -ne $resolved) {
       Set-CfgProperty $script:cfg "clientDir" $resolved
-      return $resolved
+      Save-Config $script:cfg
     }
+    Write-Host "Strict client identity accepted: build 8751857 / manifest 6337851004861751095 at $resolved" -ForegroundColor Green
+    return $resolved
   }
-  throw "May 19 2022 Rec Room client was not found. Run bootstrap-recroom-host.ps1 or set FLUX_RECROOM_CLIENT_DIR to your legally obtained build 8751857 folder."
+
+  $exact2023 = @($scan.clients | Where-Object { $_.kind -eq "fluxrec-2023" }) | Select-Object -First 1
+  if ($exact2023) {
+    throw "Exact FluxRec March 7 2023 build 10679392 detected at '$($exact2023.root)'. This agent targets May 19 2022 and will not patch a different IL2CPP build as 2022."
+  }
+  $claimed2023 = @($scan.clients | Where-Object { $_.kind -eq "unverified-2023" }) | Select-Object -First 1
+  if ($claimed2023) {
+    throw "A folder claims the March 2023 Rec Room build at '$($claimed2023.root)', but its pinned FluxRec hashes do not match. Refusing to launch it."
+  }
+  $unknown = @($scan.clients | Where-Object { $_.kind -eq "unknown" }) | Select-Object -First 1
+  if ($unknown) {
+    throw "Unknown Rec Room client at '$($unknown.root)' (exe SHA256 $($unknown.fingerprint.exeSha256)). It is not verified as build 8751857, so this host will not advertise it as playable."
+  }
+  throw "No verified May 19 2022 Rec Room client was found. Set FLUX_RECROOM_CLIENT_DIR/clientDir to the legally obtained build 8751857 folder, or place that build under an exact 8751857 / 6337851004861751095 / May 19 2022 path."
 }
 
 function Api-Get([string]$Path) {
@@ -255,13 +309,14 @@ $capacity = if ($script:cfg.capacity) { [Math]::Max(1, [Math]::Min(8, [int]$scri
 Write-Host "Flux Rec Room Windows Host" -ForegroundColor Cyan
 Write-Host "Target build: May 19 2022 (8751857)"
 Write-Host "Client: $($layout.exe)"
+Write-Host "Client identity: $($script:ClientIdentity.confidence) / manifest $($script:ClientIdentity.manifestId)"
 Write-Host "Broker: $($script:cfg.server)"
 Write-Host "Client redirect: verified ($($redirect.preparedOccurrences) local endpoint occurrence(s))"
 Write-Host "Browser stream: automatic HTTPS tunnel when a session starts"
 
 $register = Api-Post "/api/recroom/hosts/register" @{
   hostId = [string]$script:cfg.hostId; name = [string]$script:cfg.name; builds = @($TargetBuild); capacity = $capacity
-  metadata = @{ computer = $env:COMPUTERNAME; os = [Environment]::OSVersion.VersionString; clientDir = [string]$script:cfg.clientDir; browserStream = $true; touchControls = $true; targetSteamBuild = "8751857"; redirectReady = $true; redirectOccurrences = [int]$redirect.preparedOccurrences; localProxyPort = 81 }
+  metadata = @{ computer = $env:COMPUTERNAME; os = [Environment]::OSVersion.VersionString; clientDir = [string]$script:cfg.clientDir; browserStream = $true; touchControls = $true; targetSteamBuild = "8751857"; targetManifest = "6337851004861751095"; identityConfidence = [string]$script:ClientIdentity.confidence; exeSha256 = [string]$script:ClientIdentity.fingerprint.exeSha256; redirectReady = $true; redirectOccurrences = [int]$redirect.preparedOccurrences; localProxyPort = 81 }
 }
 Write-Host "Registered host $($register.hostId)." -ForegroundColor Green
 
@@ -271,7 +326,7 @@ while ($true) {
     if (($now - $script:LastHeartbeat).TotalSeconds -ge 10) {
       $gameRunning = [bool]($script:GameProcess -and -not $script:GameProcess.HasExited)
       [void](Api-Post "/api/recroom/hosts/$($script:cfg.hostId)/heartbeat" @{
-        metadata = @{ gameRunning = $gameRunning; activeSessionId = $script:ActiveSessionId; clientReady = $true; redirectReady = $true; redirectOccurrences = [int]$script:RedirectState.preparedOccurrences; browserStream = $true; touchControls = $true }
+        metadata = @{ gameRunning = $gameRunning; activeSessionId = $script:ActiveSessionId; clientReady = $true; clientIdentity = [string]$script:ClientIdentity.confidence; clientExeSha256 = [string]$script:ClientIdentity.fingerprint.exeSha256; redirectReady = $true; redirectOccurrences = [int]$script:RedirectState.preparedOccurrences; browserStream = $true; touchControls = $true }
       })
       $script:LastHeartbeat = $now
     }
@@ -289,7 +344,7 @@ while ($true) {
     try {
       [void](Api-Post "/api/recroom/hosts/register" @{
         hostId = [string]$script:cfg.hostId; name = [string]$script:cfg.name; builds = @($TargetBuild); capacity = $capacity
-        metadata = @{ computer = $env:COMPUTERNAME; clientReady = $true; redirectReady = $true; redirectOccurrences = [int]$script:RedirectState.preparedOccurrences; browserStream = $true; touchControls = $true }
+        metadata = @{ computer = $env:COMPUTERNAME; clientReady = $true; clientIdentity = [string]$script:ClientIdentity.confidence; clientExeSha256 = [string]$script:ClientIdentity.fingerprint.exeSha256; redirectReady = $true; redirectOccurrences = [int]$script:RedirectState.preparedOccurrences; browserStream = $true; touchControls = $true }
       })
     } catch {}
   }
