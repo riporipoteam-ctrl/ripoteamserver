@@ -1,0 +1,84 @@
+name: Rec Room Service Hydration CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hf-space/recroom_service_extra_aliases.py"
+      - "hf-space/recroom_autoload.py"
+      - ".github/workflows/recroom-service-hydration-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hydration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check fastapi 'httpx<0.28' python-multipart
+      - name: Exercise stripped hydration service paths
+        run: |
+          set -euo pipefail
+          PYTHONPATH=hf-space python - <<'PY'
+          import hashlib, tempfile, time
+          from pathlib import Path
+          from fastapi import FastAPI
+          from fastapi.testclient import TestClient
+          from recroom_gateway import NativeSession, RecRoomGateway
+          from recroom_service_extra_aliases import install_recroom_service_extra_alias_routes
+
+          gateway=RecRoomGateway(Path(tempfile.mkdtemp(prefix='rr-hydration-')))
+          gateway._write_recroom_state=lambda _session: None
+          token='hydration-native-token'
+          session=NativeSession(
+              token=token,uid='hydrate-user',email='hydrate@example.com',username='hydrate_player',
+              display_name='Hydrate Player',account_id=333,is_admin=False,firebase_token='ci',
+              expires_at=time.time()+3600,state={}
+          )
+          gateway.sessions[hashlib.sha256(token.encode()).hexdigest()]=session
+          app=FastAPI()
+          install_recroom_service_extra_alias_routes(app,gateway)
+          c=TestClient(app); h={'authorization':f'Bearer {token}'}
+
+          assert c.get('/playersettings',headers=h).json()==[]
+          put=c.put('/playersettings',headers=h,data={'key':'LocomotionMode','value':'Walk'})
+          assert put.status_code==200,put.text
+          settings=c.get('/playersettings',headers=h).json()
+          assert settings==[{'Key':'LocomotionMode','Value':'Walk'}],settings
+          put2=c.put('/playersettings/playersettings',headers=h,json=[{'Key':'SnapTurn','Value':'1'}])
+          assert put2.status_code==200,put2.text
+          assert c.get('/playersettings/playersettings',headers=h).json()==[{'Key':'SnapTurn','Value':'1'}]
+
+          list_paths=(
+              '/roomInventory/player','/roomInventory/room/13','/roomInventory/room/13/player',
+              '/roomInventoryItemTags/room/13','/roomOffer/room/13','/roomGiftDropShops/room/13',
+              '/api/catalog/v1/all','/purchasecampaign/allcurrent/v2','/api/purchasecampaign/allcurrent/v2',
+              '/club/mine/member','/subscription/mine/member','/announcements/v2/mine/unread',
+              '/announcements/v2/subscription/mine/unread'
+          )
+          for path in list_paths:
+              r=c.get(path,headers=h); assert r.status_code==200,(path,r.text); assert isinstance(r.json(),list),(path,r.text)
+
+          object_paths=(
+              '/roomOffer/room/13/purchaseCounts','/roomEconConfig/13','/hub/v1',
+              '/crm/me/config/v3','/club/home/me'
+          )
+          for path in object_paths:
+              r=c.get(path,headers=h); assert r.status_code==200,(path,r.text); assert isinstance(r.json(),dict),(path,r.text)
+
+          negotiate=c.post('/hub/v1/negotiate',headers=h,json={})
+          assert negotiate.status_code==200 and isinstance(negotiate.json(),dict),negotiate.text
+
+          print('RECROOM_SERVICE_PLAYER_SETTINGS_OK=true')
+          print('RECROOM_SERVICE_ECON_HYDRATION_OK=true')
+          print('RECROOM_SERVICE_COMMERCE_HYDRATION_OK=true')
+          print('RECROOM_SERVICE_NOTIFICATIONS_HYDRATION_OK=true')
+          print('RECROOM_SERVICE_CLUB_HYDRATION_OK=true')
+          PY
