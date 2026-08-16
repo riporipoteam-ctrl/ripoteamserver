@@ -79,7 +79,7 @@ if (-not $clientDir -and $TrySteamDownload) {
 
 if (-not $clientDir) {
   $identified = Get-IdentifiedClients
-  $details = @($identified | ForEach-Object { "[$($_.kind)] $($_.root) — $($_.reason)" }) -join "`n"
+  $details = @($identified | ForEach-Object { "[$($_.kind)] $($_.root) - $($_.reason)" }) -join "`n"
   if (-not $details) { $details = "No complete Rec Room IL2CPP clients were detected." }
   throw "No strictly verified May 19 2022 client is available. A playable host requires depot 471711 / manifest 6337851004861751095 with a valid DepotDownloader manifest checksum, or a licensed Steam download through -TrySteamDownload.`n$details"
 }
