@@ -1,0 +1,33 @@
+name: Probe RecAgain May 2022 Download
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/probe-recagain-download.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify archive endpoint without downloading full game
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://archive.recagain.site/download/2022-05-19T06-50-09Z'
+          echo '=== HEAD ==='
+          curl -sSIL --max-time 60 -A 'RipoTeamArchiveProbe/1.0' "$url" | sed -n '1,120p'
+          echo '=== FIRST 8 BYTES ==='
+          curl -fsSL --max-time 60 -A 'RipoTeamArchiveProbe/1.0' -H 'Range: bytes=0-7' "$url" -o /tmp/prefix.bin
+          python3 - <<'PY'
+          data=open('/tmp/prefix.bin','rb').read(8)
+          print('prefix_hex=', data.hex())
+          print('zip_magic=', data.startswith(b'PK'))
+          if not data.startswith(b'PK'):
+              raise SystemExit('Archive endpoint did not begin with ZIP magic')
+          PY
