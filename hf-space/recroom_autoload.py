@@ -33,8 +33,6 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         public_url = os.environ.get("RECROOM_PUBLIC_BASE_URL", "https://echoxr-ripoteam-cloud-pc.hf.space").rstrip("/")
         os.environ.setdefault("RECROOM_GATEWAY_URL", public_url)
         os.environ.setdefault("RECROOM_WINE_CLIENT_ARCHIVE_URL", _DEFAULT_MAY_2022_ARCHIVE)
-        # A Space restart wipes the local game image; a player launch should wait
-        # for the automatic exact-build restore instead of expiring or failing.
         os.environ.setdefault("RECROOM_STARTING_TTL_SECONDS", "900")
         os.environ.setdefault("RECROOM_CLIENT_WAIT_SECONDS", "720")
 
@@ -55,13 +53,10 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         from recroom_route_order import stabilize_recroom_route_order
         from recroom_broker import install_recroom_broker_routes
 
-        # sitecustomize.py starts this autoloader in the production Gradio Space.
-        # Apply all RecRoomWinePool compatibility patches BEFORE the pool is
-        # constructed: hardened wineboot, render/audio runtime fixes, plus the
-        # real build-8751857 RecNet v2 nameserver bootstrap recovered from IL2CPP.
         import recroom_wine_prefix_fix  # noqa: F401
         import recroom_wine_runtime_fix  # noqa: F401
         import recroom_nameserver_fix  # noqa: F401
+        import recroom_black_viewport_fix  # noqa: F401
         from recroom_vm_bridge import attach_recroom_vm_pool
         from recroom_build_fingerprint import guard_wine_pool
         from recroom_client_installer import install_recroom_client_installer_routes

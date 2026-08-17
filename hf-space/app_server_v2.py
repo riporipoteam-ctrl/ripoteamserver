@@ -10,12 +10,12 @@ from recroom_build_fingerprint import guard_wine_pool
 from recroom_capture import install_recroom_capture_routes
 from recroom_client_installer import install_recroom_client_installer_routes
 from recroom_gateway import RecRoomGateway, install_recroom_gateway_routes
+from recroom_launch_wait_fix import install_launch_wait_fix
 from recroom_public import install_recroom_public_routes
-# Apply the exact-client Wine compatibility patches before the pool is
-# constructed: hardened prefix creation plus build-8751857's RecNet v2
-# nameserver bootstrap/response contract.
 import recroom_wine_prefix_fix  # noqa: F401
+import recroom_wine_runtime_fix  # noqa: F401
 import recroom_nameserver_fix  # noqa: F401
+import recroom_black_viewport_fix  # noqa: F401
 from recroom_vm_bridge import attach_recroom_vm_pool
 from server_live_broadcaster import ServerLiveBroadcaster, install_server_live_routes
 
@@ -37,13 +37,12 @@ if _admin_token:
     os.environ.setdefault("RECROOM_BROKER_KEY", _admin_token)
     os.environ.setdefault("RECROOM_HOST_KEY", _admin_token)
 
-# Players never download the native client. RipoTeamServer bootstraps the exact
-# May 19 2022 archive itself and activates it only after immutable build-8751857
-# binary fingerprints match.
 os.environ.setdefault(
     "RECROOM_WINE_CLIENT_ARCHIVE_URL",
     "https://archive.recagain.site/download/2022-05-19T06-50-09Z",
 )
+os.environ.setdefault("RECROOM_STARTING_TTL_SECONDS", "900")
+os.environ.setdefault("RECROOM_CLIENT_WAIT_SECONDS", "720")
 
 app.add_middleware(
     CORSMiddleware,
@@ -78,5 +77,6 @@ if RECROOM_WINE_POOL is not None:
         RECROOM_WINE_POOL,
         DATA_DIR / "recroom-client-installer",
     )
+    install_launch_wait_fix(RECROOM_BROKER, RECROOM_WINE_POOL, RECROOM_CLIENT_INSTALLER)
 RECROOM_CAPTURE = install_recroom_capture_routes(app, RECROOM_BROKER, DATA_DIR / "recroom-captures")
 install_recroom_public_routes(app, RECROOM_BROKER, RECROOM_CAPTURE)
