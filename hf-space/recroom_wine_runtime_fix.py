@@ -17,7 +17,7 @@ from PIL import Image, ImageStat
 from recroom_wine_pool import RecRoomWinePool, WineInstance
 
 
-_RUNTIME_REVISION = "render-audio-v1"
+_RUNTIME_REVISION = "render-audio-v2-bitblt"
 _ORIGINAL_START_AUDIO = RecRoomWinePool._start_audio
 _ORIGINAL_DESTROY = RecRoomWinePool.destroy
 _ORIGINAL_PROGRESS = RecRoomWinePool.progress
@@ -41,7 +41,7 @@ def _terminate_process(process: subprocess.Popen[Any] | None, timeout: float = 4
 
 
 def _start_audio_with_clock(self: RecRoomWinePool, instance: WineInstance) -> None:
-    """Keep the per-session Pulse monitor clocked while preserving game audio."""
+    """Create and unsuspend the per-session Pulse sink without extra startup load."""
     _ORIGINAL_START_AUDIO(self, instance)
     if not self.pactl:
         return
@@ -57,6 +57,14 @@ def _start_audio_with_clock(self: RecRoomWinePool, instance: WineInstance) -> No
             subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
         except Exception:
             pass
+    setattr(instance, "silence_process", None)
+
+
+def _start_silence_feeder(self: RecRoomWinePool, instance: WineInstance) -> None:
+    """Clock the monitor only after the game has produced a real frame."""
+    existing = getattr(instance, "silence_process", None)
+    if existing and existing.poll() is None:
+        return
 
     log = (instance.work_dir / "audio-silence.log").open("ab", buffering=0)
     pacat = shutil.which("pacat")
@@ -238,12 +246,41 @@ def _provision_render_checked(
             if not exe.is_file():
                 raise RuntimeError("Rec Room executable was not cloned into the Wine sandbox.")
 
+            # Unity's D3D11 BitBlt swapchain is the conservative Windows 7-style
+            # presentation path. Wine/Xvfb does not provide a normal Windows DWM,
+            # so prefer BitBlt over a modern flip-model swapchain. OpenGL is kept
+            # opt-in because the software GL path can recycle a small Space under
+            # load before the broker can report a useful failure.
             profiles: list[tuple[str, list[str]]] = [
-                ("glcore", ["-force-glcore"]),
-                ("d3d11-singlethreaded", ["-force-d3d11", "-force-d3d11-singlethreaded"]),
-                ("d3d11-gfx-direct", ["-force-d3d11", "-force-gfx-direct"]),
-                ("d3d11", ["-force-d3d11"]),
+                (
+                    "d3d11-bitblt-singlethreaded",
+                    [
+                        "-force-d3d11",
+                        "-force-d3d11-bitblt-model",
+                        "-force-d3d11-singlethreaded",
+                        "-force-gfx-direct",
+                    ],
+                ),
+                (
+                    "d3d11-bitblt-no-singlethreaded",
+                    [
+                        "-force-d3d11",
+                        "-force-d3d11-bitblt-model",
+                        "-force-d3d11-no-singlethreaded",
+                    ],
+                ),
+                (
+                    "d3d11-bitblt",
+                    ["-force-d3d11", "-force-d3d11-bitblt-model"],
+                ),
+                (
+                    "d3d11-singlethreaded",
+                    ["-force-d3d11", "-force-d3d11-singlethreaded"],
+                ),
             ]
+            if os.environ.get("RECROOM_ENABLE_GLCORE_FALLBACK", "0") == "1":
+                profiles.append(("glcore", ["-force-glcore", "-force-clamped"]))
+
             diagnostics: list[str] = []
             env = self._wine_env(instance)
             progress("launching-game", 68)
@@ -307,6 +344,7 @@ def _provision_render_checked(
                     if rendered:
                         selected = True
                         setattr(instance, "render_metrics", last_metrics)
+                        _start_silence_feeder(self, instance)
                         progress("ready", 100)
                         on_ready(self.public_stream_url(instance))
                         break
@@ -352,7 +390,8 @@ def _capability_with_runtime_marker(self: RecRoomWinePool) -> dict[str, Any]:
     payload = dict(_ORIGINAL_CAPABILITY(self))
     payload["runtimePatch"] = _RUNTIME_REVISION
     payload["renderReadyCheck"] = True
-    payload["audioClock"] = "pulse-null-sink-with-silence-feeder"
+    payload["audioClock"] = "pulse-null-sink-silence-after-visible-frame"
+    payload["glcoreFallbackDefault"] = False
     return payload
 
 
