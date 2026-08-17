@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import mmap
 import os
 import shutil
 import signal
@@ -14,14 +15,17 @@ from typing import Any, Callable
 
 from PIL import Image, ImageStat
 
-from recroom_wine_pool import RecRoomWinePool, WineInstance
+from recroom_wine_pool import RecRoomWinePool, SUFFIX_BY_HOST, WineInstance
 
 
-_RUNTIME_REVISION = "render-audio-v2-bitblt"
+_RUNTIME_REVISION = "render-audio-v3-fast-redirect"
 _ORIGINAL_START_AUDIO = RecRoomWinePool._start_audio
 _ORIGINAL_DESTROY = RecRoomWinePool.destroy
 _ORIGINAL_PROGRESS = RecRoomWinePool.progress
 _ORIGINAL_CAPABILITY = RecRoomWinePool.capability
+_ORIGINAL_PATCH_CLIENT = RecRoomWinePool._patch_client
+_PATCH_SCAN_LOCK = threading.Lock()
+_PATCH_CANDIDATES: dict[tuple[str, int], tuple[str, ...]] = {}
 
 
 def _terminate_process(process: subprocess.Popen[Any] | None, timeout: float = 4.0) -> None:
@@ -118,6 +122,126 @@ def _start_silence_feeder(self: RecRoomWinePool, instance: WineInstance) -> None
         time.sleep(0.5)
 
     setattr(instance, "silence_process", process)
+
+
+def _patch_cache_key(self: RecRoomWinePool) -> tuple[str, int]:
+    manifest = self.client_dir / ".DepotDownloader" / "471711_6337851004861751095.manifest"
+    try:
+        stamp = manifest.stat().st_mtime_ns
+    except OSError:
+        stamp = 0
+    return str(self.client_dir.resolve()), stamp
+
+
+def _redirect_candidate_paths(self: RecRoomWinePool) -> tuple[str, ...]:
+    """Find RecNet-bearing files once on the immutable exact-build client.
+
+    The old code read every eligible file into RAM and repeatedly copied each
+    full buffer for every hostname/encoding pair. Build 8751857 is ~6.3 GB, so
+    that made the 46% redirect phase take minutes per sandbox. Memory-map the
+    immutable source once, cache only matching relative paths, then each sandbox
+    patches just those files.
+    """
+    key = _patch_cache_key(self)
+    with _PATCH_SCAN_LOCK:
+        cached = _PATCH_CANDIDATES.get(key)
+        if cached is not None:
+            return cached
+
+        allowed_ext = {
+            ".exe", ".dll", ".dat", ".bytes", ".json", ".txt", ".config", ".xml",
+            ".assets", ".resource", ".ress", ".bin", ".manifest",
+        }
+        allowed_names = {"globalgamemanagers", "globalgamemanagers.assets"}
+        max_size = 768 * 1024 * 1024
+        ascii_marker = b".rec.net"
+        wide_marker = ".rec.net".encode("utf-16le")
+        matches: list[str] = []
+        root = self.client_dir
+
+        for dirpath, dirs, files in os.walk(root):
+            dirs[:] = [name for name in dirs if name not in {".git", "Logs", "Crashes"}]
+            for name in files:
+                path = Path(dirpath) / name
+                if name.endswith((".flux-backup", ".update-backup", ".update-new")):
+                    continue
+                try:
+                    stat = path.stat()
+                except OSError:
+                    continue
+                if stat.st_size <= 0 or stat.st_size > max_size:
+                    continue
+                if path.suffix.lower() not in allowed_ext and name.lower() not in allowed_names:
+                    continue
+                try:
+                    with path.open("rb") as handle:
+                        with mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ) as mapped:
+                            if mapped.find(ascii_marker) < 0 and mapped.find(wide_marker) < 0:
+                                continue
+                except (OSError, ValueError):
+                    continue
+                matches.append(path.relative_to(root).as_posix())
+
+        result = tuple(matches)
+        _PATCH_CANDIDATES[key] = result
+        print(f"Rec Room fast redirect scan found {len(result)} RecNet-bearing file(s).", flush=True)
+        return result
+
+
+def _patch_client_fast(self: RecRoomWinePool, root: Path, local_base: str) -> int:
+    if len(local_base.encode("ascii")) != len("http://127.0.0.1:81"):
+        raise RuntimeError("Wine sandbox loopback address is not patch-length safe.")
+
+    candidates = _redirect_candidate_paths(self)
+    if not candidates:
+        # Keep a correctness fallback if a future client layout somehow stores
+        # service URLs in an unexpected form.
+        return _ORIGINAL_PATCH_CLIENT(self, root, local_base)
+
+    changed_total = 0
+    prepared_total = 0
+    for relative in candidates:
+        path = root / relative
+        try:
+            stat = path.stat()
+            patched = bytearray(path.read_bytes())
+        except OSError:
+            continue
+
+        changed = False
+        for host, suffix in SUFFIX_BY_HOST.items():
+            source = f"https://{host}.rec.net"
+            default = f"http://127.0.0.1:81{suffix}"
+            target = f"{local_base}{suffix}"
+            for encoding in ("ascii", "utf-16le"):
+                source_bytes = source.encode(encoding)
+                target_bytes = target.encode(encoding)
+                if len(source_bytes) != len(target_bytes):
+                    raise RuntimeError(f"Unsafe Wine redirect length for {host}.")
+
+                for candidate in (source_bytes, default.encode(encoding)):
+                    start = 0
+                    while True:
+                        index = patched.find(candidate, start)
+                        if index < 0:
+                            break
+                        patched[index:index + len(candidate)] = target_bytes
+                        start = index + len(candidate)
+                        changed = True
+                        changed_total += 1
+
+                if patched.find(target_bytes) >= 0:
+                    prepared_total += 1
+
+        if changed:
+            temp = path.with_name(path.name + f".{os.getpid()}.winepatch")
+            temp.write_bytes(patched)
+            os.chmod(temp, stat.st_mode)
+            temp.replace(path)
+
+    if changed_total <= 0 and prepared_total <= 0:
+        raise RuntimeError("The Rec Room client did not contain any known rec.net service URLs to redirect.")
+    return max(changed_total, prepared_total)
 
 
 def _frame_metrics(instance: WineInstance) -> tuple[float, int, float]:
@@ -246,11 +370,6 @@ def _provision_render_checked(
             if not exe.is_file():
                 raise RuntimeError("Rec Room executable was not cloned into the Wine sandbox.")
 
-            # Unity's D3D11 BitBlt swapchain is the conservative Windows 7-style
-            # presentation path. Wine/Xvfb does not provide a normal Windows DWM,
-            # so prefer BitBlt over a modern flip-model swapchain. OpenGL is kept
-            # opt-in because the software GL path can recycle a small Space under
-            # load before the broker can report a useful failure.
             profiles: list[tuple[str, list[str]]] = [
                 (
                     "d3d11-bitblt-singlethreaded",
@@ -392,6 +511,7 @@ def _capability_with_runtime_marker(self: RecRoomWinePool) -> dict[str, Any]:
     payload["renderReadyCheck"] = True
     payload["audioClock"] = "pulse-null-sink-silence-after-visible-frame"
     payload["glcoreFallbackDefault"] = False
+    payload["fastRedirectPatch"] = True
     return payload
 
 
@@ -404,6 +524,7 @@ def _destroy_with_audio_clock(self: RecRoomWinePool, host_id: str) -> None:
 
 
 RecRoomWinePool._start_audio = _start_audio_with_clock  # type: ignore[method-assign]
+RecRoomWinePool._patch_client = _patch_client_fast  # type: ignore[method-assign]
 RecRoomWinePool.provision = _provision_render_checked  # type: ignore[method-assign]
 RecRoomWinePool.progress = _progress_with_runtime  # type: ignore[method-assign]
 RecRoomWinePool.capability = _capability_with_runtime_marker  # type: ignore[method-assign]
