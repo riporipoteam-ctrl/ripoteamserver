@@ -15,10 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Read live Wine runtime capability
+      - name: Read live Wine runtime capability after installer mount fix
         shell: bash
         run: |
           set -euo pipefail
+          echo "Probe generation: installer-mount-fix"
           url="https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-wine/capabilities?ts=$(date +%s)"
           curl -fsS --max-time 60 -H 'Cache-Control: no-cache' "$url" -o /tmp/cap.json
           python3 -m json.tool /tmp/cap.json
