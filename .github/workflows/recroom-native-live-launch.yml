@@ -69,10 +69,10 @@ jobs:
             -H "authorization: Bearer $FIREBASE_TOKEN" \
             -H 'content-type: application/json' \
             --data '{"buildId":"recroom-2022-05-19"}')"
-          jq '.' /tmp/rr-live/session-create.json
+          jq '{ok,mode,sessionId,state,hostId,buildId,provider,phase,progress,error}' /tmp/rr-live/session-create.json
           test "$CREATE_CODE" = '202'
           SESSION_ID="$(jq -r '.sessionId // empty' /tmp/rr-live/session-create.json)"
-          ACCESS_TOKEN="$(jq -r '.accessToken // empty' /tmp/rr-live/session-create.json)"
+          ACCESS_TOKEN="$(jq -r '.sessionAccessToken // .accessToken // empty' /tmp/rr-live/session-create.json)"
           test -n "$SESSION_ID"
           test -n "$ACCESS_TOKEN"
           echo "RECROOM_SESSION_ID=$SESSION_ID"
@@ -94,7 +94,7 @@ jobs:
               break
             fi
             if [ "$STATE" = 'failed' ]; then
-              jq '.' /tmp/rr-live/session-status.json
+              jq '{sessionId,state,provider,phase,progress,error}' /tmp/rr-live/session-status.json
               echo '::error::Rec Room runtime reported failed state.'
               exit 1
             fi
@@ -108,7 +108,7 @@ jobs:
           echo 'Requesting screenshot from the live Rec Room sandbox...'
           CAP_CODE="$(curl -sS --max-time 30 -o /tmp/rr-live/capture-create.json -w '%{http_code}' \
             -X POST "$SPACE_URL/api/recroom-public/sessions/$SESSION_ID/captures?accessToken=$ACCESS_TOKEN")"
-          jq '.' /tmp/rr-live/capture-create.json
+          jq '{captureId,state,error}' /tmp/rr-live/capture-create.json
           test "$CAP_CODE" = '202'
           CAPTURE_ID="$(jq -r '.captureId // empty' /tmp/rr-live/capture-create.json)"
           test -n "$CAPTURE_ID"
@@ -125,7 +125,7 @@ jobs:
               break
             fi
             if [ "$CAP_STATE" = 'failed' ]; then
-              jq '.' /tmp/rr-live/capture-status.json
+              jq '{captureId,state,error}' /tmp/rr-live/capture-status.json
               exit 1
             fi
             sleep 2
