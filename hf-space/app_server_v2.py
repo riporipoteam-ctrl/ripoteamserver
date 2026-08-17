@@ -11,6 +11,9 @@ from recroom_capture import install_recroom_capture_routes
 from recroom_client_installer import install_recroom_client_installer_routes
 from recroom_gateway import RecRoomGateway, install_recroom_gateway_routes
 from recroom_public import install_recroom_public_routes
+# Import for its deliberate RecRoomWinePool method patch before the pool is
+# constructed. It uses the proven wineboot --init + wineserver wait sequence.
+import recroom_wine_prefix_fix  # noqa: F401
 from recroom_vm_bridge import attach_recroom_vm_pool
 from server_live_broadcaster import ServerLiveBroadcaster, install_server_live_routes
 
@@ -25,10 +28,6 @@ RECROOM_CORS_ORIGINS = [
     if origin.strip()
 ]
 
-# The live compatibility gateway is hosted by this same Space. Reuse the
-# existing ADMIN_TOKEN as the private host/broker key when dedicated Rec Room
-# keys have not been configured, so the deployment does not require another HF
-# secret just to start.
 _SPACE_URL = os.environ.get("RECROOM_PUBLIC_BASE_URL", "https://echoxr-ripoteam-cloud-pc.hf.space").rstrip("/")
 os.environ.setdefault("RECROOM_GATEWAY_URL", _SPACE_URL)
 _admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
@@ -36,18 +35,14 @@ if _admin_token:
     os.environ.setdefault("RECROOM_BROKER_KEY", _admin_token)
     os.environ.setdefault("RECROOM_HOST_KEY", _admin_token)
 
-# Browser players never download the Windows client. When no custom server-side
-# source is configured, bootstrap the exact May 19 2022 archive source selected
-# for this project. Activation is blocked until the pinned build-8751857 binary
-# SHA-256 fingerprints match.
+# Players never download the native client. RipoTeamServer bootstraps the exact
+# May 19 2022 archive itself and activates it only after immutable build-8751857
+# binary fingerprints match.
 os.environ.setdefault(
     "RECROOM_WINE_CLIENT_ARCHIVE_URL",
     "https://archive.recagain.site/download/2022-05-19T06-50-09Z",
 )
 
-# Flux is published as a static GitHub Pages app, so its browser must be able to
-# call the authenticated Rec Room control plane directly. Authentication remains
-# token-based; no cross-origin cookies are used or accepted here.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=RECROOM_CORS_ORIGINS,
@@ -66,8 +61,6 @@ SERVER_LIVE_BROADCASTER = ServerLiveBroadcaster(
 )
 install_server_live_routes(app, SERVER_LIVE_BROADCASTER)
 
-# Firebase-token exchange, profile/save state, May-2022 compatibility routes and
-# Photon config live on the same public service the server-side runtime uses.
 RECROOM_GATEWAY = RecRoomGateway(DATA_DIR / "recroom-gateway")
 install_recroom_gateway_routes(app, RECROOM_GATEWAY)
 
@@ -76,10 +69,6 @@ RECROOM_VM_POOL = attach_recroom_vm_pool(app, RECROOM_BROKER, DATA_DIR)
 RECROOM_WINE_POOL = getattr(RECROOM_BROKER, "wine_pool", None)
 RECROOM_CLIENT_INSTALLER = None
 if RECROOM_WINE_POOL is not None:
-    # app_server_v2 owns the live Rec Room routes on this Space. Mount the exact
-    # build guard and archive installer here as well; otherwise recroom_autoload
-    # sees /api/recroom-public/status and correctly avoids double-mounting, which
-    # previously meant the installer thread never existed in production.
     guard_wine_pool(RECROOM_WINE_POOL)
     RECROOM_CLIENT_INSTALLER = install_recroom_client_installer_routes(
         app,
