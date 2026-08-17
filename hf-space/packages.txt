@@ -24,6 +24,7 @@ mesa-vulkan-drivers
 mousepad
 novnc
 openbox
+openssl
 pcmanfm
 procps
 psmisc
