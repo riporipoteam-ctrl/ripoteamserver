@@ -15,25 +15,40 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Recheck live Wine runtime after server archive bootstrap
+      - name: Watch live Wine runtime until exact May 2022 client is ready
         shell: bash
         run: |
           set -euo pipefail
-          echo "Probe generation: archive-bootstrap-recheck"
-          url="https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-wine/capabilities?ts=$(date +%s)"
-          curl -fsS --max-time 60 -H 'Cache-Control: no-cache' "$url" -o /tmp/cap.json
-          python3 -m json.tool /tmp/cap.json
-          python3 - <<'PY'
+          base='https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-wine/capabilities'
+          for attempt in $(seq 1 24); do
+            url="$base?ts=$(date +%s)"
+            curl -fsS --max-time 60 -H 'Cache-Control: no-cache' "$url" -o /tmp/cap.json
+            python3 - <<'PY'
           import json
           p=json.load(open('/tmp/cap.json'))
           checks=p.get('checks') or {}
-          print('LIVE_RECROOM_PROVIDER=', p.get('provider'))
-          print('LIVE_RECROOM_SUPPORTED=', p.get('supported'))
-          print('LIVE_RECROOM_READY=', p.get('readyForGame'))
-          print('LIVE_RECROOM_EXACT_BUILD=', p.get('exactBuild'))
-          print('LIVE_RECROOM_CLIENT=', checks.get('client'))
-          print('LIVE_RECROOM_FINGERPRINT=', checks.get('fingerprint'))
-          print('LIVE_RECROOM_MANIFEST=', checks.get('manifest'))
-          print('LIVE_RECROOM_REASON=', p.get('reason'))
-          print('LIVE_RECROOM_CLIENT_DIR=', p.get('clientDir'))
+          print(json.dumps({
+            'provider': p.get('provider'),
+            'readyForGame': p.get('readyForGame'),
+            'exactBuild': p.get('exactBuild'),
+            'client': checks.get('client'),
+            'fingerprint': checks.get('fingerprint'),
+            'manifest': checks.get('manifest'),
+            'reason': p.get('reason'),
+          }, separators=(',', ':')))
           PY
+            if python3 - <<'PY'
+          import json,sys
+          p=json.load(open('/tmp/cap.json'))
+          sys.exit(0 if p.get('readyForGame') is True and p.get('exactBuild') is True else 1)
+          PY
+            then
+              echo 'RECROOM_EXACT_MAY_2022_READY=true'
+              python3 -m json.tool /tmp/cap.json
+              exit 0
+            fi
+            sleep 15
+          done
+          echo 'RECROOM_EXACT_MAY_2022_READY=false'
+          python3 -m json.tool /tmp/cap.json
+          exit 1
