@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+import recroom_https_recnet_fix  # noqa: F401
 from recroom_wine_pool import RecRoomWinePool
 
 
