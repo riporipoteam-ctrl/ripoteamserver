@@ -17,6 +17,8 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from fastapi import Body, Header, HTTPException
 
+from recroom_build_fingerprint import FINGERPRINT, verify_client_root
+
 
 TARGET_MANIFEST = "6337851004861751095"
 TARGET_DEPOT = "471711"
@@ -84,20 +86,34 @@ def _safe_extract_zip(archive: Path, destination: Path) -> None:
                 shutil.copyfileobj(src, dst, length=4 * 1024 * 1024)
 
 
-def _find_client_root(extracted: Path) -> Path:
-    candidates: list[Path] = []
+def _candidate_roots(extracted: Path) -> list[Path]:
+    roots: list[Path] = []
+    seen: set[str] = set()
     for exe_name in ("RecRoom.exe", "Recroom_Release.exe"):
-        candidates.extend(path.parent for path in extracted.rglob(exe_name) if path.is_file())
-    for root in candidates:
-        assembly = root / "GameAssembly.dll"
-        data = next((root / name for name in ("RecRoom_Data", "Recroom_Release_Data") if (root / name).is_dir()), None)
-        metadata = data / "il2cpp_data" / "Metadata" / "global-metadata.dat" if data else None
-        manifest = root / ".DepotDownloader" / f"{TARGET_DEPOT}_{TARGET_MANIFEST}.manifest"
-        if assembly.is_file() and metadata and metadata.is_file() and manifest.is_file():
-            return root
+        for executable in extracted.rglob(exe_name):
+            if not executable.is_file():
+                continue
+            root = executable.parent
+            key = str(root.resolve())
+            if key not in seen:
+                seen.add(key)
+                roots.append(root)
+    return roots
+
+
+def _find_client_root(extracted: Path) -> tuple[Path, dict[str, Any]]:
+    failures: list[str] = []
+    for root in _candidate_roots(extracted):
+        result = verify_client_root(root)
+        if result.get("ok"):
+            return root, result
+        detail = "; ".join(str(item) for item in (result.get("mismatches") or [])[:5])
+        failures.append(f"{root}: {detail or 'fingerprint mismatch'}")
+    suffix = " | ".join(failures[:3])
     raise RuntimeError(
-        "Archive does not contain a verified May 19 2022 Rec Room layout with RecRoom.exe, "
-        "GameAssembly.dll, IL2CPP metadata, and the exact DepotDownloader manifest."
+        f"Archive is not exact Rec Room build {FINGERPRINT['buildId']} / manifest {FINGERPRINT['manifestId']}. "
+        "Pinned RecRoom.exe, Recroom_Release.exe, GameAssembly.dll, UnityPlayer.dll and IL2CPP metadata hashes must match."
+        + (f" Checked: {suffix}" if suffix else " No Rec Room executable was found.")
     )
 
 
@@ -146,6 +162,9 @@ class RecRoomClientInstaller:
                 "updatedAtMs": now,
                 "sourceUrl": source_url,
                 "expectedSha256": bool(expected_sha256),
+                "targetBuild": str(FINGERPRINT["buildId"]),
+                "targetManifest": str(FINGERPRINT["manifestId"]),
+                "targetFingerprint": str(FINGERPRINT["fingerprintSha256"]),
                 "error": None,
             }
             self.active_job_id = job_id
@@ -164,7 +183,7 @@ class RecRoomClientInstaller:
         with httpx.Client(timeout=httpx.Timeout(connect=20.0, read=120.0, write=30.0, pool=20.0), follow_redirects=False) as client:
             for _ in range(6):
                 current = _validate_source_url(current)
-                with client.stream("GET", current, headers={"user-agent": "RipoTeam-RecRoom-ServerInstaller/1.0"}) as response:
+                with client.stream("GET", current, headers={"user-agent": "RipoTeam-RecRoom-ServerInstaller/2.0"}) as response:
                     if response.status_code in {301, 302, 303, 307, 308}:
                         location = response.headers.get("location")
                         if not location:
@@ -210,17 +229,26 @@ class RecRoomClientInstaller:
             if not zipfile.is_zipfile(archive):
                 raise RuntimeError("Client source is not a valid ZIP archive.")
             _safe_extract_zip(archive, extracted)
-            self._set(job_id, state="validating", progress=80)
-            root = _find_client_root(extracted)
+            self._set(job_id, state="validating", progress=76)
+            root, fingerprint = _find_client_root(extracted)
+            self._set(
+                job_id,
+                progress=84,
+                exactBuild=True,
+                buildId=fingerprint.get("buildId"),
+                manifestId=fingerprint.get("manifestId"),
+                fingerprintSha256=fingerprint.get("fingerprintSha256"),
+            )
             shutil.rmtree(install_tmp, ignore_errors=True)
             self._set(job_id, state="installing", progress=88)
             try:
                 root.replace(install_tmp)
             except OSError:
                 shutil.move(str(root), str(install_tmp))
-            check_manifest = install_tmp / ".DepotDownloader" / f"{TARGET_DEPOT}_{TARGET_MANIFEST}.manifest"
-            if not check_manifest.is_file():
-                raise RuntimeError("Exact May 19 2022 DepotDownloader manifest disappeared during install.")
+
+            installed_check = verify_client_root(install_tmp)
+            if not installed_check.get("ok"):
+                raise RuntimeError("Exact May 19 2022 fingerprint changed during install: " + "; ".join(installed_check.get("mismatches") or []))
 
             shutil.rmtree(old, ignore_errors=True)
             if self.pool.client_dir.exists():
@@ -246,7 +274,7 @@ class RecRoomClientInstaller:
                     old_moved = False
                 except OSError:
                     pass
-            self._set(job_id, ok=False, state="failed", error=str(exc)[:1000])
+            self._set(job_id, ok=False, state="failed", error=str(exc)[:1600])
         finally:
             shutil.rmtree(job_dir, ignore_errors=True)
             if old_moved and old.exists() and not self.pool.client_dir.exists():
