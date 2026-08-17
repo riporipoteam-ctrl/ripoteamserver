@@ -53,9 +53,10 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
 
         # sitecustomize.py starts this autoloader in the production Gradio Space.
         # Apply all RecRoomWinePool compatibility patches BEFORE the pool is
-        # constructed: hardened wineboot plus the real build-8751857 RecNet v2
-        # nameserver bootstrap recovered from IL2CPP.
+        # constructed: hardened wineboot, render/audio runtime fixes, plus the
+        # real build-8751857 RecNet v2 nameserver bootstrap recovered from IL2CPP.
         import recroom_wine_prefix_fix  # noqa: F401
+        import recroom_wine_runtime_fix  # noqa: F401
         import recroom_nameserver_fix  # noqa: F401
         from recroom_vm_bridge import attach_recroom_vm_pool
         from recroom_build_fingerprint import guard_wine_pool
