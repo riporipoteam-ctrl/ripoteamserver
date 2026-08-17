@@ -1,0 +1,59 @@
+name: Probe RecAgain May 2022 Page
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/probe-recagain-may2022-page.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect archive page links without downloading client payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://archive.recagain.site/2022-05-19T06-50-09Z'
+          curl -fsSL --max-time 60 -A 'RipoTeamArchiveProbe/1.0' -D /tmp/headers.txt "$url" -o /tmp/page.html
+          echo '=== HEADERS ==='
+          sed -n '1,80p' /tmp/headers.txt
+          echo '=== PAGE BYTES ==='
+          wc -c /tmp/page.html
+          echo '=== TITLE / BUILD TOKENS ==='
+          grep -Eio '<title[^>]*>[^<]*|8751857|6337851004861751095|Under Construction' /tmp/page.html | head -80 || true
+          echo '=== LINKS ==='
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from urllib.parse import urljoin
+          class P(HTMLParser):
+              def __init__(self):
+                  super().__init__(); self.links=[]
+              def handle_starttag(self, tag, attrs):
+                  if tag.lower() not in {'a','link','script'}: return
+                  d=dict(attrs)
+                  value=d.get('href') or d.get('src')
+                  if value: self.links.append(value)
+          html=open('/tmp/page.html','r',encoding='utf-8',errors='replace').read()
+          p=P(); p.feed(html)
+          base='https://archive.recagain.site/2022-05-19T06-50-09Z'
+          seen=set()
+          for raw in p.links:
+              u=urljoin(base,raw)
+              if u in seen: continue
+              seen.add(u)
+              low=u.lower()
+              if any(k in low for k in ('download','file','manifest','torrent','zip','2022-05-19','6337851004861751095','8751857')):
+                  print(u)
+          print('=== ALL SAME-SITE LINKS ===')
+          for u in seen:
+              if u.startswith('https://archive.recagain.site/'):
+                  print(u)
+          PY
+          echo '=== HTML DOWNLOAD TOKENS ==='
+          grep -Eio '.{0,120}(download|torrent|\.zip|\.7z|manifest|files).{0,220}' /tmp/page.html | head -120 || true
