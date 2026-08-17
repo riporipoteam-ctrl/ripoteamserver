@@ -1,10 +1,10 @@
-Hugging Face deployment: skipped
-Hugging Face runtime wait: skipped
+Hugging Face deployment: success
+Hugging Face runtime wait: cancelled
 Hugging Face Space health: skipped
 TikTok OAuth verification: skipped
-Source commit: 700aa93834dcd13f8dbf3271e780d947a6d0dae0
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/32001499070
-Recorded at: 2026-08-17T06:24:18Z
+Source commit: d826f76d063e56d5e04959b6aee325c92d9798a5
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/32001518643
+Recorded at: 2026-08-17T06:25:10Z
 
 ===== space-info.txt =====
 {
@@ -15,7 +15,7 @@ Recorded at: 2026-08-17T06:24:18Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-16T21:10:42+00:00",
+  "last_modified": "2026-08-17T06:24:37+00:00",
   "likes": 0,
   "models": [
     "Salesforce/ctrl"
@@ -23,13 +23,13 @@ Recorded at: 2026-08-17T06:24:18Z
   "private": false,
   "region": "us",
   "runtime": {
-    "stage": "RUNNING",
+    "stage": "RUNNING_BUILDING",
     "hardware": "zero-a10g",
     "requested_hardware": "zero-a10g",
     "sleep_time": 172800,
     "dev_mode": false,
     "raw": {
-      "stage": "RUNNING",
+      "stage": "RUNNING_BUILDING",
       "hardware": {
         "current": "zero-a10g",
         "requested": "zero-a10g"
@@ -51,7 +51,7 @@ Recorded at: 2026-08-17T06:24:18Z
     }
   },
   "sdk": "gradio",
-  "sha": "99fa752c6e2d9a89a1852935ab107c1c26df81d4",
+  "sha": "65ac902b85de03343f1c9900ca9a31f7f64cc77d",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
@@ -135,10 +135,16 @@ Recorded at: 2026-08-17T06:24:18Z
       "rfilename": "pdh_shim.c"
     },
     {
+      "rfilename": "recroom-may-2022-fingerprint.json"
+    },
+    {
       "rfilename": "recroom_autoload.py"
     },
     {
       "rfilename": "recroom_broker.py"
+    },
+    {
+      "rfilename": "recroom_build_fingerprint.py"
     },
     {
       "rfilename": "recroom_capture.py"
