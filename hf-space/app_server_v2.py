@@ -11,9 +11,11 @@ from recroom_capture import install_recroom_capture_routes
 from recroom_client_installer import install_recroom_client_installer_routes
 from recroom_gateway import RecRoomGateway, install_recroom_gateway_routes
 from recroom_public import install_recroom_public_routes
-# Import for its deliberate RecRoomWinePool method patch before the pool is
-# constructed. It uses the proven wineboot --init + wineserver wait sequence.
+# Apply the exact-client Wine compatibility patches before the pool is
+# constructed: hardened prefix creation plus build-8751857's RecNet v2
+# nameserver bootstrap/response contract.
 import recroom_wine_prefix_fix  # noqa: F401
+import recroom_nameserver_fix  # noqa: F401
 from recroom_vm_bridge import attach_recroom_vm_pool
 from server_live_broadcaster import ServerLiveBroadcaster, install_server_live_routes
 
