@@ -1,0 +1,38 @@
+name: Rec Room Live Runtime Now
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/recroom-live-runtime-now.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Read live Wine runtime capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-wine/capabilities?ts=$(date +%s)"
+          curl -fsS --max-time 60 -H 'Cache-Control: no-cache' "$url" -o /tmp/cap.json
+          python3 -m json.tool /tmp/cap.json
+          python3 - <<'PY'
+          import json
+          p=json.load(open('/tmp/cap.json'))
+          checks=p.get('checks') or {}
+          print('LIVE_RECROOM_PROVIDER=', p.get('provider'))
+          print('LIVE_RECROOM_SUPPORTED=', p.get('supported'))
+          print('LIVE_RECROOM_READY=', p.get('readyForGame'))
+          print('LIVE_RECROOM_EXACT_BUILD=', p.get('exactBuild'))
+          print('LIVE_RECROOM_CLIENT=', checks.get('client'))
+          print('LIVE_RECROOM_FINGERPRINT=', checks.get('fingerprint'))
+          print('LIVE_RECROOM_MANIFEST=', checks.get('manifest'))
+          print('LIVE_RECROOM_REASON=', p.get('reason'))
+          print('LIVE_RECROOM_CLIENT_DIR=', p.get('clientDir'))
+          PY
