@@ -57,6 +57,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         import recroom_wine_runtime_fix  # noqa: F401
         import recroom_nameserver_fix  # noqa: F401
         import recroom_black_viewport_fix  # noqa: F401
+        import recroom_https_recnet_fix as recroom_recnet_transport
         import recroom_live_failure_diagnostics  # noqa: F401
         from recroom_vm_bridge import attach_recroom_vm_pool
         from recroom_build_fingerprint import guard_wine_pool
@@ -67,6 +68,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
 
         gateway = RecRoomGateway(root / "recroom-gateway")
         install_recroom_gateway_routes(application, gateway)
+        recroom_recnet_transport.install_public_bootstrap_route(application)
         install_recroom_compat_routes(application, gateway)
         install_recroom_extra_routes(application, gateway)
         install_recroom_room_compat_routes(application, gateway)
