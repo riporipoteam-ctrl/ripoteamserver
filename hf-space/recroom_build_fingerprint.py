@@ -43,6 +43,8 @@ def verify_client_root(root: Path) -> dict[str, Any]:
             "buildId": FINGERPRINT["buildId"],
             "manifestId": FINGERPRINT["manifestId"],
             "root": str(root),
+            "rootPresent": False,
+            "manifestPresent": False,
             "mismatches": ["client directory is missing"],
             "files": checked,
         }
@@ -73,8 +75,9 @@ def verify_client_root(root: Path) -> dict[str, Any]:
             mismatches.append(f"{label}: SHA-256 mismatch")
         checked[label] = entry
 
-    # The old DepotDownloader marker is useful diagnostics but is no longer
-    # trusted as build identity. Exact immutable game-file hashes are stronger.
+    # The DepotDownloader file is diagnostics only. Exact immutable game-file
+    # hashes identify the build even when an authorized archive/copy omitted
+    # that downloader-specific folder.
     depot = str(FINGERPRINT["depotId"])
     manifest_id = str(FINGERPRINT["manifestId"])
     manifest_names = [
@@ -93,8 +96,56 @@ def verify_client_root(root: Path) -> dict[str, Any]:
         "totalBytes": int(FINGERPRINT["totalBytes"]),
         "fingerprintSha256": str(FINGERPRINT["fingerprintSha256"]),
         "root": str(root),
+        "rootPresent": True,
         "manifestPresent": bool(manifest),
         "manifestPath": str(manifest) if manifest else "",
         "mismatches": mismatches,
         "files": checked,
     }
+
+
+def guard_wine_pool(pool: Any) -> Any:
+    """Make exact build hashes the Wine pool's client-readiness authority."""
+    if getattr(pool, "_ripo_exact_build_guard", False):
+        return pool
+
+    original_capability = pool.capability
+
+    def guarded_capability() -> dict[str, Any]:
+        verification = verify_client_root(Path(pool.client_dir))
+        # The legacy pool can stop requiring the downloader marker only after
+        # the stronger exact binary fingerprint succeeds.
+        if verification.get("ok") and hasattr(pool, "strict_manifest"):
+            pool.strict_manifest = False
+
+        base = dict(original_capability())
+        checks = dict(base.get("checks") or {})
+        checks["fingerprint"] = bool(verification.get("ok"))
+        checks["manifest"] = bool(verification.get("manifestPresent"))
+        base["checks"] = checks
+        base["exactBuild"] = bool(verification.get("ok"))
+        base["targetBuild"] = str(FINGERPRINT["buildId"])
+        base["targetManifest"] = str(FINGERPRINT["manifestId"])
+        base["targetFingerprint"] = str(FINGERPRINT["fingerprintSha256"])
+        base["clientFingerprint"] = {
+            "ok": bool(verification.get("ok")),
+            "buildId": verification.get("buildId"),
+            "manifestId": verification.get("manifestId"),
+            "manifestPresent": verification.get("manifestPresent"),
+            "mismatches": verification.get("mismatches") or [],
+        }
+
+        if verification.get("rootPresent") and not verification.get("ok"):
+            base["supported"] = False
+            base["readyForGame"] = False
+            mismatch = "; ".join(str(item) for item in (verification.get("mismatches") or [])[:5])
+            base["reason"] = (
+                f"server client is not exact Rec Room build {FINGERPRINT['buildId']}: "
+                + (mismatch or "critical binary fingerprint mismatch")
+            )
+            base["warning"] = "RipoTeamServer refuses to launch a mismatched Rec Room build."
+        return base
+
+    pool.capability = guarded_capability
+    pool._ripo_exact_build_guard = True
+    return pool
