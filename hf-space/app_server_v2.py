@@ -26,14 +26,22 @@ RECROOM_CORS_ORIGINS = [
 # The live compatibility gateway is hosted by this same Space. Reuse the
 # existing ADMIN_TOKEN as the private host/broker key when dedicated Rec Room
 # keys have not been configured, so the deployment does not require another HF
-# secret just to start. Disposable Windows VMs receive this key only through
-# their per-session read-only configuration ISO.
+# secret just to start.
 _SPACE_URL = os.environ.get("RECROOM_PUBLIC_BASE_URL", "https://echoxr-ripoteam-cloud-pc.hf.space").rstrip("/")
 os.environ.setdefault("RECROOM_GATEWAY_URL", _SPACE_URL)
 _admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
 if _admin_token:
     os.environ.setdefault("RECROOM_BROKER_KEY", _admin_token)
     os.environ.setdefault("RECROOM_HOST_KEY", _admin_token)
+
+# Browser players never download the Windows client. When no custom server-side
+# source is configured, bootstrap the exact May 19 2022 archive source selected
+# for this project. recroom_client_installer.py still refuses activation unless
+# all pinned build-8751857 binary SHA-256 fingerprints match.
+os.environ.setdefault(
+    "RECROOM_WINE_CLIENT_ARCHIVE_URL",
+    "https://archive.recagain.site/download/2022-05-19T06-50-09Z",
+)
 
 # Flux is published as a static GitHub Pages app, so its browser must be able to
 # call the authenticated Rec Room control plane directly. Authentication remains
@@ -57,7 +65,7 @@ SERVER_LIVE_BROADCASTER = ServerLiveBroadcaster(
 install_server_live_routes(app, SERVER_LIVE_BROADCASTER)
 
 # Firebase-token exchange, profile/save state, May-2022 compatibility routes and
-# Photon config live on the same public service the Windows guest uses.
+# Photon config live on the same public service the server-side runtime uses.
 RECROOM_GATEWAY = RecRoomGateway(DATA_DIR / "recroom-gateway")
 install_recroom_gateway_routes(app, RECROOM_GATEWAY)
 
