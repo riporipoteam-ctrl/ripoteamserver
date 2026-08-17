@@ -32,10 +32,6 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         root.mkdir(parents=True, exist_ok=True)
         public_url = os.environ.get("RECROOM_PUBLIC_BASE_URL", "https://echoxr-ripoteam-cloud-pc.hf.space").rstrip("/")
         os.environ.setdefault("RECROOM_GATEWAY_URL", public_url)
-        # The browser never downloads the native client. If an operator did not
-        # override the source, RipoTeamServer bootstraps the project's pinned
-        # May 19 2022 archive and activates it only after immutable binary hashes
-        # match recroom-may-2022-fingerprint.json.
         os.environ.setdefault("RECROOM_WINE_CLIENT_ARCHIVE_URL", _DEFAULT_MAY_2022_ARCHIVE)
 
         admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
@@ -54,6 +50,12 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         from recroom_leaderboard_compat import install_recroom_leaderboard_compat_routes
         from recroom_route_order import stabilize_recroom_route_order
         from recroom_broker import install_recroom_broker_routes
+
+        # sitecustomize.py starts this autoloader in the production Gradio Space.
+        # Load the hardened wineboot implementation BEFORE recroom_vm_bridge
+        # constructs RecRoomWinePool. This makes the production pool use
+        # wineboot --init + wineserver wait instead of the old one-shot -u path.
+        import recroom_wine_prefix_fix  # noqa: F401
         from recroom_vm_bridge import attach_recroom_vm_pool
         from recroom_build_fingerprint import guard_wine_pool
         from recroom_client_installer import install_recroom_client_installer_routes
@@ -67,24 +69,16 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         install_recroom_room_compat_routes(application, gateway)
         install_recroom_match_compat_routes(application, gateway)
         install_recroom_photon_compat_routes(application, gateway)
-        # Old dedicated service hosts are patched to same-length localhost
-        # prefixes. The local runtime proxy removes the prefix, leaving
-        # service-native paths such as /player/login, /account/me, etc.
         install_recroom_service_alias_routes(application, gateway)
         install_recroom_service_extra_alias_routes(application, gateway)
         install_recroom_leaderboard_compat_routes(application, gateway)
         stabilize_recroom_route_order(application)
 
         broker = install_recroom_broker_routes(application, root / "recroom-broker")
-        # Attach server-owned disposable runtimes before the browser-facing API.
-        # On managed Linux the active provider is the KVM-free Wine sandbox.
         vm_pool = attach_recroom_vm_pool(application, broker, root)
         wine_pool = getattr(broker, "wine_pool", None)
         client_installer = None
         if wine_pool is not None:
-            # Build 8751857 is identified by pinned immutable binary SHA-256s.
-            # Steam/SteamDB and DepotDownloader folder markers are not part of
-            # the runtime identity decision anymore.
             guard_wine_pool(wine_pool)
             client_installer = install_recroom_client_installer_routes(
                 application,
