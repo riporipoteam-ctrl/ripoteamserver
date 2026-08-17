@@ -11,7 +11,7 @@ import recroom_https_recnet_fix  # noqa: F401
 from recroom_wine_pool import RecRoomWinePool
 
 
-_DIAGNOSTIC_REVISION = "graphics-failure-diagnostics-v1"
+_DIAGNOSTIC_REVISION = "graphics-failure-diagnostics-v2-tls-uri"
 _ORIGINAL_PROVISION = RecRoomWinePool.provision
 _ORIGINAL_CAPABILITY = RecRoomWinePool.capability
 _LAST_LOCK = threading.Lock()
@@ -31,6 +31,29 @@ _KEYWORDS = (
     "initializeenginegraphics",
     "failed to initialize player",
     "gfxdevice",
+    "recnet",
+    "uri",
+    "besthttp",
+    "http",
+    "https",
+    "tls",
+    "ssl",
+    "certificate",
+    "handshake",
+    "exception",
+    "crash report",
+)
+_PRIORITY_KEYWORDS = (
+    "recnet",
+    "invalid uri",
+    "uri scheme",
+    "besthttp",
+    "certificate",
+    "tls",
+    "ssl",
+    "handshake",
+    "exception",
+    "crash report",
 )
 
 
@@ -64,13 +87,13 @@ def _read_trace(work_dir: Path) -> tuple[dict[str, Any], list[str], list[str]]:
     path = work_dir / "recnet-proxy.jsonl"
     graphics: dict[str, Any] = {}
     render_events: list[str] = []
-    requests: list[str] = []
+    network_events: list[str] = []
     try:
         rows = path.read_text(errors="replace").splitlines()
     except Exception:
-        return graphics, render_events, requests
+        return graphics, render_events, network_events
 
-    for raw in rows[-300:]:
+    for raw in rows[-500:]:
         try:
             event = json.loads(raw)
         except Exception:
@@ -94,15 +117,41 @@ def _read_trace(work_dir: Path) -> tuple[dict[str, Any], list[str], list[str]]:
             elif event.get("exit") is not None:
                 detail = f" exit={event.get('exit')}"
             render_events.append(f"{name}:{profile}{detail}")
+        elif name == "proxy-start":
+            network_events.append(
+                "proxy-start "
+                + _trim(
+                    f"{event.get('scheme') or ''} {event.get('listen') or ''} {event.get('tls') or ''} path={event.get('nameserverPath') or ''}",
+                    260,
+                )
+            )
+        elif name == "tls-handshake":
+            network_events.append(
+                "tls-ok "
+                + _trim(
+                    f"{event.get('protocol') or ''} {event.get('cipher') or ''} peer={event.get('peer') or ''}",
+                    260,
+                )
+            )
+        elif name == "tls-handshake-error":
+            network_events.append(
+                "tls-error "
+                + _trim(
+                    f"peer={event.get('peer') or ''} {event.get('error') or ''}",
+                    500,
+                )
+            )
         elif name == "nameserver":
-            requests.append(f"nameserver {str(event.get('method') or 'GET')} {str(event.get('status') or 200)}")
+            network_events.append(
+                f"nameserver {str(event.get('method') or 'GET')} {str(event.get('status') or 200)} {str(event.get('scheme') or '')}".strip()
+            )
         elif name == "request":
             target = str(event.get("normalized") or event.get("raw") or "")
-            requests.append(
+            network_events.append(
                 f"{str(event.get('method') or '')} {_trim(target, 180)} -> {event.get('status')}"
-                + (f" ({_trim(event.get('error'), 120)})" if event.get("error") else "")
+                + (f" ({_trim(event.get('error'), 160)})" if event.get("error") else "")
             )
-    return graphics, render_events[-14:], requests[-12:]
+    return graphics, render_events[-16:], network_events[-24:]
 
 
 def _key_log_lines(path: Path) -> list[str]:
@@ -110,16 +159,24 @@ def _key_log_lines(path: Path) -> list[str]:
         text = path.read_text(errors="replace")
     except Exception:
         return []
-    selected: list[str] = []
+    normal: list[str] = []
+    priority: list[str] = []
     for line in text.splitlines():
         lowered = line.casefold()
-        if any(keyword in lowered for keyword in _KEYWORDS):
-            compact = _trim(line, 260)
-            if compact and compact not in selected:
-                selected.append(compact)
+        if not any(keyword in lowered for keyword in _KEYWORDS):
+            continue
+        compact = _trim(line, 340)
+        if not compact:
+            continue
+        if any(keyword in lowered for keyword in _PRIORITY_KEYWORDS):
+            if compact not in priority:
+                priority.append(compact)
+        elif compact not in normal:
+            normal.append(compact)
+    selected = normal[-8:] + priority[-12:]
     if selected:
-        return selected[-8:]
-    tail = _trim(text[-1200:], 520)
+        return selected[-20:]
+    tail = _trim(text[-1600:], 720)
     return [tail] if tail else []
 
 
@@ -135,7 +192,7 @@ def _collect_failure(pool: RecRoomWinePool, host_id: str, error: str) -> dict[st
         "revision": _DIAGNOSTIC_REVISION,
         "timestamp": round(time.time(), 3),
         "hostId": host_id,
-        "error": _trim(error, 900),
+        "error": _trim(error, 1200),
     }
     if instance is None:
         return result
@@ -145,10 +202,10 @@ def _collect_failure(pool: RecRoomWinePool, host_id: str, error: str) -> dict[st
     result["renderMetrics"] = _trim(getattr(instance, "render_metrics", ""), 240)
     result["fatalWindow"] = _trim(getattr(instance, "fatal_window", ""), 180)
 
-    graphics, render_events, requests = _read_trace(work_dir)
+    graphics, render_events, network_events = _read_trace(work_dir)
     result["graphics"] = graphics
     result["renderEvents"] = render_events
-    result["recNet"] = requests
+    result["recNet"] = network_events
 
     profiles: list[dict[str, Any]] = []
     try:
@@ -183,10 +240,10 @@ def _public_summary(diag: dict[str, Any]) -> str:
             parts.append("Vulkan ICD: " + _trim(graphics.get("vulkanIcd"), 180))
     events = diag.get("renderEvents") if isinstance(diag.get("renderEvents"), list) else []
     if events:
-        parts.append("Renderer trials: " + _trim("; ".join(map(str, events[-10:])), 1000))
+        parts.append("Renderer trials: " + _trim("; ".join(map(str, events[-10:])), 900))
     network = diag.get("recNet") if isinstance(diag.get("recNet"), list) else []
     if network:
-        parts.append("RecNet: " + _trim("; ".join(map(str, network[-8:])), 800))
+        parts.append("RecNet/TLS: " + _trim("; ".join(map(str, network[-12:])), 1000))
     profile_rows = diag.get("profiles") if isinstance(diag.get("profiles"), list) else []
     key: list[str] = []
     for row in profile_rows[-5:]:
@@ -194,10 +251,10 @@ def _public_summary(diag: dict[str, Any]) -> str:
             continue
         lines = row.get("keyLines") if isinstance(row.get("keyLines"), list) else []
         if lines:
-            key.append(f"{row.get('profile')}: {_trim(' / '.join(map(str, lines[-3:])), 520)}")
+            key.append(f"{row.get('profile')}: {_trim(' / '.join(map(str, lines[-5:])), 700)}")
     if key:
-        parts.append("Key game logs: " + _trim(" | ".join(key), 1200))
-    return _trim(" | ".join(parts), 3400)
+        parts.append("Key game logs: " + _trim(" | ".join(key), 1400))
+    return _trim(" | ".join(parts), 4200)
 
 
 def _provision_with_preserved_diagnostics(
