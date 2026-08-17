@@ -4,6 +4,8 @@ import os
 import secrets
 import threading
 import time
+import urllib.parse
+import urllib.request
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,11 +32,11 @@ class CaptureRecord:
 
 
 class RecRoomCaptureService:
-    """Optional screenshot service layered over an existing RecRoomBroker.
+    """Screenshot service layered over the active Rec Room runtime.
 
-    It deliberately does not modify broker sessions or game state. A capture only
-    exists after the Flux player explicitly requests one for a session they can
-    already access with that session's private access token.
+    External Windows hosts still consume capture jobs through the host queue.
+    Server-owned Wine sandboxes capture directly from their authenticated local
+    browser-stream worker so there is no fake host-agent queue in production.
     """
 
     def __init__(self, broker: Any, data_dir: Path):
@@ -61,16 +63,55 @@ class RecRoomCaptureService:
             for host_id, queue in list(self.host_queues.items()):
                 self.host_queues[host_id] = [capture_id for capture_id in queue if capture_id in valid]
 
+    def _capture_wine_frame(self, record: CaptureRecord) -> None:
+        try:
+            pool = getattr(self.broker, "wine_pool", None)
+            if pool is None:
+                raise RuntimeError("The Wine runtime is not attached to RipoTeamServer.")
+
+            with pool.lock:
+                instance = pool.instances.get(record.host_id)
+                if not instance or instance.destroying:
+                    raise RuntimeError("The Rec Room Wine sandbox is no longer running.")
+                port = int(instance.stream_port)
+                token = str(instance.stream_token)
+
+            with self.lock:
+                current = self.records.get(record.capture_id)
+                if not current:
+                    return
+                current.state = "capturing"
+
+            frame_url = (
+                f"http://127.0.0.1:{port}/frame.jpg?token="
+                + urllib.parse.quote(token, safe="")
+            )
+            request = urllib.request.Request(
+                frame_url,
+                headers={"Cache-Control": "no-store", "User-Agent": "RipoTeamServer-Capture/1.0"},
+            )
+            with urllib.request.urlopen(request, timeout=15) as response:
+                content_type = response.headers.get("content-type", "image/jpeg")
+                body = response.read(CAPTURE_MAX_BYTES + 1)
+            self.store(record.host_id, record.capture_id, content_type, body)
+        except Exception as exc:
+            try:
+                self.fail(record.host_id, record.capture_id, str(exc))
+            except Exception:
+                pass
+
     def request_capture(self, session_id: str, access_token: str) -> CaptureRecord:
         self.cleanup()
         session = self.broker.session_for_access(session_id, access_token)
         if session.state != "ready":
             raise HTTPException(status_code=409, detail="The Rec Room session must be ready before taking a screenshot.")
 
+        provider = ""
         with self.broker.lock:
             host = self.broker.hosts.get(session.host_id)
             if not host or not host.online():
-                raise HTTPException(status_code=503, detail="The assigned Windows game host is offline.")
+                raise HTTPException(status_code=503, detail="The assigned game host is offline.")
+            provider = str((host.metadata or {}).get("provider") or "")
 
         capture_id = str(uuid.uuid4())
         record = CaptureRecord(
@@ -81,8 +122,19 @@ class RecRoomCaptureService:
         )
         with self.lock:
             self.records[capture_id] = record
-            self.host_queues.setdefault(session.host_id, []).append(capture_id)
+            # Real remote Windows hosts pull jobs. The server-owned Wine runtime
+            # has its streamer in this process, so capture it directly instead.
+            if provider != "wine":
+                self.host_queues.setdefault(session.host_id, []).append(capture_id)
         self.broker._audit("capture.queued", capture_id=capture_id, session_id=session_id, host_id=session.host_id)
+
+        if provider == "wine":
+            threading.Thread(
+                target=self._capture_wine_frame,
+                args=(record,),
+                name=f"recroom-wine-capture-{capture_id[:8]}",
+                daemon=True,
+            ).start()
         return record
 
     def for_access(self, session_id: str, capture_id: str, access_token: str) -> CaptureRecord:
@@ -145,7 +197,7 @@ class RecRoomCaptureService:
             if not record or record.host_id != host_id:
                 raise HTTPException(status_code=404, detail="Capture request is not assigned to this host.")
             record.state = "failed"
-            record.error = (error or "Windows host could not capture the game.")[:500]
+            record.error = (error or "Game host could not capture the game.")[:500]
         self.broker._audit("capture.failed", capture_id=capture_id, session_id=record.session_id, host_id=host_id)
         return record
 
