@@ -6,7 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app_server import DATA_DIR, DISPLAY, SERVER_TIKTOK_CONNECT, TIKTOK_AI, app, authorize
 from recroom_broker import install_recroom_broker_routes
+from recroom_build_fingerprint import guard_wine_pool
 from recroom_capture import install_recroom_capture_routes
+from recroom_client_installer import install_recroom_client_installer_routes
 from recroom_gateway import RecRoomGateway, install_recroom_gateway_routes
 from recroom_public import install_recroom_public_routes
 from recroom_vm_bridge import attach_recroom_vm_pool
@@ -36,8 +38,8 @@ if _admin_token:
 
 # Browser players never download the Windows client. When no custom server-side
 # source is configured, bootstrap the exact May 19 2022 archive source selected
-# for this project. recroom_client_installer.py still refuses activation unless
-# all pinned build-8751857 binary SHA-256 fingerprints match.
+# for this project. Activation is blocked until the pinned build-8751857 binary
+# SHA-256 fingerprints match.
 os.environ.setdefault(
     "RECROOM_WINE_CLIENT_ARCHIVE_URL",
     "https://archive.recagain.site/download/2022-05-19T06-50-09Z",
@@ -71,5 +73,19 @@ install_recroom_gateway_routes(app, RECROOM_GATEWAY)
 
 RECROOM_BROKER = install_recroom_broker_routes(app, DATA_DIR / "recroom-broker")
 RECROOM_VM_POOL = attach_recroom_vm_pool(app, RECROOM_BROKER, DATA_DIR)
+RECROOM_WINE_POOL = getattr(RECROOM_BROKER, "wine_pool", None)
+RECROOM_CLIENT_INSTALLER = None
+if RECROOM_WINE_POOL is not None:
+    # app_server_v2 owns the live Rec Room routes on this Space. Mount the exact
+    # build guard and archive installer here as well; otherwise recroom_autoload
+    # sees /api/recroom-public/status and correctly avoids double-mounting, which
+    # previously meant the installer thread never existed in production.
+    guard_wine_pool(RECROOM_WINE_POOL)
+    RECROOM_CLIENT_INSTALLER = install_recroom_client_installer_routes(
+        app,
+        RECROOM_BROKER,
+        RECROOM_WINE_POOL,
+        DATA_DIR / "recroom-client-installer",
+    )
 RECROOM_CAPTURE = install_recroom_capture_routes(app, RECROOM_BROKER, DATA_DIR / "recroom-captures")
 install_recroom_public_routes(app, RECROOM_BROKER, RECROOM_CAPTURE)
