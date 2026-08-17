@@ -12,6 +12,7 @@ from typing import Any
 
 _MOUNT_LOCK = threading.Lock()
 _MOUNTED = False
+_DEFAULT_MAY_2022_ARCHIVE = "https://archive.recagain.site/download/2022-05-19T06-50-09Z"
 
 
 def _derived_key(root_secret: str, purpose: bytes) -> str:
@@ -31,6 +32,11 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         root.mkdir(parents=True, exist_ok=True)
         public_url = os.environ.get("RECROOM_PUBLIC_BASE_URL", "https://echoxr-ripoteam-cloud-pc.hf.space").rstrip("/")
         os.environ.setdefault("RECROOM_GATEWAY_URL", public_url)
+        # The browser never downloads the native client. If an operator did not
+        # override the source, RipoTeamServer bootstraps the project's pinned
+        # May 19 2022 archive and activates it only after immutable binary hashes
+        # match recroom-may-2022-fingerprint.json.
+        os.environ.setdefault("RECROOM_WINE_CLIENT_ARCHIVE_URL", _DEFAULT_MAY_2022_ARCHIVE)
 
         admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
         if admin_token:
