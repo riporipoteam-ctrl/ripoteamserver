@@ -1,18 +1,19 @@
 {
   "schema": 1,
-  "buildId": "8751857",
-  "manifestId": "6337851004861751095",
+  "buildId": "8715820",
+  "manifestId": "2586133705164702202",
   "depotId": "471711",
-  "buildDate": "2022-05-19T06-50-09Z",
-  "updateName": "the \"Under Construction\" edition A",
-  "fileCount": 3693,
-  "totalBytes": 6790009298,
-  "fingerprintSha256": "aa367ee11821b6abcbf9bd81cda393f4a872e74af5ba13ca843a0031948c32cf",
+  "buildDate": "2022-05-12T06-50-19Z",
+  "updateName": "the \"Under Construction\" edition",
+  "fingerprintScope": "criticalFiles",
+  "fileCount": 5,
+  "totalBytes": 193278144,
+  "fingerprintSha256": "f7737eba9ec2e4cc7f6049835db238a23d18a9a1298ad0186d893d9699d665f1",
   "criticalFiles": {
     "RecRoom.exe": {"path":"RecRoom.exe","size":650752,"sha256":"153860af085119fa5c45d97f109f341fb8dde577dc34207e1bb94c1fcc83d16f"},
-    "Recroom_Release.exe": {"path":"Recroom_Release.exe","size":1420104,"sha256":"f6673b066d8d36da10f7ae21f8f1b021bbe6c7018d2a6bc39bd866df067453d7"},
-    "GameAssembly.dll": {"path":"GameAssembly.dll","size":132531712,"sha256":"2ba4571be2791602386bf02581805e021568ccfeacce6cd265450974b7ea8f27"},
+    "Recroom_Release.exe": {"path":"Recroom_Release.exe","size":1420104,"sha256":"97b09431728de7a997dd8a519ce0749c2680d977b5cb99c5262ae2c54b6bb5a6"},
+    "GameAssembly.dll": {"path":"GameAssembly.dll","size":132968960,"sha256":"668bab489d24f883e95d0fd359e6a18a0b770e322d9efd823fb75087570a4a5f"},
     "UnityPlayer.dll": {"path":"UnityPlayer.dll","size":26030984,"sha256":"697b57d82f97326c5410a819a1abfe4a8c13fdcbeea7808ae1254ddbdeb4e744"},
-    "global-metadata.dat": {"path":"RecRoom_Data/il2cpp_data/Metadata/global-metadata.dat","size":32123860,"sha256":"d77f3728ba1f3765941f90de036f6b283301c156db3d7e31932e56c9b06a9b0c"}
+    "global-metadata.dat": {"path":"RecRoom_Data/il2cpp_data/Metadata/global-metadata.dat","size":32207344,"sha256":"5e5c499789b0af6ddd97e2a04725ee99f80037f8009622e2364eda0203050ecf"}
   }
 }

@@ -12,7 +12,7 @@ from typing import Any
 
 _MOUNT_LOCK = threading.Lock()
 _MOUNTED = False
-_DEFAULT_MAY_2022_ARCHIVE = "https://archive.recagain.site/download/2022-05-19T06-50-09Z"
+_DEFAULT_MAY_2022_ARCHIVE = "https://archive.recagain.site/download/2022-05-12T06-50-19Z"
 
 
 def _derived_key(root_secret: str, purpose: bytes) -> str:
