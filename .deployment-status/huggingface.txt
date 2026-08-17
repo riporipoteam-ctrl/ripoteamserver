@@ -2,9 +2,9 @@ Hugging Face deployment: success
 Hugging Face runtime wait: success
 Hugging Face Space health: success
 TikTok OAuth verification: success
-Source commit: a00d0284736a1cd0968142e7d6021f152825b4f0
-Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/32002347652
-Recorded at: 2026-08-17T06:38:26Z
+Source commit: 6016598c47dcbf689ecb06b61d81ad7c214b175a
+Workflow run: https://github.com/riporipoteam-ctrl/ripoteamserver/actions/runs/32017990128
+Recorded at: 2026-08-17T10:01:35Z
 
 ===== space-info.txt =====
 {
@@ -15,7 +15,7 @@ Recorded at: 2026-08-17T06:38:26Z
   "disabled": false,
   "gated": false,
   "host": "https://echoxr-ripoteam-cloud-pc.hf.space",
-  "last_modified": "2026-08-17T06:36:49+00:00",
+  "last_modified": "2026-08-17T10:00:10+00:00",
   "likes": 0,
   "models": [
     "Salesforce/ctrl"
@@ -46,12 +46,12 @@ Recorded at: 2026-08-17T06:38:26Z
           "stage": "READY"
         }
       ],
-      "sha": "96cf24bb1369b741283e5401e26548277d32a9bd",
+      "sha": "7de12ba03cab70140dfa5041eab8b548d2e48157",
       "pySpacesVersion": "0.51.1"
     }
   },
   "sdk": "gradio",
-  "sha": "96cf24bb1369b741283e5401e26548277d32a9bd",
+  "sha": "7de12ba03cab70140dfa5041eab8b548d2e48157",
   "siblings": [
     {
       "rfilename": ".deploy-trigger"
@@ -171,6 +171,9 @@ Recorded at: 2026-08-17T06:38:26Z
       "rfilename": "recroom_match_model.py"
     },
     {
+      "rfilename": "recroom_may2022_fingerprint.py"
+    },
+    {
       "rfilename": "recroom_photon_compat.py"
     },
     {
@@ -270,6 +273,6 @@ If the repo does not exist, create it with: hf repos create Echoxr/ripoteam-clou
 [90mHint: set HF_DEBUG=1 as environment variable for full traceback.[0m
 
 ===== last-health.txt =====
-{"ok":true,"name":"Ripo Team Cloud PC","platform":"Hugging Face Gradio Space","architecture":"x86_64","cpu_count":16,"cpu_source":"container-cgroup","memory_total":104000000000,"memory_available":100281679872,"memory_source":"container-cgroup","disk_total":null,"disk_free":null,"disk_note":"Ephemeral Hugging Face Space storage; the shared host filesystem size is not your personal disk quota.","desktop":{"xvfb":{"pid":225,"running":true,"returncode":null},"openbox":{"pid":228,"running":true,"returncode":null},"pcmanfm":{"pid":229,"running":true,"returncode":null},"lxpanel":{"pid":230,"running":true,"returncode":null},"x11vnc":{"pid":231,"running":true,"returncode":null}},"security":{"custom_vnc_password":true,"admin_token_configured":true},"hermes":{"installed":false,"running":false,"skills":0,"plugins":0},"ai":{"ok":true,"model":{"name":"qwen3:4b-instruct","installed":false,"available_models":[],"endpoint":"http://127.0.0.1:11434/v1","context_length":16384},"ollama":{"installed":true,"running":false},"hermes":{"installed":false,"gateway_running":false,"skills":0,"plugins":0},"telegram":{"token_configured":true,"allowlist_configured":false,"access_mode":"public-safe","pairing_required":false,"tool_profile":"safe","sealing":{"available":true,"key_id":"8c9b4481631b0177","public_key":"-HmtCMJZ7gxwBCgFS1XRRMrE1YAiG4YEmupzfBnWbFg","algorithm":"X25519-HKDF-SHA256-ChaCha20Poly1305","loaded":true,"source":"environment","message":"Telegram token is configured through the Space environment.","envelope_present":true,"allowlist":{"loaded":false,"source":"none","message":"No sealed Telegram allowlist is deployed yet.","envelope_present":false}},"pairing_export":null,"pairing_command":{"watching":false,"last_request_id":null,"last_ok":null,"message":"Waiting for a live pairing command."}},"bootstrap":{"running":true,"stage":"ollama-install","message":"Installing Ollama in user space…","started_at":1786948699.6937246,"finished_at":null,"last_error":null},"browser":{"agent_browser":false,"toolset":"browser"},"storage":{"model_directory":"/home/user/.ripo-cloud-pc/ai/ollama-models","ephemeral":true,"saver":{"running":false,"last_run":null,"last_saved_bytes":0,"total_saved_bytes":0,"deleted_files":0,"pressure":"elevated","last_error":null,"filesystem_total":8589854879744,"filesystem_used":6318235029504,"filesystem_free":2271619850240,"filesystem_used_ratio":0.7355,"policy":{"session_retention_days":5,"pressure_session_retention_days":2,"critical_session_retention_days":1,"cleanup_interval_hours":6,"normal_log_cap_mb":4,"protects_model_store":true,"protects_browser_binaries":true,"protects_skills_plugins_config":true}}}},"timestamp":1786948706.0429626}
+{"ok":true,"name":"Ripo Team Cloud PC","platform":"Hugging Face Gradio Space","architecture":"x86_64","cpu_count":16,"cpu_source":"container-cgroup","memory_total":104000000000,"memory_available":101074083840,"memory_source":"container-cgroup","disk_total":null,"disk_free":null,"disk_note":"Ephemeral Hugging Face Space storage; the shared host filesystem size is not your personal disk quota.","desktop":{"xvfb":{"pid":225,"running":true,"returncode":null},"openbox":{"pid":228,"running":true,"returncode":null},"pcmanfm":{"pid":229,"running":true,"returncode":null},"lxpanel":{"pid":230,"running":true,"returncode":null},"x11vnc":{"pid":231,"running":true,"returncode":null}},"security":{"custom_vnc_password":true,"admin_token_configured":true},"hermes":{"installed":false,"running":false,"skills":0,"plugins":0},"ai":{"ok":true,"model":{"name":"qwen3:4b-instruct","installed":false,"available_models":[],"endpoint":"http://127.0.0.1:11434/v1","context_length":16384},"ollama":{"installed":true,"running":false},"hermes":{"installed":false,"gateway_running":false,"skills":0,"plugins":0},"telegram":{"token_configured":true,"allowlist_configured":false,"access_mode":"public-safe","pairing_required":false,"tool_profile":"safe","sealing":{"available":true,"key_id":"8c9b4481631b0177","public_key":"-HmtCMJZ7gxwBCgFS1XRRMrE1YAiG4YEmupzfBnWbFg","algorithm":"X25519-HKDF-SHA256-ChaCha20Poly1305","loaded":true,"source":"environment","message":"Telegram token is configured through the Space environment.","envelope_present":true,"allowlist":{"loaded":false,"source":"none","message":"No sealed Telegram allowlist is deployed yet.","envelope_present":false}},"pairing_export":null,"pairing_command":{"watching":false,"last_request_id":null,"last_ok":null,"message":"Waiting for a live pairing command."}},"bootstrap":{"running":true,"stage":"ollama-install","message":"Installing Ollama in user space…","started_at":1786960887.495991,"finished_at":null,"last_error":null},"browser":{"agent_browser":false,"toolset":"browser"},"storage":{"model_directory":"/home/user/.ripo-cloud-pc/ai/ollama-models","ephemeral":true,"saver":{"running":false,"last_run":null,"last_saved_bytes":0,"total_saved_bytes":0,"deleted_files":0,"pressure":"elevated","last_error":null,"filesystem_total":8589854879744,"filesystem_used":6344478588928,"filesystem_free":2245376290816,"filesystem_used_ratio":0.7386,"policy":{"session_retention_days":5,"pressure_session_retention_days":2,"critical_session_retention_days":1,"cleanup_interval_hours":6,"normal_log_cap_mb":4,"protects_model_store":true,"protects_browser_binaries":true,"protects_skills_plugins_config":true}}}},"timestamp":1786960894.8609974}
 ===== tiktok-status.json =====
 {"ok":true,"running":false,"connected":false,"started_at":null,"ends_at":null,"remaining_seconds":null,"room_id":"","last_error":"","unique_id":"","oauth_configured":true,"oauth_account":{},"audio_queue":0,"like_total":0,"tts_ready":true,"phase":"stopped","watching":false,"retry_count":0,"next_retry_seconds":null,"last_connected_at":null,"last_disconnected_at":null,"background_worker":true,"auto_reconnect":true,"starts_tiktok_broadcast":false,"audio_delivery":"browser"}
