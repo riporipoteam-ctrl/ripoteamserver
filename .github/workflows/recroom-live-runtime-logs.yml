@@ -1,0 +1,56 @@
+name: Rec Room Live Runtime Diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/recroom-live-runtime-logs.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  HF_SPACE_ID: Echoxr/ripoteam-cloud-pc
+  HF_OIDC_RESOURCE: spaces/Echoxr/ripoteam-cloud-pc
+
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Install Hugging Face CLI
+        run: |
+          curl -LsSf https://hf.co/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Exchange OIDC token
+        run: |
+          set -euo pipefail
+          ID_TOKEN=$(curl -sSf \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://huggingface.co" \
+            | jq -r .value)
+          BODY=$(mktemp)
+          STATUS=$(curl -sS -o "$BODY" -w '%{http_code}' \
+            -X POST "https://huggingface.co/oauth/token" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg t "$ID_TOKEN" --arg r "$HF_OIDC_RESOURCE" \
+              '{grant_type:"urn:ietf:params:oauth:grant-type:token-exchange",subject_token_type:"urn:ietf:params:oauth:token-type:id_token",subject_token:$t,resource:$r}')")
+          test "$STATUS" = 200
+          HF_TOKEN=$(jq -r .access_token "$BODY")
+          test -n "$HF_TOKEN"
+          echo "::add-mask::$HF_TOKEN"
+          echo "HF_TOKEN=$HF_TOKEN" >> "$GITHUB_ENV"
+
+      - name: Print current Space runtime logs
+        run: |
+          set +e
+          echo '===== SPACE INFO ====='
+          hf spaces info "$HF_SPACE_ID"
+          echo '===== CURRENT RUNTIME LOGS ====='
+          hf spaces logs "$HF_SPACE_ID" -n 700
+          echo '===== CURRENT BUILD LOGS ====='
+          hf spaces logs "$HF_SPACE_ID" --build -n 200
+          exit 0
