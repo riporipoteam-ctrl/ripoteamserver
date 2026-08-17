@@ -16,6 +16,7 @@ import recroom_wine_prefix_fix  # noqa: F401
 import recroom_wine_runtime_fix  # noqa: F401
 import recroom_nameserver_fix  # noqa: F401
 import recroom_black_viewport_fix  # noqa: F401
+import recroom_https_recnet_fix as recroom_recnet_transport
 import recroom_live_failure_diagnostics  # noqa: F401
 from recroom_vm_bridge import attach_recroom_vm_pool
 from server_live_broadcaster import ServerLiveBroadcaster, install_server_live_routes
@@ -65,6 +66,7 @@ install_server_live_routes(app, SERVER_LIVE_BROADCASTER)
 
 RECROOM_GATEWAY = RecRoomGateway(DATA_DIR / "recroom-gateway")
 install_recroom_gateway_routes(app, RECROOM_GATEWAY)
+recroom_recnet_transport.install_public_bootstrap_route(app)
 
 RECROOM_BROKER = install_recroom_broker_routes(app, DATA_DIR / "recroom-broker")
 RECROOM_VM_POOL = attach_recroom_vm_pool(app, RECROOM_BROKER, DATA_DIR)
