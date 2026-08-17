@@ -1,352 +1,187 @@
 from __future__ import annotations
 
-import json
+import ipaddress
 import os
-import shutil
-import ssl
-import subprocess
-import threading
-import urllib.error
+import struct
 import urllib.parse
-import urllib.request
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
 import recroom_black_viewport_fix as black_viewport
 import recroom_nameserver_fix as nameserver_fix
-from recroom_wine_pool import RecRoomWinePool, WineInstance
+from recroom_wine_pool import RecRoomWinePool
 
 
-_PATCH_REVISION = "may12-https-loopback-v1"
-_TRANSPORT_REVISION = "https-local-tls12-prepin-v1"
-_LOCAL_NAMESERVER_PATH = "/ns"
-_TLS_LOCK = threading.Lock()
-_ORIGINAL_NAMESERVER_PATCH = nameserver_fix._patch_client
+_PATCH_REVISION = "may12-trusted-public-bootstrap-v2"
+_TRANSPORT_REVISION = "trusted-public-https-bootstrap-local-http-may12-v1"
+_PUBLIC_BOOTSTRAP_PATH = "/api/recroom-bootstrap/ns"
+_EXACT_METADATA_RELATIVE = Path("RecRoom_Data/il2cpp_data/Metadata/global-metadata.dat")
+_METADATA_MAGIC = 0xFAB11BAF
+_METADATA_VERSION = 24
+_LITERAL_ENTRY_SIZE = 8
 _ORIGINAL_CAPABILITY = RecRoomWinePool.capability
 
-# Build 8715820 (May 12 2022) retains the original HTTPS RecNet v2 bootstrap,
-# and our exact IL2CPP scan found no direct call to
-# HTTPRequest.set_CustomCertificateVerifyer. Preserve the client's normal
-# BestHTTP HTTPS path and route the bootstrap to the per-session loopback bridge.
-# The two URLs are both exactly 23 ASCII bytes.
-nameserver_fix.LOCAL_NAMESERVER_PATH = _LOCAL_NAMESERVER_PATH
-nameserver_fix._DEFAULT_LOCAL_BASE = "https://127.0.0.1:81"
+# May 12 2022 is routed through the Space's normal publicly trusted HTTPS
+# certificate only for the nameserver bootstrap. The nameserver then returns
+# per-sandbox loopback HTTP service URLs. That keeps the session bearer inside
+# the host and avoids requiring a self-signed loopback certificate. Client TLS
+# verification is left intact; no verifier or EAC code is patched.
+nameserver_fix.LOCAL_NAMESERVER_PATH = "/nsx"
+nameserver_fix._DEFAULT_LOCAL_BASE = "http://127.0.0.1:81"
 nameserver_fix._PATCH_REVISION = _PATCH_REVISION
 
 
-def install_public_bootstrap_route(application: Any) -> None:
-    """Compatibility hook retained for recroom_autoload; May 12 uses loopback."""
-    del application
-
-
-def _https_base(local_base: str) -> str:
+def _loopback_ip(local_base: str) -> str:
     parsed = urllib.parse.urlsplit(local_base)
-    host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or 81
-    base = f"https://{host}:{port}"
-    target = f"{base}{_LOCAL_NAMESERVER_PATH}"
-    if len(target.encode("ascii")) != len(nameserver_fix.LEGACY_NAMESERVER_URL.encode("ascii")):
+    raw = parsed.hostname or ""
+    address = ipaddress.ip_address(raw)
+    if address.version != 4 or not address.is_loopback:
+        raise RuntimeError(f"Rec Room sandbox service address must be IPv4 loopback, got {raw!r}.")
+    return str(address)
+
+
+def _public_base(self: RecRoomWinePool) -> str:
+    value = (
+        str(getattr(self, "gateway_url", "") or "")
+        or os.environ.get("RECROOM_PUBLIC_BASE_URL", "")
+        or "https://echoxr-ripoteam-cloud-pc.hf.space"
+    ).rstrip("/")
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme.lower() != "https" or not parsed.hostname:
+        raise RuntimeError("Rec Room public bootstrap base must use trusted HTTPS.")
+    return value
+
+
+def _bootstrap_url(self: RecRoomWinePool, ip: str) -> str:
+    return f"{_public_base(self)}{_PUBLIC_BOOTSTRAP_PATH}?ip={urllib.parse.quote(ip, safe='.')}"
+
+
+def _relocate_bootstrap_literal(path: Path, target: str) -> int:
+    if not path.is_file():
+        raise RuntimeError(f"Exact May 12 2022 metadata is missing: {path}.")
+
+    data = bytearray(path.read_bytes())
+    if len(data) < 24:
+        raise RuntimeError("Exact May 12 2022 IL2CPP metadata is truncated.")
+
+    sanity, version = struct.unpack_from("<II", data, 0)
+    if sanity != _METADATA_MAGIC or version != _METADATA_VERSION:
         raise RuntimeError(
-            f"HTTPS RecNet loopback redirect is not length-safe: {nameserver_fix.LEGACY_NAMESERVER_URL!r} -> {target!r}."
+            f"Unexpected IL2CPP metadata header: sanity={sanity:#x}, version={version}; "
+            f"expected {_METADATA_MAGIC:#x}/v{_METADATA_VERSION}."
         )
-    return base
 
+    literal_offset, literal_count, literal_data_offset, literal_data_count = struct.unpack_from("<IIII", data, 8)
+    if literal_offset < 24 or literal_count <= 0 or literal_count % _LITERAL_ENTRY_SIZE:
+        raise RuntimeError("May 12 2022 IL2CPP literal table is invalid.")
+    if literal_data_offset <= literal_offset or literal_data_count <= 0:
+        raise RuntimeError("May 12 2022 IL2CPP literal-data table is invalid.")
+    if literal_offset + literal_count > len(data):
+        raise RuntimeError("May 12 2022 IL2CPP literal table exceeds metadata size.")
 
-def _patch_client_https(self: RecRoomWinePool, root: Path, local_base: str) -> int:
-    return int(_ORIGINAL_NAMESERVER_PATCH(self, root, _https_base(local_base)) or 0)
+    source = nameserver_fix.LEGACY_NAMESERVER_URL.encode("ascii")
+    target_bytes = target.encode("ascii")
+    positions: list[int] = []
+    cursor = 0
+    while True:
+        found = data.find(source, cursor)
+        if found < 0:
+            break
+        positions.append(found)
+        cursor = found + 1
 
+    matches: list[tuple[int, int]] = []
+    for source_pos in positions:
+        source_index = source_pos - literal_data_offset
+        if source_index < 0:
+            continue
+        for entry in range(literal_offset, literal_offset + literal_count, _LITERAL_ENTRY_SIZE):
+            length, data_index = struct.unpack_from("<II", data, entry)
+            if length == len(source) and data_index == source_index:
+                matches.append((entry, source_pos))
 
-def _tls_material(self: RecRoomWinePool, ip: str) -> tuple[Path, Path]:
-    tls_dir = self.data_dir / "_recnet_tls"
-    tls_dir.mkdir(parents=True, exist_ok=True)
-    safe = ip.replace(".", "_")
-    cert = tls_dir / f"{safe}.crt"
-    key = tls_dir / f"{safe}.key"
-    if cert.is_file() and key.is_file():
-        return cert, key
-
-    with _TLS_LOCK:
-        if cert.is_file() and key.is_file():
-            return cert, key
-        openssl = shutil.which("openssl")
-        if not openssl:
-            raise RuntimeError("OpenSSL is unavailable for the local RecNet HTTPS bridge.")
-
-        config = tls_dir / f"{safe}.cnf"
-        config.write_text(
-            "\n".join(
-                [
-                    "[req]",
-                    "distinguished_name = dn",
-                    "x509_extensions = v3_req",
-                    "prompt = no",
-                    "[dn]",
-                    f"CN = {ip}",
-                    "O = RipoTeam Local RecNet",
-                    "[v3_req]",
-                    f"subjectAltName = IP:{ip}",
-                    "keyUsage = critical,digitalSignature,keyEncipherment",
-                    "extendedKeyUsage = serverAuth",
-                    "basicConstraints = critical,CA:FALSE",
-                    "",
-                ]
-            ),
-            encoding="utf-8",
+    if len(matches) != 1:
+        raise RuntimeError(
+            "May 12 2022 RecNet bootstrap literal could not be uniquely relocated "
+            f"(occurrences={len(positions)}, literalEntries={len(matches)})."
         )
-        temp_key = key.with_suffix(".key.tmp")
-        temp_cert = cert.with_suffix(".crt.tmp")
-        for path in (temp_key, temp_cert):
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
 
-        result = subprocess.run(
-            [
-                openssl,
-                "req",
-                "-x509",
-                "-newkey",
-                "rsa:2048",
-                "-sha256",
-                "-nodes",
-                "-days",
-                "30",
-                "-config",
-                str(config),
-                "-extensions",
-                "v3_req",
-                "-keyout",
-                str(temp_key),
-                "-out",
-                str(temp_cert),
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=30,
-            check=False,
+    entry, _source_pos = matches[0]
+    new_file_offset = len(data)
+    new_data_index = new_file_offset - literal_data_offset
+    if new_data_index < 0 or new_data_index > 0xFFFFFFFF:
+        raise RuntimeError("Relocated RecNet bootstrap string exceeds IL2CPP metadata index range.")
+    if len(target_bytes) > 0xFFFFFFFF:
+        raise RuntimeError("Relocated RecNet bootstrap URL is unexpectedly large.")
+
+    data.extend(target_bytes)
+    struct.pack_into("<II", data, entry, len(target_bytes), new_data_index)
+    length_check, index_check = struct.unpack_from("<II", data, entry)
+    resolved = bytes(data[literal_data_offset + index_check:literal_data_offset + index_check + length_check])
+    if resolved != target_bytes:
+        raise RuntimeError("Relocated May 12 RecNet bootstrap URL failed metadata self-verification.")
+
+    nameserver_fix._atomic_replace(path, bytes(data), "may12trustedbootstrap")
+    return 1
+
+
+def _patch_client_trusted(self: RecRoomWinePool, root: Path, local_base: str) -> int:
+    ip = _loopback_ip(local_base)
+    target = _bootstrap_url(self, ip)
+    return _relocate_bootstrap_literal(root / _EXACT_METADATA_RELATIVE, target)
+
+
+def install_public_bootstrap_route(application: Any) -> None:
+    existing = {getattr(route, "path", None) for route in getattr(application, "routes", [])}
+    if _PUBLIC_BOOTSTRAP_PATH in existing:
+        return
+
+    async def recroom_public_nameserver(request: Request) -> JSONResponse:
+        raw = str(request.query_params.get("ip") or "").strip()
+        try:
+            address = ipaddress.ip_address(raw)
+        except ValueError:
+            return JSONResponse({"ok": False, "error": "invalid loopback address"}, status_code=400)
+        if address.version != 4 or not address.is_loopback:
+            return JSONResponse({"ok": False, "error": "loopback address required"}, status_code=400)
+
+        local_base = f"http://{address}:81"
+        payload = nameserver_fix._nameserver_payload(local_base)
+        return JSONResponse(
+            payload,
+            headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
         )
-        if result.returncode != 0 or not temp_key.is_file() or not temp_cert.is_file():
-            raise RuntimeError(
-                "Could not create the local RecNet TLS certificate: "
-                + " ".join((result.stderr or result.stdout or "unknown OpenSSL failure").split())[-1200:]
-            )
-        os.chmod(temp_key, 0o600)
-        temp_key.replace(key)
-        temp_cert.replace(cert)
-        return cert, key
 
-
-def _tls_context(self: RecRoomWinePool, ip: str) -> ssl.SSLContext:
-    cert, key = _tls_material(self, ip)
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.minimum_version = ssl.TLSVersion.TLSv1_2
-    context.maximum_version = ssl.TLSVersion.TLSv1_2
-    try:
-        context.set_ciphers("ECDHE+AESGCM:ECDHE+AES:RSA+AESGCM:RSA+AES:!aNULL:!MD5")
-    except ssl.SSLError:
-        pass
-    context.load_cert_chain(certfile=str(cert), keyfile=str(key))
-    return context
-
-
-def _start_proxy_https(self: RecRoomWinePool, instance: WineInstance, session_token: str) -> None:
-    gateway = self.gateway_url
-    normalize = self._normalize_path
-    local_base = f"https://{instance.loopback_ip}:81"
-    nameserver_body = json.dumps(
-        nameserver_fix._nameserver_payload(local_base), separators=(",", ":")
-    ).encode("utf-8")
-    tls_context = _tls_context(self, instance.loopback_ip)
-
-    black_viewport._trace(
-        instance,
-        "proxy-start",
-        listen=f"{instance.loopback_ip}:81",
-        scheme="https",
-        tls="TLSv1.2",
-        gateway=gateway,
-        nameserverPath=_LOCAL_NAMESERVER_PATH,
-        nameserverBytes=len(nameserver_body),
+    application.add_api_route(
+        _PUBLIC_BOOTSTRAP_PATH,
+        recroom_public_nameserver,
+        methods=["GET"],
+        include_in_schema=False,
+        name="recroom_public_bootstrap_nameserver",
     )
 
-    class ProxyHandler(BaseHTTPRequestHandler):
-        protocol_version = "HTTP/1.1"
 
-        def log_message(self, _format: str, *_args: Any) -> None:
-            return
-
-        def _json(self, status: int, payload: bytes) -> None:
-            self.send_response(status)
-            self.send_header("content-type", "application/json")
-            self.send_header("content-length", str(len(payload)))
-            self.send_header("cache-control", "no-store")
-            self.send_header("connection", "close")
-            self.end_headers()
-            if self.command != "HEAD":
-                self.wfile.write(payload)
-            self.close_connection = True
-
-        def _proxy(self) -> None:
-            raw = self.path or "/"
-            path_only = raw.split("?", 1)[0]
-
-            if path_only == _LOCAL_NAMESERVER_PATH:
-                body = nameserver_fix._nameserver_payload(local_base)
-                black_viewport._trace(
-                    instance,
-                    "nameserver",
-                    method=self.command,
-                    raw=raw,
-                    status=200,
-                    scheme="https",
-                    body=body,
-                )
-                self._json(200, nameserver_body)
-                return
-
-            if raw == "/flux/local-health":
-                payload = json.dumps(
-                    {
-                        "ok": True,
-                        "provider": "wine",
-                        "targetBuild": "recroom-2022-05-12",
-                        "nameserver": True,
-                        "redirectPatch": _PATCH_REVISION,
-                        "transport": _TRANSPORT_REVISION,
-                    },
-                    separators=(",", ":"),
-                ).encode("utf-8")
-                black_viewport._trace(instance, "local-health", method=self.command, raw=raw, status=200)
-                self._json(200, payload)
-                return
-
-            normalized = normalize(raw)
-            target_url = urllib.parse.urljoin(gateway.rstrip("/") + "/", normalized.lstrip("/"))
-            length = int(self.headers.get("content-length", "0") or "0")
-            body = self.rfile.read(min(length, 32 * 1024 * 1024)) if length else None
-            blocked = {
-                "authorization",
-                "connection",
-                "content-length",
-                "host",
-                "transfer-encoding",
-                "upgrade",
-            }
-            headers = {k: v for k, v in self.headers.items() if k.lower() not in blocked}
-            headers["Authorization"] = f"Bearer {session_token}"
-            headers["X-Flux-RecRoom-Host-Proxy"] = "wine-https"
-            request = urllib.request.Request(target_url, data=body, method=self.command, headers=headers)
-
-            error_text = ""
-            try:
-                response = urllib.request.urlopen(request, timeout=30)
-                status = response.status
-                payload = response.read()
-                response_headers = response.headers
-            except urllib.error.HTTPError as exc:
-                status = exc.code
-                payload = exc.read()
-                response_headers = exc.headers
-                error_text = f"HTTPError:{exc.code}"
-            except Exception as exc:
-                status = 502
-                error_text = f"{type(exc).__name__}:{exc}"
-                payload = json.dumps({"ok": False, "error": str(exc)}).encode("utf-8")
-                response_headers = {"content-type": "application/json"}
-
-            black_viewport._trace(
-                instance,
-                "request",
-                method=self.command,
-                raw=raw[:1000],
-                normalized=normalized[:1000],
-                target=target_url[:1200],
-                status=status,
-                responseBytes=len(payload),
-                error=error_text[:800],
-            )
-
-            self.send_response(status)
-            content_type = response_headers.get("content-type") if hasattr(response_headers, "get") else None
-            if content_type:
-                self.send_header("content-type", content_type)
-            self.send_header("content-length", str(len(payload)))
-            self.send_header("cache-control", "no-store")
-            self.send_header("connection", "close")
-            self.end_headers()
-            if self.command != "HEAD":
-                self.wfile.write(payload)
-            self.close_connection = True
-
-        do_GET = _proxy
-        do_HEAD = _proxy
-        do_POST = _proxy
-        do_PUT = _proxy
-        do_PATCH = _proxy
-        do_DELETE = _proxy
-
-    class TLSHTTPServer(ThreadingHTTPServer):
-        daemon_threads = True
-        allow_reuse_address = True
-
-        def get_request(server_self):  # type: ignore[no-untyped-def]
-            raw_socket, address = super(TLSHTTPServer, server_self).get_request()
-            raw_socket.settimeout(12)
-            try:
-                tls_socket = tls_context.wrap_socket(raw_socket, server_side=True)
-                tls_socket.settimeout(None)
-                black_viewport._trace(
-                    instance,
-                    "tls-handshake",
-                    peer=f"{address[0]}:{address[1]}",
-                    protocol=tls_socket.version() or "",
-                    cipher=(tls_socket.cipher() or ("", "", 0))[0],
-                )
-                return tls_socket, address
-            except Exception as exc:
-                black_viewport._trace(
-                    instance,
-                    "tls-handshake-error",
-                    peer=f"{address[0]}:{address[1]}",
-                    error=f"{type(exc).__name__}:{exc}"[:1000],
-                )
-                try:
-                    raw_socket.close()
-                except Exception:
-                    pass
-                raise
-
-    server = TLSHTTPServer((instance.loopback_ip, 81), ProxyHandler)
-    thread = threading.Thread(
-        target=server.serve_forever,
-        name=f"recroom-wine-https-proxy-{instance.host_id[-6:]}",
-        daemon=True,
-    )
-    thread.start()
-    instance.proxy_server = server
-    instance.proxy_thread = thread
-
-
-def _capability_https(self: RecRoomWinePool) -> dict[str, Any]:
+def _capability_trusted(self: RecRoomWinePool) -> dict[str, Any]:
     payload = dict(_ORIGINAL_CAPABILITY(self))
     payload["recNetRedirectPatch"] = _PATCH_REVISION
     payload["recNetTransport"] = _TRANSPORT_REVISION
-    payload["recNetNameserverPath"] = _LOCAL_NAMESERVER_PATH
-    payload["recNetSchemeAcceptedByClient"] = "https"
-    payload["recNetPublicBootstrap"] = False
-    payload["recNetBootstrapHost"] = "loopback"
+    payload["recNetPublicBootstrap"] = True
+    payload["recNetBootstrapPath"] = _PUBLIC_BOOTSTRAP_PATH
+    payload["recNetBootstrapBase"] = _public_base(self)
     payload["recNetBootstrapScheme"] = "https"
-    payload["recNetLocalServiceScheme"] = "https"
-    payload["recNetTls12"] = True
-    payload["recNetTlsOpenSSL"] = bool(shutil.which("openssl"))
+    payload["recNetBootstrapHost"] = "public-hf-space"
+    payload["recNetLocalServiceScheme"] = "http"
+    payload["recNetMetadataLiteralRelocation"] = True
+    payload["recNetTlsVerificationBypassed"] = False
+    payload["recNetLoopbackTls"] = False
     return payload
 
 
-nameserver_fix._patch_client = _patch_client_https
-RecRoomWinePool._patch_client = _patch_client_https  # type: ignore[method-assign]
-RecRoomWinePool._start_proxy = _start_proxy_https  # type: ignore[method-assign]
-RecRoomWinePool.capability = _capability_https  # type: ignore[method-assign]
-print(f"Rec Room May 12 HTTPS RecNet compatibility patch loaded: {_PATCH_REVISION} / {_TRANSPORT_REVISION}")
+nameserver_fix._patch_client = _patch_client_trusted
+RecRoomWinePool._patch_client = _patch_client_trusted  # type: ignore[method-assign]
+RecRoomWinePool._start_proxy = black_viewport._start_proxy_traced  # type: ignore[method-assign]
+RecRoomWinePool.capability = _capability_trusted  # type: ignore[method-assign]
+print(f"Rec Room May 12 trusted public bootstrap loaded: {_PATCH_REVISION} / {_TRANSPORT_REVISION}")
