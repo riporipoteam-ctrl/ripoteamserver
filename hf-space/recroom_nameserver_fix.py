@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 from recroom_wine_pool import LOCAL_SERVICE_PREFIXES, RecRoomWinePool, WineInstance
 
@@ -15,6 +16,12 @@ from recroom_wine_pool import LOCAL_SERVICE_PREFIXES, RecRoomWinePool, WineInsta
 LEGACY_NAMESERVER_URL = "https://ns.rec.net/?v=2"
 LOCAL_NAMESERVER_PATH = "/nsx"
 _DEFAULT_LOCAL_BASE = "http://127.0.0.1:81"
+_EXACT_METADATA_RELATIVE = Path("RecRoom_Data/il2cpp_data/Metadata/global-metadata.dat")
+# Confirmed by the compact endpoint scan of exact build 8751857. The code still
+# searches the metadata if this offset ever disagrees, so the offset is an
+# accelerator/diagnostic rather than an unsafe blind write.
+_EXACT_NAMESERVER_OFFSET = 0xB5028
+_PATCH_REVISION = "may2022-metadata-only-v1"
 
 # Preserve the current host-routing prefixes that RipoTeamServer already uses.
 # These paths are removed by RecRoomWinePool._normalize_path before forwarding
@@ -51,90 +58,126 @@ def _nameserver_payload(local_base: str) -> dict[str, str]:
     return {field: f"{local_base}{suffix}" for field, suffix in _SERVICE_SUFFIX.items()}
 
 
-def _patch_legacy_nameserver(root: Path, local_base: str) -> int:
+def _atomic_replace(path: Path, data: bytes, suffix: str) -> None:
+    stat = path.stat()
+    temp = path.with_name(path.name + f".{os.getpid()}.{suffix}")
+    temp.write_bytes(data)
+    os.chmod(temp, stat.st_mode)
+    temp.replace(path)
+
+
+def _patch_exact_metadata(root: Path, local_base: str) -> int:
+    """Patch build 8751857's single RecNet-v2 bootstrap string.
+
+    The exact May 19 2022 client does not embed the later api.rec.net/auth.rec.net
+    service URLs. It asks https://ns.rec.net/?v=2 and receives those service
+    addresses dynamically. Previous code walked the full ~6.8 GB client and then
+    performed another full legacy-host scan on every Play request. The exact
+    build fingerprint already guarantees this layout, so only the IL2CPP metadata
+    file containing the bootstrap needs to be copied-on-write and changed.
+    """
+
     target = f"{local_base}{LOCAL_NAMESERVER_PATH}"
-    if len(target.encode("ascii")) != len(LEGACY_NAMESERVER_URL.encode("ascii")):
+    source_ascii = LEGACY_NAMESERVER_URL.encode("ascii")
+    target_ascii = target.encode("ascii")
+    default_ascii = f"{_DEFAULT_LOCAL_BASE}{LOCAL_NAMESERVER_PATH}".encode("ascii")
+    if len(source_ascii) != len(target_ascii):
         raise RuntimeError(
             f"Legacy nameserver redirect is not length-safe: {LEGACY_NAMESERVER_URL!r} -> {target!r}."
         )
 
-    allowed_ext = {
-        ".exe", ".dll", ".dat", ".bytes", ".json", ".txt", ".config", ".xml",
-        ".assets", ".resource", ".ress", ".bin", ".manifest",
-    }
-    allowed_names = {"globalgamemanagers", "globalgamemanagers.assets"}
-    max_size = 768 * 1024 * 1024
-    changed_total = 0
-    prepared_total = 0
+    path = root / _EXACT_METADATA_RELATIVE
+    if not path.is_file():
+        raise RuntimeError(
+            "Exact May 2022 IL2CPP metadata is missing from the Wine sandbox; "
+            f"expected {_EXACT_METADATA_RELATIVE.as_posix()}."
+        )
 
-    for dirpath, dirs, files in os.walk(root):
-        dirs[:] = [name for name in dirs if name not in {".git", "Logs", "Crashes"}]
-        for name in files:
-            path = Path(dirpath) / name
-            if name.endswith((".flux-backup", ".update-backup", ".update-new")):
-                continue
-            try:
-                stat = path.stat()
-            except OSError:
-                continue
-            if stat.st_size <= 0 or stat.st_size > max_size:
-                continue
-            if path.suffix.lower() not in allowed_ext and name.lower() not in allowed_names:
-                continue
-            try:
-                data = path.read_bytes()
-            except OSError:
-                continue
+    data = path.read_bytes()
+    changed = 0
+    prepared = 0
 
-            patched = bytearray(data)
-            changed = False
-            for encoding in ("ascii", "utf-16le"):
-                source = LEGACY_NAMESERVER_URL.encode(encoding)
-                destination = target.encode(encoding)
-                default_local = f"{_DEFAULT_LOCAL_BASE}{LOCAL_NAMESERVER_PATH}".encode(encoding)
-                if len(source) != len(destination):
-                    raise RuntimeError("Legacy RecNet nameserver redirect changed encoded length.")
-                for candidate in (source, default_local):
-                    cursor = 0
-                    while True:
-                        index = bytes(patched).find(candidate, cursor)
-                        if index < 0:
-                            break
-                        patched[index:index + len(candidate)] = destination
-                        cursor = index + len(candidate)
-                        changed = True
-                        changed_total += 1
-                prepared_total += bytes(patched).count(destination)
+    # Fast path: the endpoint scan found the bootstrap at 0xB5028. Verify the
+    # bytes before touching them so this can never corrupt a different build.
+    if data[_EXACT_NAMESERVER_OFFSET:_EXACT_NAMESERVER_OFFSET + len(source_ascii)] == source_ascii:
+        mutable = bytearray(data)
+        mutable[_EXACT_NAMESERVER_OFFSET:_EXACT_NAMESERVER_OFFSET + len(source_ascii)] = target_ascii
+        data = bytes(mutable)
+        changed += 1
+    else:
+        # Defensive fallback within this one small metadata file only.
+        count = data.count(source_ascii)
+        if count:
+            data = data.replace(source_ascii, target_ascii)
+            changed += count
 
-            if changed:
-                # The session client tree is a hard-link clone of the immutable
-                # base build. Replace the file atomically so only this sandbox's
-                # copy is modified.
-                temp = path.with_name(path.name + f".{os.getpid()}.nameserverpatch")
-                temp.write_bytes(patched)
-                os.chmod(temp, stat.st_mode)
-                temp.replace(path)
+    # UTF-16 is not expected for the known build-8751857 occurrence, but keep a
+    # tiny same-file fallback so a second encoded copy cannot escape routing.
+    source_utf16 = LEGACY_NAMESERVER_URL.encode("utf-16le")
+    target_utf16 = target.encode("utf-16le")
+    default_utf16 = f"{_DEFAULT_LOCAL_BASE}{LOCAL_NAMESERVER_PATH}".encode("utf-16le")
+    if len(source_utf16) != len(target_utf16):
+        raise RuntimeError("Legacy RecNet nameserver redirect changed encoded length.")
+    utf16_count = data.count(source_utf16)
+    if utf16_count:
+        data = data.replace(source_utf16, target_utf16)
+        changed += utf16_count
 
-    return max(changed_total, prepared_total)
+    prepared += data.count(target_ascii)
+    prepared += data.count(target_utf16)
+
+    # If this sandbox was somehow cloned from a default-local prepared template,
+    # retarget those bytes to its unique loopback address without a tree scan.
+    if target_ascii != default_ascii:
+        local_count = data.count(default_ascii)
+        if local_count:
+            data = data.replace(default_ascii, target_ascii)
+            changed += local_count
+    if target_utf16 != default_utf16:
+        local_count = data.count(default_utf16)
+        if local_count:
+            data = data.replace(default_utf16, target_utf16)
+            changed += local_count
+
+    if changed:
+        _atomic_replace(path, data, "nameserverpatch")
+
+    total = max(changed, prepared)
+    if total <= 0:
+        raise RuntimeError(
+            "Exact May 2022 RecNet v2 nameserver bootstrap was not found in global-metadata.dat."
+        )
+    return total
 
 
 _original_patch_client = RecRoomWinePool._patch_client
+_original_capability = RecRoomWinePool.capability
 
 
 def _patch_client(self: RecRoomWinePool, root: Path, local_base: str) -> int:
-    nameserver_count = _patch_legacy_nameserver(root, local_base)
+    nameserver_count = _patch_exact_metadata(root, local_base)
+
+    # Build 8751857 resolves services from the v2 nameserver. Its compact full
+    # endpoint scan contains no later hardcoded api.rec.net/auth.rec.net family,
+    # so rescanning gigabytes for them only makes Play sit at 46%. Keep an opt-in
+    # diagnostic escape hatch, disabled in production.
     direct_count = 0
-    try:
-        direct_count = int(_original_patch_client(self, root, local_base) or 0)
-    except RuntimeError as exc:
-        # Build 8751857 bootstraps service URLs dynamically through
-        # https://ns.rec.net/?v=2, so it legitimately may not contain any of the
-        # later hardcoded https://api.rec.net / https://auth.rec.net strings.
-        if nameserver_count <= 0 or "known rec.net service URLs" not in str(exc):
-            raise
-    if nameserver_count <= 0 and direct_count <= 0:
-        raise RuntimeError("May 2022 RecNet nameserver URL was not found in the client.")
+    if os.environ.get("RECROOM_MAY2022_SCAN_DIRECT_SERVICE_URLS", "0") == "1":
+        try:
+            direct_count = int(_original_patch_client(self, root, local_base) or 0)
+        except RuntimeError as exc:
+            if nameserver_count <= 0 or "known rec.net service URLs" not in str(exc):
+                raise
+
     return nameserver_count + direct_count
+
+
+def _capability_with_redirect_marker(self: RecRoomWinePool) -> dict[str, Any]:
+    payload = dict(_original_capability(self))
+    payload["recNetRedirectPatch"] = _PATCH_REVISION
+    payload["recNetRedirectFile"] = _EXACT_METADATA_RELATIVE.as_posix()
+    payload["recNetDirectUrlScan"] = os.environ.get("RECROOM_MAY2022_SCAN_DIRECT_SERVICE_URLS", "0") == "1"
+    return payload
 
 
 def _start_proxy(self: RecRoomWinePool, instance: WineInstance, session_token: str) -> None:
@@ -170,6 +213,7 @@ def _start_proxy(self: RecRoomWinePool, instance: WineInstance, session_token: s
                     "provider": "wine",
                     "targetBuild": "recroom-2022-05-19",
                     "nameserver": True,
+                    "redirectPatch": _PATCH_REVISION,
                 }).encode()
                 self._json(200, payload)
                 return
@@ -226,5 +270,7 @@ def _start_proxy(self: RecRoomWinePool, instance: WineInstance, session_token: s
     instance.proxy_thread = thread
 
 
-RecRoomWinePool._patch_client = _patch_client
-RecRoomWinePool._start_proxy = _start_proxy
+RecRoomWinePool._patch_client = _patch_client  # type: ignore[method-assign]
+RecRoomWinePool._start_proxy = _start_proxy  # type: ignore[method-assign]
+RecRoomWinePool.capability = _capability_with_redirect_marker  # type: ignore[method-assign]
+print(f"Rec Room May 2022 RecNet redirect patch loaded: {_PATCH_REVISION}")
