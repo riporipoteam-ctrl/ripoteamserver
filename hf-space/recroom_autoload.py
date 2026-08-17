@@ -33,6 +33,10 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         public_url = os.environ.get("RECROOM_PUBLIC_BASE_URL", "https://echoxr-ripoteam-cloud-pc.hf.space").rstrip("/")
         os.environ.setdefault("RECROOM_GATEWAY_URL", public_url)
         os.environ.setdefault("RECROOM_WINE_CLIENT_ARCHIVE_URL", _DEFAULT_MAY_2022_ARCHIVE)
+        # A Space restart wipes the local game image; a player launch should wait
+        # for the automatic exact-build restore instead of expiring or failing.
+        os.environ.setdefault("RECROOM_STARTING_TTL_SECONDS", "900")
+        os.environ.setdefault("RECROOM_CLIENT_WAIT_SECONDS", "720")
 
         admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
         if admin_token:
@@ -61,6 +65,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         from recroom_vm_bridge import attach_recroom_vm_pool
         from recroom_build_fingerprint import guard_wine_pool
         from recroom_client_installer import install_recroom_client_installer_routes
+        from recroom_launch_wait_fix import install_launch_wait_fix
         from recroom_capture import install_recroom_capture_routes
         from recroom_public import install_recroom_public_routes
 
@@ -88,6 +93,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
                 wine_pool,
                 root / "recroom-client-installer",
             )
+            install_launch_wait_fix(broker, wine_pool, client_installer)
         capture = install_recroom_capture_routes(application, broker, root / "recroom-captures")
         install_recroom_public_routes(application, broker, capture)
 
