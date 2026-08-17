@@ -16,6 +16,7 @@ import recroom_wine_prefix_fix  # noqa: F401
 import recroom_wine_runtime_fix  # noqa: F401
 import recroom_nameserver_fix  # noqa: F401
 import recroom_black_viewport_fix  # noqa: F401
+import recroom_live_failure_diagnostics  # noqa: F401
 from recroom_vm_bridge import attach_recroom_vm_pool
 from server_live_broadcaster import ServerLiveBroadcaster, install_server_live_routes
 
