@@ -6,8 +6,9 @@ on:
     paths:
       - "hf-space/recroom_vm_*.py"
       - "hf-space/recroom_wine_*.py"
+      - "hf-space/recroom_build_fingerprint.py"
+      - "hf-space/recroom-may-2022-fingerprint.json"
       - "hf-space/recroom_client_installer.py"
-      - "hf-space/recroom_steam_recovery.py"
       - "hf-space/recroom_autoload.py"
       - "hf-space/app_server_v2.py"
       - "hf-space/packages.txt"
@@ -31,12 +32,46 @@ jobs:
             hf-space/recroom_vm_pool.py \
             hf-space/recroom_wine_pool.py \
             hf-space/recroom_wine_stream.py \
+            hf-space/recroom_build_fingerprint.py \
             hf-space/recroom_client_installer.py \
-            hf-space/recroom_steam_recovery.py \
             hf-space/recroom_vm_bridge.py \
             hf-space/recroom_public.py \
             hf-space/recroom_autoload.py \
             hf-space/app_server_v2.py
+      - name: Verify pinned build identity contract
+        run: |
+          PYTHONPATH=hf-space python - <<'PY'
+          import json
+          import tempfile
+          from pathlib import Path
+          from recroom_build_fingerprint import FINGERPRINT, verify_client_root
+
+          assert FINGERPRINT['buildId'] == '8751857'
+          assert FINGERPRINT['manifestId'] == '6337851004861751095'
+          assert FINGERPRINT['depotId'] == '471711'
+          assert FINGERPRINT['fileCount'] == 3693
+          assert FINGERPRINT['totalBytes'] == 6790009298
+          assert FINGERPRINT['fingerprintSha256'] == 'aa367ee11821b6abcbf9bd81cda393f4a872e74af5ba13ca843a0031948c32cf'
+          expected = {
+              'RecRoom.exe': (650752, '153860af085119fa5c45d97f109f341fb8dde577dc34207e1bb94c1fcc83d16f'),
+              'Recroom_Release.exe': (1420104, 'f6673b066d8d36da10f7ae21f8f1b021bbe6c7018d2a6bc39bd866df067453d7'),
+              'GameAssembly.dll': (132531712, '2ba4571be2791602386bf02581805e021568ccfeacce6cd265450974b7ea8f27'),
+              'UnityPlayer.dll': (26030984, '697b57d82f97326c5410a819a1abfe4a8c13fdcbeea7808ae1254ddbdeb4e744'),
+              'global-metadata.dat': (32123860, 'd77f3728ba1f3765941f90de036f6b283301c156db3d7e31932e56c9b06a9b0c'),
+          }
+          for name, (size, sha) in expected.items():
+              entry=FINGERPRINT['criticalFiles'][name]
+              assert entry['size'] == size, (name, entry)
+              assert entry['sha256'] == sha, (name, entry)
+
+          with tempfile.TemporaryDirectory() as tmp:
+              root=Path(tmp)
+              result=verify_client_root(root)
+              assert result['ok'] is False
+              assert result['rootPresent'] is True
+              assert result['mismatches'], result
+          print('RECROOM_EXACT_BUILD_CONTRACT_OK=true')
+          PY
       - name: Read live RipoTeamServer Wine capability
         run: |
           set -euo pipefail
@@ -44,29 +79,33 @@ jobs:
           for i in $(seq 1 90); do
             if curl -fsS -H 'Cache-Control: no-cache' "$URL?ts=$(date +%s)" -o /tmp/wine.json; then
               cat /tmp/wine.json | python -m json.tool
-              python - <<'PY'
+              if python - <<'PY'
           import json
           p=json.load(open('/tmp/wine.json'))
           assert p.get('ok') is True, p
           assert p.get('provider') == 'wine', p
           checks=p.get('checks') or {}
-          # The managed Linux host itself must expose the KVM-free runtime tools.
-          # The proprietary Rec Room client is intentionally NOT stored in Git.
           for key in ('wine','wineboot','xvfb','xdotool','ffmpeg','pulse','python','streamWorker'):
               assert checks.get(key) is True, (key,p)
+          # Wait for the new exact-build guard deployment, not an older Space image.
+          assert p.get('targetBuild') == '8751857', p
+          assert p.get('targetManifest') == '6337851004861751095', p
+          assert p.get('targetFingerprint') == 'aa367ee11821b6abcbf9bd81cda393f4a872e74af5ba13ca843a0031948c32cf', p
+          assert 'fingerprint' in checks, p
           print('supported=', p.get('supported'))
           print('readyForGame=', p.get('readyForGame'))
+          print('exactBuild=', p.get('exactBuild'))
           print('reason=', p.get('reason'))
           print('checks=', checks)
           print('clientDir=', p.get('clientDir'))
           PY
-              exit 0
+              then exit 0; fi
             fi
             sleep 5
           done
-          echo "Live Wine capability endpoint never became reachable after the Space deployment window" >&2
+          echo "Live Wine capability endpoint never exposed the exact-build guard" >&2
           exit 1
-      - name: Verify client installer is live and admin protected
+      - name: Verify exact-build client installer is live and admin protected
         run: |
           set -euo pipefail
           URL="https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/client-install"
@@ -87,26 +126,6 @@ jobs:
             sleep 5
           done
           echo "Protected client installer route never became live" >&2
-          exit 1
-      - name: Verify official Steam QR recovery is live and admin protected
-        run: |
-          set -euo pipefail
-          URL="https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/steam-recovery/start"
-          for i in $(seq 1 90); do
-            code="$(curl -sS -o /tmp/steam-guard.json -w '%{http_code}' \
-              -H 'Cache-Control: no-cache' \
-              -X POST \
-              "$URL?ts=$(date +%s)" || true)"
-            echo "steam recovery guard HTTP $code"
-            cat /tmp/steam-guard.json || true
-            if [ "$code" = "401" ]; then exit 0; fi
-            if [ "$code" != "404" ] && [ "$code" != "502" ] && [ "$code" != "503" ] && [ "$code" != "000" ]; then
-              echo "Unexpected Steam recovery guard response: HTTP $code" >&2
-              exit 1
-            fi
-            sleep 5
-          done
-          echo "Protected Steam recovery route never became live" >&2
           exit 1
       - name: Keep KVM capability diagnostic available
         run: |
