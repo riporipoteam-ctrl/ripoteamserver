@@ -48,12 +48,16 @@ jobs:
           }
           trap cleanup EXIT
 
-          echo 'Creating disposable anonymous Flux test identity...'
+          echo 'Creating disposable email/password Flux test identity...'
+          TEST_EMAIL="recroom-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.com"
+          TEST_PASSWORD="Rr!$(openssl rand -hex 18)"
+          AUTH_BODY="$(jq -cn --arg email "$TEST_EMAIL" --arg password "$TEST_PASSWORD" \
+            '{email:$email,password:$password,returnSecureToken:true}')"
           AUTH_CODE="$(curl -sS --max-time 30 -o /tmp/rr-live/firebase-auth.json -w '%{http_code}' \
             -X POST "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$FIREBASE_API_KEY" \
             -H 'content-type: application/json' \
-            --data '{"returnSecureToken":true}')"
-          cat /tmp/rr-live/firebase-auth.json
+            --data "$AUTH_BODY")"
+          jq '{localId,email,error}' /tmp/rr-live/firebase-auth.json
           test "$AUTH_CODE" = '200'
           FIREBASE_TOKEN="$(jq -r '.idToken // empty' /tmp/rr-live/firebase-auth.json)"
           test -n "$FIREBASE_TOKEN"
@@ -65,7 +69,7 @@ jobs:
             -H "authorization: Bearer $FIREBASE_TOKEN" \
             -H 'content-type: application/json' \
             --data '{"buildId":"recroom-2022-05-19"}')"
-          cat /tmp/rr-live/session-create.json
+          jq '.' /tmp/rr-live/session-create.json
           test "$CREATE_CODE" = '202'
           SESSION_ID="$(jq -r '.sessionId // empty' /tmp/rr-live/session-create.json)"
           ACCESS_TOKEN="$(jq -r '.accessToken // empty' /tmp/rr-live/session-create.json)"
@@ -86,11 +90,11 @@ jobs:
             echo "launch[$i] state=$STATE phase=$PHASE progress=$PROGRESS provider=$PROVIDER"
             if [ "$STATE" = 'ready' ]; then
               READY='1'
-              cat /tmp/rr-live/session-status.json
+              jq '{sessionId,state,provider,phase,progress,streamUrl,error}' /tmp/rr-live/session-status.json
               break
             fi
             if [ "$STATE" = 'failed' ]; then
-              cat /tmp/rr-live/session-status.json
+              jq '.' /tmp/rr-live/session-status.json
               echo '::error::Rec Room runtime reported failed state.'
               exit 1
             fi
@@ -104,7 +108,7 @@ jobs:
           echo 'Requesting screenshot from the live Rec Room sandbox...'
           CAP_CODE="$(curl -sS --max-time 30 -o /tmp/rr-live/capture-create.json -w '%{http_code}' \
             -X POST "$SPACE_URL/api/recroom-public/sessions/$SESSION_ID/captures?accessToken=$ACCESS_TOKEN")"
-          cat /tmp/rr-live/capture-create.json
+          jq '.' /tmp/rr-live/capture-create.json
           test "$CAP_CODE" = '202'
           CAPTURE_ID="$(jq -r '.captureId // empty' /tmp/rr-live/capture-create.json)"
           test -n "$CAPTURE_ID"
@@ -121,7 +125,7 @@ jobs:
               break
             fi
             if [ "$CAP_STATE" = 'failed' ]; then
-              cat /tmp/rr-live/capture-status.json
+              jq '.' /tmp/rr-live/capture-status.json
               exit 1
             fi
             sleep 2
