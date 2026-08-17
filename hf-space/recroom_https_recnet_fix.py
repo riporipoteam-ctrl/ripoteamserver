@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-import recroom_black_viewport_fix as black_viewport  # noqa: F401
+import recroom_black_viewport_fix as black_viewport
 import recroom_nameserver_fix as nameserver_fix
 from recroom_wine_pool import RecRoomWinePool
 
@@ -188,6 +188,6 @@ def _capability_trusted(self: RecRoomWinePool) -> dict[str, Any]:
 
 nameserver_fix._patch_client = _patch_client_trusted
 RecRoomWinePool._patch_client = _patch_client_trusted  # type: ignore[method-assign]
-RecRoomWinePool._start_proxy = nameserver_fix._start_proxy  # type: ignore[method-assign]
+RecRoomWinePool._start_proxy = black_viewport._start_proxy_traced  # type: ignore[method-assign]
 RecRoomWinePool.capability = _capability_trusted  # type: ignore[method-assign]
 print(f"Rec Room trusted RecNet bootstrap patch loaded: {_PATCH_REVISION} / {_TRANSPORT_REVISION}")
