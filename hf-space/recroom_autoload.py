@@ -12,7 +12,7 @@ from typing import Any
 
 _MOUNT_LOCK = threading.Lock()
 _MOUNTED = False
-_DEFAULT_RECROOM_ARCHIVE = "https://archive.recagain.site/download/2020-03-27T06-58-55Z"
+_DEFAULT_RECROOM_ARCHIVE = "https://archive.recagain.site/download/2021-08-25T06-50-15Z"
 
 
 def _derived_key(root_secret: str, purpose: bytes) -> str:
@@ -56,6 +56,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         import recroom_wine_prefix_fix  # noqa: F401
         import recroom_wine_runtime_fix  # noqa: F401
         import recroom_nameserver_fix  # noqa: F401
+        import recroom_2021_nameserver_contract  # noqa: F401
         import recroom_black_viewport_fix  # noqa: F401
         import recroom_https_recnet_fix as recroom_recnet_transport
         import recroom_live_failure_diagnostics  # noqa: F401
