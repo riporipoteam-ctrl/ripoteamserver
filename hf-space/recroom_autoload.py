@@ -36,6 +36,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         os.environ.setdefault("RECROOM_STARTING_TTL_SECONDS", "900")
         os.environ.setdefault("RECROOM_CLIENT_WAIT_SECONDS", "720")
         os.environ.setdefault("RECROOM_PHOTON_APP_VERSION", "20210827_prod")
+        os.environ.setdefault("RECROOM_STEAM_LOGIN_WAIT_SECONDS", "1200")
 
         admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
         if admin_token:
@@ -54,6 +55,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         from recroom_leaderboard_compat import install_recroom_leaderboard_compat_routes
         from recroom_route_order import stabilize_recroom_route_order
         from recroom_broker import install_recroom_broker_routes
+        import recroom_2021_broker_alias  # noqa: F401
 
         import recroom_wine_prefix_fix  # noqa: F401
         import recroom_wine_runtime_fix  # noqa: F401
@@ -62,8 +64,10 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         import recroom_black_viewport_fix  # noqa: F401
         import recroom_https_recnet_fix as recroom_recnet_transport
         import recroom_2021_metadata_locator  # noqa: F401
+        import recroom_2021_steam_runtime  # noqa: F401
         import recroom_live_failure_diagnostics  # noqa: F401
         from recroom_vm_bridge import attach_recroom_vm_pool
+        from recroom_2021_steam_session import expose_steam_phase
         from recroom_build_fingerprint import guard_wine_pool
         from recroom_client_installer import install_recroom_client_installer_routes
         import recroom_2021_archive_attestation  # noqa: F401
@@ -86,6 +90,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
 
         broker = install_recroom_broker_routes(application, root / "recroom-broker")
         vm_pool = attach_recroom_vm_pool(application, broker, root)
+        expose_steam_phase(broker)
         wine_pool = getattr(broker, "wine_pool", None)
         client_installer = None
         if wine_pool is not None:
