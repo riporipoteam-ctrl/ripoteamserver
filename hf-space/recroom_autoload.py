@@ -12,7 +12,7 @@ from typing import Any
 
 _MOUNT_LOCK = threading.Lock()
 _MOUNTED = False
-_DEFAULT_RECROOM_ARCHIVE = "https://archive.recagain.site/download/2020-03-27T06-58-55Z"
+_DEFAULT_RECROOM_ARCHIVE = "https://archive.recagain.site/download/2021-08-25T06-50-15Z"
 
 
 def _derived_key(root_secret: str, purpose: bytes) -> str:
@@ -35,6 +35,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         os.environ.setdefault("RECROOM_WINE_CLIENT_ARCHIVE_URL", _DEFAULT_RECROOM_ARCHIVE)
         os.environ.setdefault("RECROOM_STARTING_TTL_SECONDS", "900")
         os.environ.setdefault("RECROOM_CLIENT_WAIT_SECONDS", "720")
+        os.environ.setdefault("RECROOM_PHOTON_APP_VERSION", "20210827_prod")
 
         admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
         if admin_token:
@@ -42,6 +43,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
             os.environ.setdefault("RECROOM_HOST_KEY", _derived_key(admin_token, b"ripo-recroom-host-v1"))
 
         from recroom_gateway import RecRoomGateway, install_recroom_gateway_routes
+        import recroom_2021_gateway_config  # noqa: F401
         from recroom_compat import install_recroom_compat_routes
         from recroom_compat_extra import install_recroom_extra_routes
         from recroom_room_compat import install_recroom_room_compat_routes
@@ -56,12 +58,15 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         import recroom_wine_prefix_fix  # noqa: F401
         import recroom_wine_runtime_fix  # noqa: F401
         import recroom_nameserver_fix  # noqa: F401
+        import recroom_2021_nameserver_contract  # noqa: F401
         import recroom_black_viewport_fix  # noqa: F401
         import recroom_https_recnet_fix as recroom_recnet_transport
+        import recroom_2021_metadata_locator  # noqa: F401
         import recroom_live_failure_diagnostics  # noqa: F401
         from recroom_vm_bridge import attach_recroom_vm_pool
         from recroom_build_fingerprint import guard_wine_pool
         from recroom_client_installer import install_recroom_client_installer_routes
+        import recroom_2021_archive_attestation  # noqa: F401
         from recroom_launch_wait_fix import install_launch_wait_fix
         from recroom_capture import install_recroom_capture_routes
         from recroom_public import install_recroom_public_routes
