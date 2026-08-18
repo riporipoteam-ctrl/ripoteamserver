@@ -45,12 +45,24 @@ def attach_recroom_vm_pool(app: Any, broker: Any, data_dir: Any) -> RecRoomVmPoo
     original_kvm_proxy_target = kvm_pool.proxy_target
     original_wine_proxy_target = wine_pool.proxy_target
 
+    def touch_runtime_browser(host_id: str) -> None:
+        now = time.time()
+        browser_seen[host_id] = now
+        # Server-owned runtimes do not have a separate host agent sending
+        # heartbeats while the player is sitting in Steam sign-in. Treat actual
+        # browser stream traffic as a heartbeat so the 35-second host-stale
+        # guard cannot falsely mark an active Wine session offline.
+        with broker.lock:
+            host = broker.hosts.get(host_id)
+            if host and host.metadata.get("runtimePool"):
+                host.last_heartbeat = now
+
     def tracked_kvm_proxy_target(host_id: str, path: str, query: str = "") -> str:
-        browser_seen[host_id] = time.time()
+        touch_runtime_browser(host_id)
         return original_kvm_proxy_target(host_id, path, query)
 
     def tracked_wine_proxy_target(host_id: str, path: str, query: str = "") -> str:
-        browser_seen[host_id] = time.time()
+        touch_runtime_browser(host_id)
         return original_wine_proxy_target(host_id, path, query)
 
     kvm_pool.proxy_target = tracked_kvm_proxy_target  # type: ignore[method-assign]
