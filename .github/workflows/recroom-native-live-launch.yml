@@ -18,7 +18,7 @@ jobs:
       SPACE_URL: https://echoxr-ripoteam-cloud-pc.hf.space
       FIREBASE_API_KEY: AIzaSyBV_ev8AVpKwgioPSSWiBYf8UU09bLbWOU
     steps:
-      - name: Allocate, launch, capture and release exact May 2022 client
+      - name: Allocate, launch, capture and release exact Aug 25 2021 client
         shell: bash
         run: |
           set -euo pipefail
@@ -63,12 +63,12 @@ jobs:
           test -n "$FIREBASE_TOKEN"
           echo "TEMP_FIREBASE_UID=$(jq -r '.localId // empty' /tmp/rr-live/firebase-auth.json)"
 
-          echo 'Allocating exact May 19 2022 server-stream session...'
+          echo 'Allocating exact Aug 25 2021 server-stream session...'
           CREATE_CODE="$(curl -sS --max-time 45 -o /tmp/rr-live/session-create.json -w '%{http_code}' \
             -X POST "$SPACE_URL/api/recroom-public/sessions" \
             -H "authorization: Bearer $FIREBASE_TOKEN" \
             -H 'content-type: application/json' \
-            --data '{"buildId":"recroom-2022-05-19"}')"
+            --data '{"buildId":"recroom-2021-08-25"}')"
           jq '{ok,mode,sessionId,state,hostId,buildId,provider,phase,progress,error}' /tmp/rr-live/session-create.json
           test "$CREATE_CODE" = '202'
           SESSION_ID="$(jq -r '.sessionId // empty' /tmp/rr-live/session-create.json)"
@@ -79,7 +79,7 @@ jobs:
 
           echo 'Polling real Wine/Rec Room launch...'
           READY='0'
-          for i in $(seq 1 72); do
+          for i in $(seq 1 90); do
             curl -fsS --max-time 20 \
               "$SPACE_URL/api/recroom-public/sessions/$SESSION_ID?accessToken=$ACCESS_TOKEN" \
               -o /tmp/rr-live/session-status.json
@@ -144,7 +144,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: recroom-may-2022-live-proof
+          name: recroom-aug25-2021-live-proof
           path: /tmp/rr-live/recroom-live.png
           if-no-files-found: ignore
           retention-days: 1
