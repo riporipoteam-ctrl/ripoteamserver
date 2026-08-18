@@ -1,0 +1,122 @@
+name: Prepare Aug 25 2021 Rec Room runtime
+
+on:
+  push:
+    branches: [recroom-aug25-2021]
+    paths:
+      - '.github/workflows/prepare-aug25-2021-runtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: recroom-aug25-2021
+      - name: Build exact Aug 25 2021 fingerprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import urllib.request, hashlib, json, pathlib
+          date='2021-08-25T06-50-15Z'
+          build='7225744'
+          manifest='7611535694620830622'
+          base=f'https://archive.recagain.site/{date}'
+          candidates=[
+            ('RecRoom.exe',['RecRoom.exe']),
+            ('Recroom_Release.exe',['Recroom_Release.exe']),
+            ('GameAssembly.dll',['GameAssembly.dll']),
+            ('UnityPlayer.dll',['UnityPlayer.dll']),
+            ('global-metadata.dat',[
+              'RecRoom_Data/il2cpp_data/Metadata/global-metadata.dat',
+              'Recroom_Release_Data/il2cpp_data/Metadata/global-metadata.dat',
+            ]),
+          ]
+          critical={}; canonical=[]; total=0
+          for label, rels in candidates:
+            last=None
+            for rel in rels:
+              try:
+                with urllib.request.urlopen(f'{base}/{rel}', timeout=240) as r:
+                  data=r.read()
+                if data:
+                  h=hashlib.sha256(data).hexdigest(); n=len(data)
+                  critical[label]={'path':rel,'size':n,'sha256':h}
+                  canonical.append(f'{rel}\0{n}\0{h}')
+                  total += n
+                  if label=='global-metadata.dat':
+                    print('BOOTSTRAP_OCCURRENCES',data.count(b'https://ns.rec.net/?v=2'))
+                  break
+              except Exception as exc:
+                last=exc
+            else:
+              if label in {'RecRoom.exe','Recroom_Release.exe'}:
+                print('OPTIONAL_EXECUTABLE_MISSING',label,repr(last))
+                continue
+              raise RuntimeError(f'missing required {label}: {last!r}')
+          if not any(k in critical for k in ('RecRoom.exe','Recroom_Release.exe')):
+            raise RuntimeError('no Rec Room executable found')
+          out={
+            'schema':1,'buildId':build,'manifestId':manifest,'depotId':'471711',
+            'buildDate':date,'updateName':'the "Bento Box" edition A',
+            'fingerprintScope':'criticalFiles','fileCount':len(critical),'totalBytes':total,
+            'fingerprintSha256':hashlib.sha256('\n'.join(canonical).encode()).hexdigest(),
+            'criticalFiles':critical,
+          }
+          path=pathlib.Path('hf-space/recroom-may-2022-fingerprint.json')
+          path.write_text(json.dumps(out,indent=2)+'\n',encoding='utf-8')
+          print(json.dumps(out,indent=2))
+          PY
+      - name: Retarget runtime constants to 2021
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          replacements={
+            '6337851004861751095':'7611535694620830622',
+            '8751857':'7225744',
+            'recroom-2022-05-19':'recroom-2021-08-25',
+            'May 19 2022':'Aug 25 2021',
+            'May 2022':'Aug 2021',
+            '2020-03-27T06-58-55Z':'2021-08-25T06-50-15Z',
+            '4802887':'7225744',
+            '2539899194395389618':'7611535694620830622',
+            'mar27-2020-trusted-public-bootstrap-v1':'aug25-2021-trusted-public-bootstrap-v1',
+            'trusted-public-https-bootstrap-local-http-mar27-v1':'trusted-public-https-bootstrap-local-http-aug25-2021-v1',
+            'mar27trustedbootstrap':'aug25trustedbootstrap',
+            'March 27 2020':'Aug 25 2021',
+          }
+          files=[
+            Path('hf-space/recroom_wine_pool.py'),
+            Path('hf-space/recroom_client_installer.py'),
+            Path('hf-space/recroom_https_recnet_fix.py'),
+            Path('hf-space/recroom_black_viewport_fix.py'),
+            Path('hf-space/recroom_nameserver_fix.py'),
+          ]
+          for p in files:
+            if not p.exists(): continue
+            text=p.read_text(encoding='utf-8')
+            old=text
+            for a,b in replacements.items(): text=text.replace(a,b)
+            if text!=old:
+              p.write_text(text,encoding='utf-8')
+              print('UPDATED',p)
+          PY
+          grep -RniE '2020-03-27|4802887|2539899194395389618|8751857|6337851004861751095|recroom-2022-05-19' hf-space || true
+      - name: Commit prepared branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add hf-space
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Prepare exact Aug 25 2021 Rec Room runtime'
+          git push origin HEAD:recroom-aug25-2021
