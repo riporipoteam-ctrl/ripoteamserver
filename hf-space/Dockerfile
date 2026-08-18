@@ -18,6 +18,7 @@ RUN dpkg --add-architecture i386 \
         desktop-file-utils \
         ffmpeg \
         espeak-ng \
+        file \
         firefox-esr \
         fonts-dejavu-core \
         gcc-mingw-w64-x86-64-win32 \
