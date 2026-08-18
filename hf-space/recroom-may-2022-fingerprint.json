@@ -1,19 +1,18 @@
 {
   "schema": 1,
-  "buildId": "8715820",
-  "manifestId": "2586133705164702202",
+  "buildId": "4802887",
+  "manifestId": "2539899194395389618",
   "depotId": "471711",
-  "buildDate": "2022-05-12T06-50-19Z",
-  "updateName": "the \"Under Construction\" edition",
+  "buildDate": "2020-03-27T06-58-55Z",
+  "updateName": "the \"Rec Room Plus\" edition",
   "fingerprintScope": "criticalFiles",
-  "fileCount": 5,
-  "totalBytes": 193278144,
-  "fingerprintSha256": "f7737eba9ec2e4cc7f6049835db238a23d18a9a1298ad0186d893d9699d665f1",
+  "fileCount": 4,
+  "totalBytes": 111024448,
+  "fingerprintSha256": "770cf906f01b9e215c46fb2efc0d0fb3234e29dda0c3444ff109c88c236c341d",
   "criticalFiles": {
-    "RecRoom.exe": {"path":"RecRoom.exe","size":650752,"sha256":"153860af085119fa5c45d97f109f341fb8dde577dc34207e1bb94c1fcc83d16f"},
-    "Recroom_Release.exe": {"path":"Recroom_Release.exe","size":1420104,"sha256":"97b09431728de7a997dd8a519ce0749c2680d977b5cb99c5262ae2c54b6bb5a6"},
-    "GameAssembly.dll": {"path":"GameAssembly.dll","size":132968960,"sha256":"668bab489d24f883e95d0fd359e6a18a0b770e322d9efd823fb75087570a4a5f"},
-    "UnityPlayer.dll": {"path":"UnityPlayer.dll","size":26030984,"sha256":"697b57d82f97326c5410a819a1abfe4a8c13fdcbeea7808ae1254ddbdeb4e744"},
-    "global-metadata.dat": {"path":"RecRoom_Data/il2cpp_data/Metadata/global-metadata.dat","size":32207344,"sha256":"5e5c499789b0af6ddd97e2a04725ee99f80037f8009622e2364eda0203050ecf"}
+    "Recroom_Release.exe": {"path":"Recroom_Release.exe","size":850640,"sha256":"1ff3509bbbfbedc3f7a0b230ddbc3b82b06fa685deed9043e1c8472903670e0a"},
+    "GameAssembly.dll": {"path":"GameAssembly.dll","size":64985088,"sha256":"165e50df475b8cb14d145730022aa01765df9039c30e0c8ff9ba5da9ffc6e65c"},
+    "UnityPlayer.dll": {"path":"UnityPlayer.dll","size":22945224,"sha256":"3908df9807bf427815a0895840982f86f4258dece5bebba939887517b1ae80ed"},
+    "global-metadata.dat": {"path":"Recroom_Release_Data/il2cpp_data/Metadata/global-metadata.dat","size":22243496,"sha256":"81cdd309b012bd71277892ed06a4cb5e697de1eee947d1a944182cd10d3b97f4"}
   }
 }
