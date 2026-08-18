@@ -12,7 +12,7 @@ from typing import Any
 
 _MOUNT_LOCK = threading.Lock()
 _MOUNTED = False
-_DEFAULT_MAY_2022_ARCHIVE = "https://archive.recagain.site/download/2022-05-12T06-50-19Z"
+_DEFAULT_RECROOM_ARCHIVE = "https://archive.recagain.site/download/2020-03-27T06-58-55Z"
 
 
 def _derived_key(root_secret: str, purpose: bytes) -> str:
@@ -32,7 +32,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         root.mkdir(parents=True, exist_ok=True)
         public_url = os.environ.get("RECROOM_PUBLIC_BASE_URL", "https://echoxr-ripoteam-cloud-pc.hf.space").rstrip("/")
         os.environ.setdefault("RECROOM_GATEWAY_URL", public_url)
-        os.environ.setdefault("RECROOM_WINE_CLIENT_ARCHIVE_URL", _DEFAULT_MAY_2022_ARCHIVE)
+        os.environ.setdefault("RECROOM_WINE_CLIENT_ARCHIVE_URL", _DEFAULT_RECROOM_ARCHIVE)
         os.environ.setdefault("RECROOM_STARTING_TTL_SECONDS", "900")
         os.environ.setdefault("RECROOM_CLIENT_WAIT_SECONDS", "720")
 
@@ -126,7 +126,7 @@ def _mount_when_app_exists() -> None:
                 module.RIPO_RECROOM_WINE_POOL = result.get("winePool")
                 module.RIPO_RECROOM_CLIENT_INSTALLER = result.get("clientInstaller")
                 module.RIPO_RECROOM_CAPTURE = result["capture"]
-            print(f"Rec Room May 2022 server-stream routes mounted: {result.get('ok')}")
+            print(f"Rec Room server-stream routes mounted: {result.get('ok')}")
             return
         except Exception as exc:
             print(f"Rec Room runtime route mount failed: {exc}")
