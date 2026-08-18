@@ -79,8 +79,17 @@ RUN python -m pip install --upgrade pip \
     && python -m pip install -r /app/requirements.txt
 
 COPY . /app
-RUN sed -i '/^import spaces$/d' /app/app.py \
-    && chown -R user:user /app /home/user
+RUN python - <<'PY'
+from pathlib import Path
+p = Path('/app/app.py')
+text = p.read_text(encoding='utf-8')
+needle = 'import spaces\n'
+replacement = '''class _DockerSpacesCompat:\n    @staticmethod\n    def GPU(*_args, **_kwargs):\n        def decorator(fn):\n            return fn\n        return decorator\n\nspaces = _DockerSpacesCompat()\n'''
+if needle not in text:
+    raise SystemExit('expected import spaces line missing from app.py')
+p.write_text(text.replace(needle, replacement, 1), encoding='utf-8')
+PY
+RUN chown -R user:user /app /home/user
 
 USER user
 
