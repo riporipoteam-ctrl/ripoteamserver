@@ -1,0 +1,49 @@
+name: Fix Rec Room Wine stream heartbeat
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/fix-recroom-wine-stream-heartbeat.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Keep runtime host online while browser stream is active
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('hf-space/recroom_vm_bridge.py')
+          text = path.read_text()
+          old = '''    def tracked_kvm_proxy_target(host_id: str, path: str, query: str = "") -> str:\n        browser_seen[host_id] = time.time()\n        return original_kvm_proxy_target(host_id, path, query)\n\n    def tracked_wine_proxy_target(host_id: str, path: str, query: str = "") -> str:\n        browser_seen[host_id] = time.time()\n        return original_wine_proxy_target(host_id, path, query)\n'''
+          new = '''    def touch_runtime_browser(host_id: str) -> None:\n        now = time.time()\n        browser_seen[host_id] = now\n        # Server-owned runtimes do not have a separate host agent sending\n        # heartbeats while the player is sitting in Steam sign-in. Treat actual\n        # browser stream traffic as a heartbeat so the 35-second host-stale\n        # guard cannot falsely mark an active Wine session offline.\n        with broker.lock:\n            host = broker.hosts.get(host_id)\n            if host and host.metadata.get("runtimePool"):\n                host.last_heartbeat = now\n\n    def tracked_kvm_proxy_target(host_id: str, path: str, query: str = "") -> str:\n        touch_runtime_browser(host_id)\n        return original_kvm_proxy_target(host_id, path, query)\n\n    def tracked_wine_proxy_target(host_id: str, path: str, query: str = "") -> str:\n        touch_runtime_browser(host_id)\n        return original_wine_proxy_target(host_id, path, query)\n'''
+          if old not in text:
+              if 'def touch_runtime_browser(host_id: str)' in text:
+                  print('Heartbeat patch already present.')
+              else:
+                  raise SystemExit('Expected stream tracking block was not found.')
+          else:
+              path.write_text(text.replace(old, new, 1))
+          PY
+          python -m py_compile hf-space/recroom_vm_bridge.py
+      - name: Commit heartbeat fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add hf-space/recroom_vm_bridge.py
+          git commit -m 'Keep active Rec Room Wine stream host online' || exit 0
+          git pull --rebase origin main
+          git push
