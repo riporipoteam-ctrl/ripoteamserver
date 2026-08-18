@@ -1,18 +1,21 @@
 {
-  "schema": 1,
-  "buildId": "4802887",
-  "manifestId": "2539899194395389618",
+  "schema": 2,
+  "buildId": "7225744",
+  "manifestId": "7611535694620830622",
   "depotId": "471711",
-  "buildDate": "2020-03-27T06-58-55Z",
-  "updateName": "the \"Rec Room Plus\" edition",
-  "fingerprintScope": "criticalFiles",
-  "fileCount": 4,
-  "totalBytes": 111024448,
-  "fingerprintSha256": "770cf906f01b9e215c46fb2efc0d0fb3234e29dda0c3444ff109c88c236c341d",
+  "buildDate": "2021-08-25T06-50-15Z",
+  "updateName": "the \"Bento Box\" edition A",
+  "fingerprintScope": "trustedArchiveAttestation",
+  "fingerprintSha256": "",
+  "fileCount": 0,
+  "totalBytes": 0,
+  "trustedArchiveUrl": "https://archive.recagain.site/download/2021-08-25T06-50-15Z",
+  "bootstrapFingerprintFromTrustedArchive": true,
   "criticalFiles": {
-    "Recroom_Release.exe": {"path":"Recroom_Release.exe","size":850640,"sha256":"1ff3509bbbfbedc3f7a0b230ddbc3b82b06fa685deed9043e1c8472903670e0a"},
-    "GameAssembly.dll": {"path":"GameAssembly.dll","size":64985088,"sha256":"165e50df475b8cb14d145730022aa01765df9039c30e0c8ff9ba5da9ffc6e65c"},
-    "UnityPlayer.dll": {"path":"UnityPlayer.dll","size":22945224,"sha256":"3908df9807bf427815a0895840982f86f4258dece5bebba939887517b1ae80ed"},
-    "global-metadata.dat": {"path":"Recroom_Release_Data/il2cpp_data/Metadata/global-metadata.dat","size":22243496,"sha256":"81cdd309b012bd71277892ed06a4cb5e697de1eee947d1a944182cd10d3b97f4"}
+    "global-metadata.dat": {
+      "path": "RecRoom_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "size": 0,
+      "sha256": ""
+    }
   }
 }
