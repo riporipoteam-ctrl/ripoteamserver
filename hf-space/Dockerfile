@@ -4,6 +4,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONPATH=/app \
+    GRADIO_SERVER_NAME=0.0.0.0 \
+    GRADIO_SERVER_PORT=7860 \
+    GRADIO_ANALYTICS_ENABLED=False \
     HOME=/home/user \
     DISPLAY=:99 \
     PORT=7860
@@ -95,4 +98,7 @@ USER user
 
 EXPOSE 7860
 
-CMD ["uvicorn", "app_server_v2:app", "--host", "0.0.0.0", "--port", "7860", "--proxy-headers"]
+# gradio.Server() starts the ASGI server while app_server_v2 imports the route
+# stack. Keep that process alive after import instead of starting a second Uvicorn
+# listener on the same port.
+CMD ["python", "-c", "import app_server_v2, threading; threading.Event().wait()"]
