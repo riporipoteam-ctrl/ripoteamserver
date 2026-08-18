@@ -3,9 +3,8 @@ title: Ripo Team Cloud PC
 emoji: 🖥️
 colorFrom: indigo
 colorTo: blue
-sdk: gradio
-app_file: app_server_v2.py
-python_version: 3.12
+sdk: docker
+app_port: 7860
 fullWidth: true
 header: mini
 suggested_hardware: zero-a10g
@@ -16,6 +15,6 @@ pinned: false
 
 Ripo Team's browser-accessible Cloud PC and TikTok AI backend.
 
-The Space starts through `app_server_v2.py`, which mounts the server-browser TikTok connection flow and the server-only TikTok LIVE broadcaster on top of the existing backend. TikTok Login Kit credentials remain configured through Hugging Face Variables and Secrets.
+The Space runs `app_server_v2:app` through Uvicorn in a Debian-based Docker image. The image enables both amd64 and i386 so the same Wine prefix can run the 64-bit Aug 2021 Rec Room client and the official 32-bit Windows Steam bootstrap required by Steamworks.
 
-Deployment verification checks the server TikTok connection and server LIVE status routes after each Space rollout.
+TikTok Login Kit credentials remain configured through Hugging Face Variables and Secrets. Deployment verification checks the server health, TikTok OAuth status, and Rec Room runtime after each Space rollout.
