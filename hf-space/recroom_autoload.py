@@ -65,6 +65,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         from recroom_vm_bridge import attach_recroom_vm_pool
         from recroom_build_fingerprint import guard_wine_pool
         from recroom_client_installer import install_recroom_client_installer_routes
+        import recroom_2021_archive_attestation  # noqa: F401
         from recroom_launch_wait_fix import install_launch_wait_fix
         from recroom_capture import install_recroom_capture_routes
         from recroom_public import install_recroom_public_routes
