@@ -3,6 +3,7 @@ FROM python:3.12-slim-trixie
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app \
     HOME=/home/user \
     DISPLAY=:99 \
     PORT=7860
