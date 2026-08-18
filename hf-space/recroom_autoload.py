@@ -61,6 +61,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         import recroom_2021_nameserver_contract  # noqa: F401
         import recroom_black_viewport_fix  # noqa: F401
         import recroom_https_recnet_fix as recroom_recnet_transport
+        import recroom_2021_metadata_locator  # noqa: F401
         import recroom_live_failure_diagnostics  # noqa: F401
         from recroom_vm_bridge import attach_recroom_vm_pool
         from recroom_build_fingerprint import guard_wine_pool
