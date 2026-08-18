@@ -2,36 +2,66 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import secrets
 import struct
+import threading
+import time
 import urllib.parse
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 import recroom_black_viewport_fix as black_viewport
 import recroom_nameserver_fix as nameserver_fix
 from recroom_build_fingerprint import FINGERPRINT
-from recroom_wine_pool import RecRoomWinePool
+from recroom_wine_pool import LOCAL_SERVICE_PREFIXES, RecRoomWinePool
 
 
-_PATCH_REVISION = "mar27-2020-trusted-public-bootstrap-v1"
-_TRANSPORT_REVISION = "trusted-public-https-bootstrap-local-http-mar27-v1"
+_PATCH_REVISION = "aug25-2021-public-https-relay-v2"
+_TRANSPORT_REVISION = "public-https-bootstrap-public-https-services-aug25-2021-v2"
 _PUBLIC_BOOTSTRAP_PATH = "/api/recroom-bootstrap/ns"
+_PUBLIC_RELAY_PREFIX = "/api/recroom-bridge"
 _EXACT_METADATA_RELATIVE = Path(str(FINGERPRINT["criticalFiles"]["global-metadata.dat"]["path"]))
 _METADATA_MAGIC = 0xFAB11BAF
 _METADATA_VERSION = 24
 _LITERAL_ENTRY_SIZE = 8
 _ORIGINAL_CAPABILITY = RecRoomWinePool.capability
+_ORIGINAL_PROVISION = RecRoomWinePool.provision
+_ORIGINAL_DESTROY = RecRoomWinePool.destroy
+_RELAY_LOCK = threading.RLock()
+_PENDING_SESSION_TOKENS: dict[str, tuple[str, float]] = {}
+_RELAY_BY_IP: dict[str, str] = {}
+_RELAY_SESSIONS: dict[str, dict[str, Any]] = {}
+_RELAY_TTL_SECONDS = 20 * 60
 
-# March 27 2020 predates the obfuscated RecNet-specific certificate verifier
-# found in later archived clients. Its nameserver bootstrap is redirected to the
-# Space's normal publicly trusted HTTPS endpoint. TLS verification remains
-# enabled; no certificate verifier or Easy Anti-Cheat code is modified.
+# The Aug-2021 client receives every RecNet service as HTTPS. The browser never
+# receives the Flux bearer as an Authorization header: a short-lived opaque relay
+# id identifies the per-player sandbox, and the server injects the bearer only
+# on the internal compatibility request.
 nameserver_fix.LOCAL_NAMESERVER_PATH = "/nsx"
-nameserver_fix._DEFAULT_LOCAL_BASE = "http://127.0.0.1:81"
 nameserver_fix._PATCH_REVISION = _PATCH_REVISION
+
+
+def _configured_public_base() -> str:
+    value = os.environ.get(
+        "RECROOM_PUBLIC_BASE_URL",
+        "https://echoxr-ripoteam-cloud-pc.hf.space",
+    ).rstrip("/")
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme.lower() != "https" or not parsed.hostname:
+        raise RuntimeError("Rec Room public bootstrap base must use trusted HTTPS.")
+    return value
+
+
+def _public_base(self: RecRoomWinePool) -> str:
+    value = str(getattr(self, "public_base_url", "") or "").rstrip("/") or _configured_public_base()
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme.lower() != "https" or not parsed.hostname:
+        return _configured_public_base()
+    return value
 
 
 def _loopback_ip(local_base: str) -> str:
@@ -43,16 +73,66 @@ def _loopback_ip(local_base: str) -> str:
     return str(address)
 
 
-def _public_base(self: RecRoomWinePool) -> str:
-    value = (
-        str(getattr(self, "gateway_url", "") or "")
-        or os.environ.get("RECROOM_PUBLIC_BASE_URL", "")
-        or "https://echoxr-ripoteam-cloud-pc.hf.space"
-    ).rstrip("/")
-    parsed = urllib.parse.urlsplit(value)
-    if parsed.scheme.lower() != "https" or not parsed.hostname:
-        raise RuntimeError("Rec Room public bootstrap base must use trusted HTTPS.")
-    return value
+def _normalize_relay_path(raw: str) -> str:
+    value = raw or "/"
+    while value.startswith("//"):
+        value = value[1:]
+    query_index = value.find("?")
+    path_only = value[:query_index] if query_index >= 0 else value
+    suffix = value[query_index:] if query_index >= 0 else ""
+    for prefix in LOCAL_SERVICE_PREFIXES:
+        if path_only == prefix or path_only.startswith(prefix + "/"):
+            stripped = path_only[len(prefix):] or "/"
+            return (stripped if stripped.startswith("/") else "/" + stripped) + suffix
+    return (path_only if path_only.startswith("/") else "/" + path_only) + suffix
+
+
+def _prune_relays() -> None:
+    now = time.time()
+    with _RELAY_LOCK:
+        dead_pending = [host for host, (_, expiry) in _PENDING_SESSION_TOKENS.items() if expiry <= now]
+        for host in dead_pending:
+            _PENDING_SESSION_TOKENS.pop(host, None)
+        dead_relays = [relay for relay, row in _RELAY_SESSIONS.items() if float(row.get("expiresAt", 0)) <= now]
+        for relay in dead_relays:
+            row = _RELAY_SESSIONS.pop(relay, {})
+            ip = str(row.get("ip") or "")
+            if ip and _RELAY_BY_IP.get(ip) == relay:
+                _RELAY_BY_IP.pop(ip, None)
+
+
+def _register_relay(self: RecRoomWinePool, ip: str) -> str:
+    _prune_relays()
+    host_id = ""
+    try:
+        with self.lock:
+            for candidate in self.instances.values():
+                if candidate.loopback_ip == ip and not candidate.destroying:
+                    host_id = candidate.host_id
+                    break
+    except Exception:
+        host_id = ""
+    if not host_id:
+        raise RuntimeError(f"Could not resolve Wine sandbox for RecNet relay address {ip}.")
+
+    with _RELAY_LOCK:
+        pending = _PENDING_SESSION_TOKENS.get(host_id)
+        if not pending or pending[1] <= time.time():
+            raise RuntimeError("RecNet relay session token was not registered for this Wine sandbox.")
+        session_token = pending[0]
+        old = _RELAY_BY_IP.get(ip)
+        if old:
+            _RELAY_SESSIONS.pop(old, None)
+        relay_id = secrets.token_urlsafe(24)
+        expiry = time.time() + _RELAY_TTL_SECONDS
+        _RELAY_BY_IP[ip] = relay_id
+        _RELAY_SESSIONS[relay_id] = {
+            "sessionToken": session_token,
+            "hostId": host_id,
+            "ip": ip,
+            "expiresAt": expiry,
+        }
+        return relay_id
 
 
 def _bootstrap_url(self: RecRoomWinePool, ip: str) -> str:
@@ -127,44 +207,139 @@ def _relocate_bootstrap_literal(path: Path, target: str) -> int:
     if resolved != target_bytes:
         raise RuntimeError("Relocated RecNet bootstrap URL failed metadata self-verification.")
 
-    nameserver_fix._atomic_replace(path, bytes(data), "mar27trustedbootstrap")
+    nameserver_fix._atomic_replace(path, bytes(data), "aug25trustedbootstrap")
     return 1
 
 
 def _patch_client_trusted(self: RecRoomWinePool, root: Path, local_base: str) -> int:
     ip = _loopback_ip(local_base)
+    _register_relay(self, ip)
     target = _bootstrap_url(self, ip)
     return _relocate_bootstrap_literal(root / _EXACT_METADATA_RELATIVE, target)
 
 
+def _provision_with_relay_token(
+    self: RecRoomWinePool,
+    host_id: str,
+    session_id: str,
+    session_token: str,
+    on_progress: Any,
+    on_ready: Any,
+    on_failed: Any,
+) -> tuple[bool, str | None]:
+    with _RELAY_LOCK:
+        _PENDING_SESSION_TOKENS[host_id] = (session_token, time.time() + _RELAY_TTL_SECONDS)
+    try:
+        return _ORIGINAL_PROVISION(self, host_id, session_id, session_token, on_progress, on_ready, on_failed)
+    except Exception:
+        with _RELAY_LOCK:
+            _PENDING_SESSION_TOKENS.pop(host_id, None)
+        raise
+
+
+def _destroy_with_relay_cleanup(self: RecRoomWinePool, host_id: str) -> Any:
+    with _RELAY_LOCK:
+        _PENDING_SESSION_TOKENS.pop(host_id, None)
+        dead = [relay for relay, row in _RELAY_SESSIONS.items() if row.get("hostId") == host_id]
+        for relay in dead:
+            row = _RELAY_SESSIONS.pop(relay, {})
+            ip = str(row.get("ip") or "")
+            if ip and _RELAY_BY_IP.get(ip) == relay:
+                _RELAY_BY_IP.pop(ip, None)
+    return _ORIGINAL_DESTROY(self, host_id)
+
+
+def _relay_entry(relay_id: str) -> dict[str, Any] | None:
+    _prune_relays()
+    with _RELAY_LOCK:
+        row = _RELAY_SESSIONS.get(relay_id)
+        return dict(row) if row else None
+
+
 def install_public_bootstrap_route(application: Any) -> None:
     existing = {getattr(route, "path", None) for route in getattr(application, "routes", [])}
-    if _PUBLIC_BOOTSTRAP_PATH in existing:
-        return
 
-    async def recroom_public_nameserver(request: Request) -> JSONResponse:
-        raw = str(request.query_params.get("ip") or "").strip()
-        try:
-            address = ipaddress.ip_address(raw)
-        except ValueError:
-            return JSONResponse({"ok": False, "error": "invalid loopback address"}, status_code=400)
-        if address.version != 4 or not address.is_loopback:
-            return JSONResponse({"ok": False, "error": "loopback address required"}, status_code=400)
+    if _PUBLIC_BOOTSTRAP_PATH not in existing:
+        async def recroom_public_nameserver(request: Request) -> JSONResponse:
+            raw = str(request.query_params.get("ip") or "").strip()
+            try:
+                address = ipaddress.ip_address(raw)
+            except ValueError:
+                return JSONResponse({"ok": False, "error": "invalid loopback address"}, status_code=400)
+            if address.version != 4 or not address.is_loopback:
+                return JSONResponse({"ok": False, "error": "loopback address required"}, status_code=400)
 
-        local_base = f"http://{address}:81"
-        payload = nameserver_fix._nameserver_payload(local_base)
-        return JSONResponse(
-            payload,
-            headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+            ip = str(address)
+            _prune_relays()
+            with _RELAY_LOCK:
+                relay_id = _RELAY_BY_IP.get(ip, "")
+                row = dict(_RELAY_SESSIONS.get(relay_id) or {}) if relay_id else {}
+            if not relay_id or not row:
+                return JSONResponse({"ok": False, "error": "RecNet relay is not ready"}, status_code=409)
+
+            relay_base = f"{_configured_public_base()}{_PUBLIC_RELAY_PREFIX}/{relay_id}"
+            payload = nameserver_fix._nameserver_payload(relay_base)
+            return JSONResponse(
+                payload,
+                headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+            )
+
+        application.add_api_route(
+            _PUBLIC_BOOTSTRAP_PATH,
+            recroom_public_nameserver,
+            methods=["GET"],
+            include_in_schema=False,
+            name="recroom_public_bootstrap_nameserver",
         )
 
-    application.add_api_route(
-        _PUBLIC_BOOTSTRAP_PATH,
-        recroom_public_nameserver,
-        methods=["GET"],
-        include_in_schema=False,
-        name="recroom_public_bootstrap_nameserver",
-    )
+    relay_route = f"{_PUBLIC_RELAY_PREFIX}/{{relay_id}}/{{path:path}}"
+    relay_root = f"{_PUBLIC_RELAY_PREFIX}/{{relay_id}}"
+    existing = {getattr(route, "path", None) for route in getattr(application, "routes", [])}
+    if relay_route in existing:
+        return
+
+    async def recroom_public_relay(relay_id: str, request: Request, path: str = "") -> Response:
+        row = _relay_entry(relay_id)
+        if not row:
+            return JSONResponse({"ok": False, "error": "RecNet relay expired"}, status_code=401)
+        session_token = str(row.get("sessionToken") or "")
+        if not session_token:
+            return JSONResponse({"ok": False, "error": "RecNet relay session missing"}, status_code=401)
+
+        raw = "/" + (path or "")
+        if request.url.query:
+            raw += "?" + request.url.query
+        normalized = _normalize_relay_path(raw)
+        target = urllib.parse.urljoin(_configured_public_base().rstrip("/") + "/", normalized.lstrip("/"))
+        body = await request.body()
+        blocked = {
+            "authorization", "connection", "content-length", "host", "transfer-encoding", "upgrade",
+        }
+        headers = {k: v for k, v in request.headers.items() if k.lower() not in blocked}
+        headers["Authorization"] = f"Bearer {session_token}"
+        headers["X-Flux-RecRoom-Host-Proxy"] = "wine-public-https"
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
+                upstream = await client.request(request.method, target, headers=headers, content=body or None)
+            response_headers: dict[str, str] = {}
+            for key in ("content-type", "location", "cache-control", "etag", "last-modified"):
+                value = upstream.headers.get(key)
+                if value:
+                    response_headers[key] = value
+            response_headers["cache-control"] = response_headers.get("cache-control", "no-store")
+            return Response(content=upstream.content, status_code=upstream.status_code, headers=response_headers)
+        except Exception as exc:
+            return JSONResponse({"ok": False, "error": f"RecNet relay upstream failed: {exc}"}, status_code=502)
+
+    for route in (relay_route, relay_root):
+        application.add_api_route(
+            route,
+            recroom_public_relay,
+            methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
+            include_in_schema=False,
+            name="recroom_public_https_relay_" + ("path" if route == relay_route else "root"),
+        )
 
 
 def _capability_trusted(self: RecRoomWinePool) -> dict[str, Any]:
@@ -176,7 +351,9 @@ def _capability_trusted(self: RecRoomWinePool) -> dict[str, Any]:
     payload["recNetBootstrapBase"] = _public_base(self)
     payload["recNetBootstrapScheme"] = "https"
     payload["recNetBootstrapHost"] = "public-hf-space"
-    payload["recNetLocalServiceScheme"] = "http"
+    payload["recNetLocalServiceScheme"] = "https"
+    payload["recNetPublicServiceRelay"] = True
+    payload["recNetPublicServiceRelayPrefix"] = _PUBLIC_RELAY_PREFIX
     payload["recNetMetadataLiteralRelocation"] = True
     payload["recNetTlsVerificationBypassed"] = False
     payload["recNetLoopbackTls"] = False
@@ -186,5 +363,7 @@ def _capability_trusted(self: RecRoomWinePool) -> dict[str, Any]:
 nameserver_fix._patch_client = _patch_client_trusted
 RecRoomWinePool._patch_client = _patch_client_trusted  # type: ignore[method-assign]
 RecRoomWinePool._start_proxy = black_viewport._start_proxy_traced  # type: ignore[method-assign]
+RecRoomWinePool.provision = _provision_with_relay_token  # type: ignore[method-assign]
+RecRoomWinePool.destroy = _destroy_with_relay_cleanup  # type: ignore[method-assign]
 RecRoomWinePool.capability = _capability_trusted  # type: ignore[method-assign]
-print(f"Rec Room trusted public bootstrap loaded: {_PATCH_REVISION} / {_TRANSPORT_REVISION}")
+print(f"Rec Room trusted public HTTPS relay loaded: {_PATCH_REVISION} / {_TRANSPORT_REVISION}")
