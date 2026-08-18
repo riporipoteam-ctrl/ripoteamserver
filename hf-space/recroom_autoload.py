@@ -57,6 +57,10 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         from recroom_broker import install_recroom_broker_routes
         import recroom_2021_broker_alias  # noqa: F401
 
+        # Free ZeroGPU/Gradio Spaces do not expose Debian i386 multilib. Use the
+        # SHA256-pinned Wine amd64-wow64 build so 64-bit Rec Room and 32-bit
+        # official Steam can share one prefix without host 32-bit libraries.
+        import recroom_portable_wow64  # noqa: F401
         import recroom_wine_prefix_fix  # noqa: F401
         import recroom_wine_runtime_fix  # noqa: F401
         import recroom_nameserver_fix  # noqa: F401
