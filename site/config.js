@@ -3,5 +3,5 @@ window.RIPO_CONFIG = {
   cloudflareProxyUrl: "",
   pollSeconds: 5,
   wakeTimeoutSeconds: 300,
-  deploymentVersion: "2026-08-13-server-live-2"
+  deploymentVersion: "2026-08-26-phone-tiktok-oauth-1"
 };
