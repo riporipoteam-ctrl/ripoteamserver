@@ -26,20 +26,17 @@ class MobileTikTokAuth:
 
     def start(self) -> RedirectResponse:
         self._cleanup()
+        before = set(self.ai.oauth_states)
         oauth = self.ai.oauth_start(False)
+        new_states = [key for key in self.ai.oauth_states if key not in before]
+        if not new_states:
+            raise HTTPException(500, "Could not create a TikTok authorization state.")
+        state = new_states[-1]
         handoff = secrets.token_urlsafe(24)
-        state = next(
-            key for key, row in self.ai.oauth_states.items()
-            if row.get("session_token") and row.get("session_token")
-            == next((r.get("session_token") for r in self.ai.oauth_states.values() if r.get("expires", 0) >= time.time()), None)
-        )
-        # Store the exact state used by this authorization. oauth_start creates one state per call.
-        latest = max(self.ai.oauth_states.items(), key=lambda item: float(item[1].get("expires", 0)))
-        state = latest[0]
         self.handoffs[handoff] = {"state": state, "expires": time.time() + 600, "used": False}
         return RedirectResponse(oauth["url"], status_code=302)
 
-    async def callback(self, code: str, state: str, error: str = "", error_description: str = "") -> HTMLResponse:
+    async def callback(self, code: str, state: str, error: str = "", error_description: str = "") -> HTMLResponse | RedirectResponse:
         self._cleanup()
         if error:
             message = html.escape(error_description or error)
@@ -93,7 +90,7 @@ def install_mobile_tiktok_auth(app: Any, auth: MobileTikTokAuth) -> None:
         state: str = Query(default=""),
         error: str = Query(default=""),
         error_description: str = Query(default=""),
-    ) -> HTMLResponse:
+    ) -> HTMLResponse | RedirectResponse:
         return await auth.callback(code, state, error, error_description)
 
     @app.get("/api/tiktok/mobile/exchange")
