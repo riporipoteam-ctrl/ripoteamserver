@@ -9,7 +9,6 @@ os.environ.setdefault("TIKTOK_REDIRECT_URI", "https://echoxr-ripoteam-cloud-pc.h
 os.environ.setdefault("TIKTOK_SCOPES", "user.info.basic")
 os.environ.setdefault("RIPO_PUBLIC_ORIGIN", "https://riporipoteam-ctrl.github.io")
 os.environ.setdefault("RIPO_SPACE_ORIGIN", "https://echoxr-ripoteam-cloud-pc.hf.space")
-# Keep pre-warming LIVE Studio while the visible UI control is being verified.
 os.environ.setdefault("RIPO_WINE_AUTOPROBE", "1")
 
 try:
@@ -69,13 +68,14 @@ def _mount_server_tiktok_routes() -> None:
             import live_studio_wine_browser_fix  # noqa: F401
             import live_studio_wine_resolver_fix  # noqa: F401
             import live_studio_wine_launch_fix  # noqa: F401
-            import live_studio_pdh_shim  # noqa: F401 - supply the GPU PDH counters Wine lacks
-            import live_studio_window_strict  # noqa: F401 - do not count the outer Wine desktop as LIVE Studio UI
+            import live_studio_pdh_shim  # noqa: F401
+            import live_studio_window_strict  # noqa: F401
             from live_studio_cdp import LiveStudioCDP, install_live_studio_cdp_routes
-            import live_studio_visible  # noqa: F401 - replaces blocked CDP control with local OCR/xdotool
-            import live_studio_visible_precision  # noqa: F401 - targets app windows by PID and improves OCR
+            import live_studio_visible  # noqa: F401
+            import live_studio_visible_precision  # noqa: F401
             from live_studio_cdp_health import install_live_studio_cdp_health_route
             from server_audio_bridge import ServerAudioBridge, install_server_audio_routes
+            from prerecorded_live_engine import PreRecordedLiveEngine, install_prerecorded_live_routes
 
             connector = getattr(module, "RIPO_SERVER_TIKTOK_CONNECT", None)
             if connector is None:
@@ -93,6 +93,13 @@ def _mount_server_tiktok_routes() -> None:
                 if "/api/tiktok/server-live/status" not in existing:
                     install_server_live_routes(application, broadcaster)
                 module.RIPO_SERVER_LIVE_BROADCASTER = broadcaster
+
+            prerec = getattr(module, "RIPO_PRERECORDED_LIVE_ENGINE", None)
+            if prerec is None:
+                prerec = PreRecordedLiveEngine(module.TIKTOK_AI, connector, module.DATA_DIR / "tiktok-prerecorded", module.authorize, module.DISPLAY)
+                if "/api/tiktok/prerecorded/status" not in existing:
+                    install_prerecorded_live_routes(application, prerec)
+                module.RIPO_PRERECORDED_LIVE_ENGINE = prerec
 
             wine_runner = getattr(module, "RIPO_LIVE_STUDIO_WINE", None)
             if wine_runner is None:
@@ -119,7 +126,7 @@ def _mount_server_tiktok_routes() -> None:
                 module.RIPO_SERVER_AUDIO = audio_bridge
 
             threading.Thread(target=_auto_probe_live_studio, args=(connector, wine_runner), name="ripo-live-studio-wine-autoprobe", daemon=True).start()
-            print("TikTok persistence, Wine LIVE Studio, PDH GPU compatibility shim, strict app-window detection, visible UI automation, and server audio routes mounted.")
+            print("TikTok persistence, server LIVE broadcaster, prerecorded LIVE engine, Wine LIVE Studio, PDH compatibility, strict app-window detection, visible UI automation, and server audio routes mounted.")
             return
         except Exception as exc:
             print(f"TikTok server route mount failed: {exc}")
