@@ -5,6 +5,7 @@ import os
 from fastapi.middleware.cors import CORSMiddleware
 
 from app_server import DATA_DIR, DISPLAY, SERVER_TIKTOK_CONNECT, TIKTOK_AI, app, authorize
+from prerecorded_live import PreRecordedLiveBroadcaster, install_prerecorded_live_routes
 from recroom_autoload import install_into_live_app
 from server_live_broadcaster import ServerLiveBroadcaster, install_server_live_routes
 
@@ -37,6 +38,15 @@ SERVER_LIVE_BROADCASTER = ServerLiveBroadcaster(
     DISPLAY,
 )
 install_server_live_routes(app, SERVER_LIVE_BROADCASTER)
+
+PRERECORDED_LIVE_BROADCASTER = PreRecordedLiveBroadcaster(
+    TIKTOK_AI,
+    SERVER_TIKTOK_CONNECT,
+    DATA_DIR / "tiktok-prerecorded-live",
+    authorize,
+    DISPLAY,
+)
+install_prerecorded_live_routes(app, PRERECORDED_LIVE_BROADCASTER)
 
 # Mount the current Rec Room runtime synchronously. sitecustomize also starts a
 # guarded autoload thread for the normal Gradio environment, but Docker startup
