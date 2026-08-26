@@ -5,7 +5,7 @@ import os
 from fastapi.middleware.cors import CORSMiddleware
 
 from app_server import DATA_DIR, DISPLAY, SERVER_TIKTOK_CONNECT, TIKTOK_AI, app, authorize
-from prerecorded_live import PreRecordedLiveBroadcaster, install_prerecorded_live_routes
+from prerecorded_live_engine import PreRecordedLiveEngine, install_prerecorded_live_routes
 from recroom_autoload import install_into_live_app
 from server_live_broadcaster import ServerLiveBroadcaster, install_server_live_routes
 
@@ -39,7 +39,7 @@ SERVER_LIVE_BROADCASTER = ServerLiveBroadcaster(
 )
 install_server_live_routes(app, SERVER_LIVE_BROADCASTER)
 
-PRERECORDED_LIVE_BROADCASTER = PreRecordedLiveBroadcaster(
+PRERECORDED_LIVE_BROADCASTER = PreRecordedLiveEngine(
     TIKTOK_AI,
     SERVER_TIKTOK_CONNECT,
     DATA_DIR / "tiktok-prerecorded-live",
