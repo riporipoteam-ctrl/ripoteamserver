@@ -5,7 +5,6 @@ import os
 from fastapi.middleware.cors import CORSMiddleware
 
 from app_server import DATA_DIR, DISPLAY, SERVER_TIKTOK_CONNECT, TIKTOK_AI, app, authorize
-from mobile_tiktok_auth import MobileTikTokAuth, install_mobile_tiktok_auth
 from prerecorded_live_engine import PreRecordedLiveEngine, install_prerecorded_live_routes
 from recroom_autoload import install_into_live_app
 from server_live_broadcaster import ServerLiveBroadcaster, install_server_live_routes
@@ -30,9 +29,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["Content-Disposition"],
 )
-
-MOBILE_TIKTOK_AUTH = MobileTikTokAuth(TIKTOK_AI, TIKTOK_AI.public_origin)
-install_mobile_tiktok_auth(app, MOBILE_TIKTOK_AUTH)
 
 SERVER_LIVE_BROADCASTER = ServerLiveBroadcaster(
     TIKTOK_AI,
