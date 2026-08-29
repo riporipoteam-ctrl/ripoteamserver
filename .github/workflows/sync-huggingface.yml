@@ -52,7 +52,7 @@ jobs:
                 subject_token_type: "urn:ietf:params:oauth:token-type:id_token",
                 subject_token: $t,
                 resource: $r
-              }')")
+              }')")"
 
           if [ "$STATUS" -ne 200 ]; then
             REQUEST_ID=$(grep -i '^x-request-id:' "$HEADERS" | sed 's/.*: *//' | tr -d '\r')
@@ -116,6 +116,27 @@ jobs:
             -o /tmp/last-health.txt
           python -m json.tool /tmp/last-health.txt
 
+      - name: Test live Rec Room runtime
+        id: recroom
+        if: steps.upload.outcome == 'success' && steps.runtime.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 30 \
+            "$SPACE_URL/api/recroom-public/status" \
+            -o /tmp/recroom-status.json
+          python -m json.tool /tmp/recroom-status.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('/tmp/recroom-status.json').read_text())
+          assert data.get('ok') is True, data
+          runtime = data.get('serverRuntime') or data.get('vmRuntime') or data.get('wineRuntime') or data.get('kvmRuntime') or {}
+          assert data.get('configured') is True, data
+          assert data.get('runtimeReadyForGame') is True or data.get('vmReadyForGame') is True or runtime.get('readyForGame') is True, data
+          print('Rec Room runtime is configured and game-ready on the live backend.')
+          PY
+
       - name: Test TikTok OAuth endpoint
         id: tiktok
         if: steps.upload.outcome == 'success' && steps.runtime.outcome == 'success'
@@ -141,6 +162,7 @@ jobs:
           UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
           RUNTIME_OUTCOME: ${{ steps.runtime.outcome }}
           HEALTH_OUTCOME: ${{ steps.health.outcome }}
+          RECROOM_OUTCOME: ${{ steps.recroom.outcome }}
           TIKTOK_OUTCOME: ${{ steps.tiktok.outcome }}
         run: |
           set -euo pipefail
@@ -152,11 +174,12 @@ jobs:
             echo "Hugging Face deployment: ${UPLOAD_OUTCOME}"
             echo "Hugging Face runtime wait: ${RUNTIME_OUTCOME}"
             echo "Hugging Face Space health: ${HEALTH_OUTCOME}"
+            echo "Hugging Face Rec Room runtime: ${RECROOM_OUTCOME}"
             echo "TikTok OAuth verification: ${TIKTOK_OUTCOME}"
             echo "Source commit: ${GITHUB_SHA}"
             echo "Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "Recorded at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            for file in /tmp/space-info.txt /tmp/build-logs.txt /tmp/runtime-logs.txt /tmp/last-health.txt /tmp/tiktok-status.json; do
+            for file in /tmp/space-info.txt /tmp/build-logs.txt /tmp/runtime-logs.txt /tmp/last-health.txt /tmp/recroom-status.json /tmp/tiktok-status.json; do
               if [ -s "$file" ]; then
                 echo
                 echo "===== $(basename "$file") ====="
@@ -169,5 +192,5 @@ jobs:
           git push
 
       - name: Fail if deployment is not healthy
-        if: steps.upload.outcome != 'success' || steps.runtime.outcome != 'success' || steps.health.outcome != 'success' || steps.tiktok.outcome != 'success'
+        if: steps.upload.outcome != 'success' || steps.runtime.outcome != 'success' || steps.health.outcome != 'success' || steps.recroom.outcome != 'success' || steps.tiktok.outcome != 'success'
         run: exit 1
