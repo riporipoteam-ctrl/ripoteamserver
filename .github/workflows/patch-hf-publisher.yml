@@ -1,0 +1,35 @@
+name: Patch HF Publisher Fallback
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add HF token fallback to publisher
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('.github/workflows/sync-huggingface.yml')
+          s = p.read_text(encoding='utf-8')
+          old = '''        run: |\n          set -euo pipefail\n          ID_TOKEN=$(curl -sSf \\\n'''
+          new = '''        env:\n          HF_TOKEN_SECRET: ${{ secrets.HF_TOKEN }}\n        run: |\n          set -euo pipefail\n\n          # Prefer an explicitly configured write-scoped HF token. If absent,\n          # fall back to the existing Trusted Publisher OIDC exchange.\n          if [ -n "${HF_TOKEN_SECRET:-}" ]; then\n            echo "Using repository HF_TOKEN for Space publishing."\n            echo "::add-mask::$HF_TOKEN_SECRET"\n            DELIM="HF_TOKEN_$(openssl rand -hex 16)"\n            {\n              echo "HF_TOKEN<<$DELIM"\n              echo "$HF_TOKEN_SECRET"\n              echo "$DELIM"\n            } >> "$GITHUB_ENV"\n            exit 0\n          fi\n\n          ID_TOKEN=$(curl -sSf \\\n'''
+          if old not in s:
+              raise SystemExit('publisher OIDC anchor not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+
+      - name: Commit publisher fallback
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/sync-huggingface.yml
+          git commit -m 'fix(deploy): support HF_TOKEN fallback for Space publishing' || exit 0
+          git push
