@@ -1,0 +1,74 @@
+name: Deploy RipoTeamServer to Hugging Face
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "hf-space/**"
+      - ".github/workflows/deploy-hf-space.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: huggingface-space-deployment
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout server source
+        uses: actions/checkout@v4
+
+      - name: Check Hugging Face token
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HF_TOKEN:-}" ]; then
+            echo "::error::Missing repository secret HF_TOKEN. Create a fine-grained Hugging Face write token for Echoxr/ripoteam-cloud-pc and save it as HF_TOKEN in GitHub repository secrets."
+            exit 1
+          fi
+
+      - name: Sync Space
+        uses: huggingface/hub-sync@v0.1.0
+        with:
+          github_repo_id: ${{ github.repository }}
+          huggingface_repo_id: Echoxr/ripoteam-cloud-pc
+          hf_token: ${{ secrets.HF_TOKEN }}
+          repo_type: space
+          space_sdk: gradio
+          subdirectory: hf-space
+
+      - name: Verify live Space health
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --show-error --max-time 20 "https://echoxr-ripoteam-cloud-pc.hf.space/api/health"; then
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Hugging Face Space did not become healthy after deployment."
+          exit 1
+
+      - name: Verify Rec Room runtime status
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 30 \
+            "https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/status" \
+            | tee /tmp/recroom-status.json
+          python - <<'PY'
+          import json
+          data = json.load(open('/tmp/recroom-status.json'))
+          runtime = data.get('serverRuntime') or data.get('vmRuntime') or data.get('wineRuntime') or {}
+          print('configured=', data.get('configured'))
+          print('runtimeReadyForGame=', data.get('runtimeReadyForGame'))
+          print('targetBuild=', data.get('targetBuild'))
+          print('runtime=', runtime)
+          if not (data.get('runtimeReadyForGame') is True or data.get('vmReadyForGame') is True or runtime.get('readyForGame') is True):
+              raise SystemExit('Rec Room runtime is not game-ready on the live Space')
+          PY
