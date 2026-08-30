@@ -1,0 +1,112 @@
+name: Fix Rec Room Steam UI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Make Steam QR login visible and high quality
+        shell: python
+        run: |
+          from pathlib import Path
+
+          steam = Path('hf-space/recroom_2021_steam_runtime.py')
+          text = steam.read_text(encoding='utf-8')
+          original = text
+
+          helper = r'''
+
+def _focus_steam_window(self: RecRoomWinePool, instance: WineInstance) -> bool:
+    """Bring the real Steam sign-in window to the front inside this sandbox."""
+    xdotool = shutil.which("xdotool")
+    if not xdotool:
+        return False
+    env = self._wine_env(instance)
+    for _ in range(60):
+        for mode, value in (("--name", "Steam"), ("--class", "Steam"), ("--class", "steam")):
+            try:
+                result = subprocess.run(
+                    [xdotool, "search", "--onlyvisible", mode, value],
+                    env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                    text=True, timeout=3, check=False,
+                )
+                windows = [item.strip() for item in result.stdout.splitlines() if item.strip()]
+                if not windows:
+                    continue
+                window = windows[-1]
+                subprocess.run([xdotool, "windowactivate", "--sync", window], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3, check=False)
+                subprocess.run([xdotool, "windowraise", window], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3, check=False)
+                subprocess.run([xdotool, "windowsize", window, "100%", "100%"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3, check=False)
+                return True
+            except Exception:
+                continue
+        time.sleep(0.5)
+    return False
+
+
+def _minimize_steam_windows(self: RecRoomWinePool, instance: WineInstance) -> None:
+    xdotool = shutil.which("xdotool")
+    if not xdotool:
+        return
+    env = self._wine_env(instance)
+    for mode, value in (("--name", "Steam"), ("--class", "Steam"), ("--class", "steam")):
+        try:
+            result = subprocess.run([xdotool, "search", "--onlyvisible", mode, value], env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=3, check=False)
+            for window in [item.strip() for item in result.stdout.splitlines() if item.strip()]:
+                subprocess.run([xdotool, "windowminimize", window], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3, check=False)
+        except Exception:
+            pass
+'''
+
+          if '_focus_steam_window' not in text:
+              anchor = 'def _start_steam_and_wait(self: RecRoomWinePool, instance: WineInstance) -> None:\n'
+              text = text.replace(anchor, helper + '\n\n' + anchor)
+
+          text = text.replace(
+              '    # Let the stream become interactive before authentication so the player can\n    # use Steam\'s normal password/QR/Steam Guard UI inside the remote sandbox.\n    time.sleep(6)\n    on_ready(self.public_stream_url(instance))\n    on_progress("steam-login-required", 60)\n',
+              '    # Make Steam itself the visible foreground application before publishing\n    # the interactive stream. This is the real Steam QR/password/Guard UI.\n    focused = _focus_steam_window(self, instance)\n    if not focused:\n        time.sleep(3)\n        focused = _focus_steam_window(self, instance)\n    on_ready(self.public_stream_url(instance))\n    on_progress("steam-login-required", 60 if focused else 58)\n'
+          )
+
+          text = text.replace(
+              '            on_progress("steam-authenticated", 64)\n            time.sleep(8)\n            return\n',
+              '            on_progress("steam-authenticated", 64)\n            _minimize_steam_windows(self, instance)\n            time.sleep(3)\n            return\n'
+          )
+
+          steam.write_text(text, encoding='utf-8')
+
+          stream = Path('hf-space/recroom_wine_stream.py')
+          st = stream.read_text(encoding='utf-8')
+          original_st = st
+          st = st.replace('def __init__(self, address, handler, *, display: str, token: str, pulse_source: str, width: int, height: int, quality: int):', 'def __init__(self, address, handler, *, display: str, token: str, pulse_source: str, width: int, height: int, quality: int):')
+          # Default JPEG quality is set at argparse construction near the bottom;
+          # make the authentication QR less lossy by raising the default to 94.
+          st = st.replace('parser.add_argument("--quality", type=int, default=82)', 'parser.add_argument("--quality", type=int, default=94)')
+          st = st.replace('quality = max(40, min(98, args.quality))', 'quality = max(70, min(98, args.quality))')
+          stream.write_text(st, encoding='utf-8')
+
+          print('patched steam runtime' if text != original else 'steam runtime unchanged')
+          print('patched stream quality' if st != original_st else 'stream quality unchanged')
+
+      - name: Commit Steam UI repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add hf-space/recroom_2021_steam_runtime.py hf-space/recroom_wine_stream.py
+          if git diff --cached --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git commit -m 'fix(recroom): foreground Steam login and improve QR stream quality'
+          git push
