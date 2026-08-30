@@ -21,8 +21,8 @@ from fastapi import HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
 
-TARGET_BUILD_ID = "recroom-2022-05-19"
-TARGET_MANIFEST = "6337851004861751095"
+TARGET_BUILD_ID = "recroom-2021-08-25"
+TARGET_MANIFEST = "7611535694620830622"
 TARGET_DEPOT = "471711"
 LOCAL_SERVICE_PREFIXES = [
     "/psettingsx", "/leaderb", "/disco", "/acct", "/shop", "/no", "/r", "/m", "/l", "/c",
@@ -100,7 +100,7 @@ class RecRoomWinePool:
         self.pactl = shutil.which("pactl")
         self.pulseaudio = shutil.which("pulseaudio")
         self.python = shutil.which("python3") or shutil.which("python")
-        self.client_dir = Path(os.environ.get("RECROOM_WINE_CLIENT_DIR", str(self.data_dir.parent / "recroom-client-2022"))).expanduser()
+        self.client_dir = Path(os.environ.get("RECROOM_WINE_CLIENT_DIR", str(self.data_dir.parent / "recroom-client-2021"))).expanduser()
         self.base_prefix = Path(os.environ.get("RECROOM_WINE_BASE_PREFIX", str(self.data_dir / "base-prefix"))).expanduser()
         self.stream_worker = Path(__file__).with_name("recroom_wine_stream.py")
         self.max_sessions = max(1, min(8, int(os.environ.get("RECROOM_WINE_MAX", "2"))))
@@ -120,12 +120,14 @@ class RecRoomWinePool:
         data = next((root / name for name in ("RecRoom_Data", "Recroom_Release_Data") if (root / name).is_dir()), None)
         metadata = data / "il2cpp_data" / "Metadata" / "global-metadata.dat" if data else None
         manifest = root / ".DepotDownloader" / f"{TARGET_DEPOT}_{TARGET_MANIFEST}.manifest"
+        attestation = root / ".ripo-build-attestation.json"
         return {
             "root": root.is_dir(),
             "exe": bool(exe),
             "assembly": assembly.is_file(),
             "metadata": bool(metadata and metadata.is_file()),
             "manifest": manifest.is_file(),
+            "attestation": attestation.is_file(),
             "exePath": str(exe) if exe else "",
         }
 
@@ -143,7 +145,7 @@ class RecRoomWinePool:
         }
         client_ready = bool(client["root"] and client["exe"] and client["assembly"] and client["metadata"])
         if self.strict_manifest:
-            client_ready = bool(client_ready and client["manifest"])
+            client_ready = bool(client_ready and (client["manifest"] or client["attestation"]))
         supported = bool(self.enabled and all(tools.values()) and client_ready and self.gateway_url)
         reasons: list[str] = []
         if not self.enabled:
@@ -155,8 +157,8 @@ class RecRoomWinePool:
             reasons.append(f"server Rec Room client is not installed at {self.client_dir}")
         elif not client_ready:
             missing = [key for key in ("exe", "assembly", "metadata") if not client[key]]
-            if self.strict_manifest and not client["manifest"]:
-                missing.append(f"DepotDownloader manifest {TARGET_MANIFEST}")
+            if self.strict_manifest and not (client["manifest"] or client["attestation"]):
+                missing.append(f"DepotDownloader manifest {TARGET_MANIFEST} or trusted archive attestation")
             reasons.append("server Rec Room client is incomplete/unverified: " + ", ".join(missing))
         if not self.gateway_url:
             reasons.append("Rec Room gateway URL is not configured")
@@ -166,15 +168,15 @@ class RecRoomWinePool:
             "provider": "wine",
             "supported": supported,
             "readyForGame": supported,
-            "checks": {**tools, "client": client_ready, "manifest": bool(client["manifest"])},
+            "checks": {**tools, "client": client_ready, "manifest": bool(client["manifest"]), "attestation": bool(client["attestation"])},
             "reason": "; ".join(reasons) if reasons else None,
-            "warning": None if supported else "Players never install anything; the server needs one legally obtained May 19 2022 client image before it can launch Rec Room.",
+            "warning": None if supported else "Players never install anything; the server needs one legally obtained Aug 25 2021 client image before it can launch Rec Room.",
             "runningVms": running,
             "runningSandboxes": running,
             "maxVms": self.max_sessions,
             "maxSandboxes": self.max_sessions,
             "clientDir": str(self.client_dir),
-            "targetBuild": "8751857",
+            "targetBuild": "7225744",
             "targetManifest": TARGET_MANIFEST,
             "graphics": "Wine/WineD3D on the Space Linux renderer",
         }

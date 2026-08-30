@@ -33,7 +33,7 @@ def install_into_live_app(application: Any, data_dir: Path | None = None) -> dic
         public_url = os.environ.get("RECROOM_PUBLIC_BASE_URL", "https://echoxr-ripoteam-cloud-pc.hf.space").rstrip("/")
         os.environ.setdefault("RECROOM_GATEWAY_URL", public_url)
         os.environ.setdefault("RECROOM_WINE_CLIENT_ARCHIVE_URL", _DEFAULT_RECROOM_ARCHIVE)
-        os.environ.setdefault("RECROOM_STARTING_TTL_SECONDS", "900")
+        os.environ.setdefault("RECROOM_STARTING_TTL_SECONDS", "1800")
         os.environ.setdefault("RECROOM_CLIENT_WAIT_SECONDS", "720")
         os.environ.setdefault("RECROOM_PHOTON_APP_VERSION", "20210827_prod")
         os.environ.setdefault("RECROOM_STEAM_LOGIN_WAIT_SECONDS", "1200")

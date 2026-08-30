@@ -7,11 +7,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Target2022 = [ordered]@{
-  label = "May 19 2022 / Under Construction A"
-  buildId = "8751857"
-  manifestId = "6337851004861751095"
-  runtimeId = "recroom-2022-05-19"
+$Target2021 = [ordered]@{
+  label = "Aug 25 2021 / Under Construction A"
+  buildId = "7225744"
+  manifestId = "7611535694620830622"
+  runtimeId = "recroom-2021-08-25"
   depotId = "471711"
 }
 
@@ -147,12 +147,12 @@ function Identify-Layout($Layout) {
     $metadataHash -eq $FluxRec2023.metadataSha256
   )
 
-  $evidence2022 = Get-DepotManifestEvidence $Layout.root $Target2022.depotId $Target2022.manifestId
+  $evidence2022 = Get-DepotManifestEvidence $Layout.root $Target2021.depotId $Target2021.manifestId
   $evidence2023 = Get-DepotManifestEvidence $Layout.root $FluxRec2023.depotId $FluxRec2023.manifestId
 
   $pathClaims2022 = (
-    $pathText -match [regex]::Escape($Target2022.buildId) -or
-    $pathText -match [regex]::Escape($Target2022.manifestId) -or
+    $pathText -match [regex]::Escape($Target2021.buildId) -or
+    $pathText -match [regex]::Escape($Target2021.manifestId) -or
     $pathText -match '(?i)May[ _.-]*19[ _.-]*2022'
   )
   $pathClaims2023 = (
@@ -166,17 +166,17 @@ function Identify-Layout($Layout) {
   $buildId = ""
   $manifestId = ""
   $confidence = "none"
-  $playableBy2022Agent = $false
+  $playableByTargetAgent = $false
   $reason = "Client layout is complete, but this binary is not a recognized build."
 
   if ($evidence2022.found -and $evidence2022.shaValid) {
-    $kind = "target-2022"
-    $runtimeId = $Target2022.runtimeId
-    $buildId = $Target2022.buildId
-    $manifestId = $Target2022.manifestId
+    $kind = "target-2021"
+    $runtimeId = $Target2021.runtimeId
+    $buildId = $Target2021.buildId
+    $manifestId = $Target2021.manifestId
     $confidence = "verified-steam-manifest-cache"
-    $playableBy2022Agent = $true
-    $reason = "Exact depot 471711 / manifest 6337851004861751095 cache exists and its DepotDownloader SHA-1 sidecar validates."
+    $playableByTargetAgent = $true
+    $reason = "Exact depot 471711 / manifest 7611535694620830622 cache exists and its DepotDownloader SHA-1 sidecar validates."
   } elseif ($exact2023) {
     $kind = "fluxrec-2023"
     $runtimeId = $FluxRec2023.runtimeId
@@ -185,12 +185,12 @@ function Identify-Layout($Layout) {
     $confidence = "exact-three-file-sha256"
     $reason = "RecRoom.exe + GameAssembly.dll + global-metadata.dat exactly match the pinned March 7 2023 FluxRec client hashes."
   } elseif ($evidence2022.found) {
-    $kind = "unverified-2022"
-    $runtimeId = $Target2022.runtimeId
-    $buildId = $Target2022.buildId
-    $manifestId = $Target2022.manifestId
+    $kind = "unverified-2021"
+    $runtimeId = $Target2021.runtimeId
+    $buildId = $Target2021.buildId
+    $manifestId = $Target2021.manifestId
     $confidence = "manifest-cache-integrity-failed"
-    $reason = "The May 2022 manifest cache is present, but its DepotDownloader .sha sidecar is missing or does not validate. Host launch is blocked."
+    $reason = "The Aug 2021 manifest cache is present, but its DepotDownloader .sha sidecar is missing or does not validate. Host launch is blocked."
   } elseif ($evidence2023.found -and $evidence2023.shaValid) {
     $kind = "unverified-2023"
     $runtimeId = $FluxRec2023.runtimeId
@@ -199,12 +199,12 @@ function Identify-Layout($Layout) {
     $confidence = "steam-manifest-cache-but-hash-mismatch"
     $reason = "The March 2023 manifest cache is valid, but one or more pinned client hashes differ. Host launch is blocked."
   } elseif ($pathClaims2022) {
-    $kind = "unverified-2022"
-    $runtimeId = $Target2022.runtimeId
-    $buildId = $Target2022.buildId
-    $manifestId = $Target2022.manifestId
+    $kind = "unverified-2021"
+    $runtimeId = $Target2021.runtimeId
+    $buildId = $Target2021.buildId
+    $manifestId = $Target2021.manifestId
     $confidence = "path-claim-only"
-    $reason = "Folder name claims May 19 2022, but no verified DepotDownloader manifest cache exists. Folder names are not trusted."
+    $reason = "Folder name claims Aug 25 2021, but no verified DepotDownloader manifest cache exists. Folder names are not trusted."
   } elseif ($pathClaims2023) {
     $kind = "unverified-2023"
     $runtimeId = $FluxRec2023.runtimeId
@@ -226,7 +226,7 @@ function Identify-Layout($Layout) {
     buildId = $buildId
     manifestId = $manifestId
     confidence = $confidence
-    playableBy2022Agent = $playableBy2022Agent
+    playableByTargetAgent = $playableByTargetAgent
     reason = $reason
     manifestEvidence = [pscustomobject]@{
       target2022 = $evidence2022
@@ -260,8 +260,8 @@ function Candidate-Roots {
   if ($Root) { Add-Candidate $Root }
   if ($env:FLUX_RECROOM_CLIENT_DIR) { Add-Candidate $env:FLUX_RECROOM_CLIENT_DIR }
 
-  if ($env:LOCALAPPDATA) { Add-Candidate (Join-Path $env:LOCALAPPDATA "FluxRecRoom\May 19 2022") }
-  Add-Candidate "C:\Games\FluxRecRoom\May 19 2022"
+  if ($env:LOCALAPPDATA) { Add-Candidate (Join-Path $env:LOCALAPPDATA "FluxRecRoom\Aug 25 2021") }
+  Add-Candidate "C:\Games\FluxRecRoom\Aug 25 2021"
 
   $searchRoots = @()
   if ($env:USERPROFILE) {
@@ -300,7 +300,7 @@ if ($Scan -or -not $Root) {
   if ($layout) { $results.Add((Identify-Layout $layout)) }
 }
 
-$rank = @{ 'target-2022' = 0; 'fluxrec-2023' = 1; 'unverified-2022' = 7; 'unverified-2023' = 8; 'unknown' = 9 }
+$rank = @{ 'target-2021' = 0; 'fluxrec-2023' = 1; 'unverified-2021' = 7; 'unverified-2023' = 8; 'unknown' = 9 }
 $ordered = @($results | Sort-Object @{ Expression = { if ($rank.ContainsKey($_.kind)) { $rank[$_.kind] } else { 99 } } }, root)
 $output = [pscustomobject]@{
   ok = $true
@@ -318,7 +318,7 @@ if (-not $ordered.Count) {
   Write-Host "No complete Rec Room IL2CPP client layouts were found." -ForegroundColor Yellow
 } else {
   foreach ($item in $ordered) {
-    $color = if ($item.kind -eq 'target-2022') { 'Green' } elseif ($item.kind -eq 'fluxrec-2023') { 'Cyan' } else { 'Yellow' }
+    $color = if ($item.kind -eq 'target-2021') { 'Green' } elseif ($item.kind -eq 'fluxrec-2023') { 'Cyan' } else { 'Yellow' }
     Write-Host "[$($item.kind)] $($item.root)" -ForegroundColor $color
     Write-Host "  confidence: $($item.confidence)"
     Write-Host "  exe sha256: $($item.fingerprint.exeSha256)"

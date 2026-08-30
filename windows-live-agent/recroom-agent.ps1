@@ -3,7 +3,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$TargetBuild = "recroom-2022-05-19"
+$TargetBuild = "recroom-2021-08-25"
 $script:GameProcess = $null
 $script:AdapterProcess = $null
 $script:ActiveSessionId = ""
@@ -85,7 +85,7 @@ function Invoke-ClientIdentifier([string]$Candidate = "") {
 }
 
 function Resolve-ClientDir {
-  if ($script:ClientIdentity -and $script:ClientIdentity.playableBy2022Agent) {
+  if ($script:ClientIdentity -and $script:ClientIdentity.playableByTargetAgent) {
     return [string]$script:ClientIdentity.root
   }
 
@@ -94,7 +94,7 @@ function Resolve-ClientDir {
   elseif ($script:cfg.clientDir) { $candidate = [string]$script:cfg.clientDir }
 
   $scan = Invoke-ClientIdentifier $candidate
-  $target = @($scan.clients | Where-Object { $_.kind -eq "target-2022" -and $_.playableBy2022Agent }) | Select-Object -First 1
+  $target = @($scan.clients | Where-Object { $_.kind -eq "target-2021" -and $_.playableByTargetAgent }) | Select-Object -First 1
   if ($target) {
     $resolved = [string]$target.root
     $script:ClientIdentity = $target
@@ -103,13 +103,13 @@ function Resolve-ClientDir {
       Set-CfgProperty $script:cfg "clientDir" $resolved
       Save-Config $script:cfg
     }
-    Write-Host "Strict client identity accepted: build 8751857 / manifest 6337851004861751095 at $resolved" -ForegroundColor Green
+    Write-Host "Strict client identity accepted: build 7225744 / manifest 7611535694620830622 at $resolved" -ForegroundColor Green
     return $resolved
   }
 
   $exact2023 = @($scan.clients | Where-Object { $_.kind -eq "fluxrec-2023" }) | Select-Object -First 1
   if ($exact2023) {
-    throw "Exact FluxRec March 7 2023 build 10679392 detected at '$($exact2023.root)'. This agent targets May 19 2022 and will not patch a different IL2CPP build as 2022."
+    throw "Exact FluxRec March 7 2023 build 10679392 detected at '$($exact2023.root)'. This agent targets Aug 25 2021 and will not patch a different IL2CPP build as 2022."
   }
   $claimed2023 = @($scan.clients | Where-Object { $_.kind -eq "unverified-2023" }) | Select-Object -First 1
   if ($claimed2023) {
@@ -117,9 +117,9 @@ function Resolve-ClientDir {
   }
   $unknown = @($scan.clients | Where-Object { $_.kind -eq "unknown" }) | Select-Object -First 1
   if ($unknown) {
-    throw "Unknown Rec Room client at '$($unknown.root)' (exe SHA256 $($unknown.fingerprint.exeSha256)). It is not verified as build 8751857, so this host will not advertise it as playable."
+    throw "Unknown Rec Room client at '$($unknown.root)' (exe SHA256 $($unknown.fingerprint.exeSha256)). It is not verified as build 7225744, so this host will not advertise it as playable."
   }
-  throw "No verified May 19 2022 Rec Room client was found. Set FLUX_RECROOM_CLIENT_DIR/clientDir to the legally obtained build 8751857 folder, or place that build under an exact 8751857 / 6337851004861751095 / May 19 2022 path."
+  throw "No verified Aug 25 2021 Rec Room client was found. Set FLUX_RECROOM_CLIENT_DIR/clientDir to the legally obtained build 7225744 folder, or place that build under an exact 7225744 / 7611535694620830622 / Aug 25 2021 path."
 }
 
 function Api-Get([string]$Path) {
@@ -307,7 +307,7 @@ $layout = Verify-ClientLayout
 $redirect = Prepare-ClientRedirect
 $capacity = if ($script:cfg.capacity) { [Math]::Max(1, [Math]::Min(8, [int]$script:cfg.capacity)) } else { 1 }
 Write-Host "Flux Rec Room Windows Host" -ForegroundColor Cyan
-Write-Host "Target build: May 19 2022 (8751857)"
+Write-Host "Target build: Aug 25 2021 (7225744)"
 Write-Host "Client: $($layout.exe)"
 Write-Host "Client identity: $($script:ClientIdentity.confidence) / manifest $($script:ClientIdentity.manifestId)"
 Write-Host "Broker: $($script:cfg.server)"
@@ -316,7 +316,7 @@ Write-Host "Browser stream: automatic HTTPS tunnel when a session starts"
 
 $register = Api-Post "/api/recroom/hosts/register" @{
   hostId = [string]$script:cfg.hostId; name = [string]$script:cfg.name; builds = @($TargetBuild); capacity = $capacity
-  metadata = @{ computer = $env:COMPUTERNAME; os = [Environment]::OSVersion.VersionString; clientDir = [string]$script:cfg.clientDir; browserStream = $true; touchControls = $true; targetSteamBuild = "8751857"; targetManifest = "6337851004861751095"; identityConfidence = [string]$script:ClientIdentity.confidence; exeSha256 = [string]$script:ClientIdentity.fingerprint.exeSha256; redirectReady = $true; redirectOccurrences = [int]$redirect.preparedOccurrences; localProxyPort = 81 }
+  metadata = @{ computer = $env:COMPUTERNAME; os = [Environment]::OSVersion.VersionString; clientDir = [string]$script:cfg.clientDir; browserStream = $true; touchControls = $true; targetSteamBuild = "7225744"; targetManifest = "7611535694620830622"; identityConfidence = [string]$script:ClientIdentity.confidence; exeSha256 = [string]$script:ClientIdentity.fingerprint.exeSha256; redirectReady = $true; redirectOccurrences = [int]$redirect.preparedOccurrences; localProxyPort = 81 }
 }
 Write-Host "Registered host $($register.hostId)." -ForegroundColor Green
 

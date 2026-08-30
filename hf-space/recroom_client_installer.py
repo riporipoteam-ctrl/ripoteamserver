@@ -20,7 +20,7 @@ from fastapi import Body, Header, HTTPException
 from recroom_build_fingerprint import FINGERPRINT, verify_client_root
 
 
-TARGET_MANIFEST = "6337851004861751095"
+TARGET_MANIFEST = "7611535694620830622"
 TARGET_DEPOT = "471711"
 MAX_ARCHIVE_BYTES = int(os.environ.get("RECROOM_CLIENT_ARCHIVE_MAX_BYTES", str(12 * 1024**3)))
 
@@ -248,7 +248,7 @@ class RecRoomClientInstaller:
 
             installed_check = verify_client_root(install_tmp)
             if not installed_check.get("ok"):
-                raise RuntimeError("Exact May 19 2022 fingerprint changed during install: " + "; ".join(installed_check.get("mismatches") or []))
+                raise RuntimeError("Exact Aug 25 2021 fingerprint changed during install: " + "; ".join(installed_check.get("mismatches") or []))
 
             shutil.rmtree(old, ignore_errors=True)
             if self.pool.client_dir.exists():
