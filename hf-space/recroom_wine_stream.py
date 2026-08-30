@@ -213,38 +213,32 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
         if not self.authorized(parsed):
             return self.send_json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "invalid token"})
+        length = int(self.headers.get("Content-Length", "0") or "0")
         try:
-            length = min(8192, int(self.headers.get("content-length", "0") or "0"))
-            data = json.loads(self.rfile.read(length) or b"{}")
-            kind = str(data.get("type") or "")
-            if kind == "key":
-                key = str(data.get("key") or "")
-                keysym = KEY_MAP.get(key, key if len(key) <= 24 else "")
-                if keysym:
-                    self.server.xdotool("keydown" if bool(data.get("down")) else "keyup", "--clearmodifiers", keysym)
-            elif kind == "move":
-                dx = max(-4000, min(4000, int(data.get("dx") or 0)))
-                dy = max(-4000, min(4000, int(data.get("dy") or 0)))
-                if dx or dy:
-                    self.server.xdotool("mousemove_relative", "--sync", "--", str(dx), str(dy))
-            elif kind == "button":
-                button = str(data.get("button") or "left")
-                number = {"left": "1", "middle": "2", "right": "3"}.get(button, "1")
-                self.server.xdotool("mousedown" if bool(data.get("down")) else "mouseup", number)
-            elif kind == "wheel":
-                delta = int(data.get("delta") or 0)
-                if delta:
-                    self.server.xdotool("click", "4" if delta > 0 else "5")
-            elif kind == "release":
-                for key in ("w", "a", "s", "d", "Shift_L", "space", "e"):
-                    self.server.xdotool("keyup", key)
-                for button in ("1", "2", "3"):
-                    self.server.xdotool("mouseup", button)
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            return self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "invalid JSON"})
+        action = str(payload.get("type") or "")
+        try:
+            if action == "key":
+                key = KEY_MAP.get(str(payload.get("key")), str(payload.get("key")))
+                down = bool(payload.get("down"))
+                self.server.xdotool("key", "--repeat", "0", key) if down else self.server.xdotool("key", "--clearmodifiers", key)
+            elif action == "button":
+                button = str(payload.get("button") or "left")
+                down = bool(payload.get("down"))
+                self.server.xdotool("mousedown", {"left":"1","middle":"2","right":"3"}.get(button,"1")) if down else self.server.xdotool("mouseup", {"left":"1","middle":"2","right":"3"}.get(button,"1"))
+            elif action == "move":
+                self.server.xdotool("mousemove_relative", "--", str(int(payload.get("dx") or 0)), str(int(payload.get("dy") or 0)))
+            elif action == "wheel":
+                self.server.xdotool("click", "4" if int(payload.get("delta") or 0) > 0 else "5")
+            elif action == "release":
+                self.server.xdotool("keyup", "w", "a", "s", "d", "Shift_L", "Control_L", "Alt_L", "space", "e")
             else:
-                return self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "unsupported input"})
+                return self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "unsupported input type"})
             return self.send_json(HTTPStatus.OK, {"ok": True})
         except Exception as exc:
-            return self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
+            return self.send_json(HTTPStatus.BAD_GATEWAY, {"ok": False, "error": str(exc)})
 
 
 def main() -> int:
@@ -256,7 +250,7 @@ def main() -> int:
     parser.add_argument("--pulse-source", default="")
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=720)
-    parser.add_argument("--quality", type=int, default=70)
+    parser.add_argument("--quality", type=int, default=94)
     args = parser.parse_args()
     token = args.token or secrets.token_urlsafe(32)
     server = StreamServer(
@@ -267,9 +261,9 @@ def main() -> int:
         pulse_source=args.pulse_source,
         width=max(640, args.width),
         height=max(360, args.height),
-        quality=max(35, min(90, args.quality)),
+        quality=max(70, min(96, args.quality)),
     )
-    print(json.dumps({"ok": True, "display": args.display, "port": args.port, "audio": bool(args.pulse_source)}), flush=True)
+    print(json.dumps({"ok": True, "display": args.display, "port": args.port, "audio": bool(args.pulse_source), "jpegQuality": server.quality}), flush=True)
     try:
         server.serve_forever(poll_interval=0.2)
     except KeyboardInterrupt:
