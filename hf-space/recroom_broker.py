@@ -17,10 +17,12 @@ from fastapi import Body, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 
-TARGET_BUILD_ID = "recroom-2022-05-19"
+TARGET_BUILD_ID = "recroom-2021-08-25"
 HOST_STALE_SECONDS = int(os.environ.get("RECROOM_HOST_STALE_SECONDS", "35"))
 SESSION_TTL_SECONDS = int(os.environ.get("RECROOM_SESSION_TTL_SECONDS", "7200"))
-STARTING_TTL_SECONDS = int(os.environ.get("RECROOM_STARTING_TTL_SECONDS", "300"))
+# Steam QR/password/Guard authentication can legitimately take several minutes.
+# Never reap an interactive login session after five minutes.
+STARTING_TTL_SECONDS = int(os.environ.get("RECROOM_STARTING_TTL_SECONDS", "1800"))
 
 
 def _hash_token(value: str) -> str:
