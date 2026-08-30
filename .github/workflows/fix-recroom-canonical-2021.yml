@@ -1,0 +1,123 @@
+name: Fix Rec Room Canonical 2021 Runtime
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Align every production Rec Room host/runtime to Aug 25 2021
+        shell: python
+        run: |
+          from pathlib import Path
+
+          root = Path('.')
+          replacements = {
+              'windows-live-agent/recroom-agent.ps1': [
+                  ('$TargetBuild = "recroom-2022-05-19"', '$TargetBuild = "recroom-2021-08-25"'),
+                  ('target-2022', 'target-2021'),
+                  ('unverified-2022', 'unverified-2021'),
+                  ('playableBy2022Agent', 'playableByTargetAgent'),
+                  ('8751857', '7225744'),
+                  ('6337851004861751095', '7611535694620830622'),
+                  ('May 19 2022', 'Aug 25 2021'),
+                  ('May 2022', 'Aug 2021'),
+              ],
+              'windows-live-agent/identify-recroom-client.ps1': [
+                  ('$Target2022', '$Target2021'),
+                  ('Target2022', 'Target2021'),
+                  ('target-2022', 'target-2021'),
+                  ('unverified-2022', 'unverified-2021'),
+                  ('playableBy2022Agent', 'playableByTargetAgent'),
+                  ('8751857', '7225744'),
+                  ('6337851004861751095', '7611535694620830622'),
+                  ('recroom-2022-05-19', 'recroom-2021-08-25'),
+                  ('May 19 2022', 'Aug 25 2021'),
+                  ('May 2022', 'Aug 2021'),
+              ],
+              'hf-space/recroom_wine_pool.py': [
+                  ('TARGET_BUILD_ID = "recroom-2022-05-19"', 'TARGET_BUILD_ID = "recroom-2021-08-25"'),
+                  ('TARGET_MANIFEST = "6337851004861751095"', 'TARGET_MANIFEST = "7611535694620830622"'),
+                  ('recroom-client-2022', 'recroom-client-2021'),
+                  ('8751857', '7225744'),
+                  ('6337851004861751095', '7611535694620830622'),
+                  ('May 19 2022', 'Aug 25 2021'),
+                  ('May 2022', 'Aug 2021'),
+              ],
+              'hf-space/recroom_client_installer.py': [
+                  ('TARGET_MANIFEST = "6337851004861751095"', 'TARGET_MANIFEST = "7611535694620830622"'),
+                  ('8751857', '7225744'),
+                  ('6337851004861751095', '7611535694620830622'),
+                  ('May 19 2022', 'Aug 25 2021'),
+                  ('May 2022', 'Aug 2021'),
+              ],
+              'hf-space/recroom_autoload.py': [
+                  ('os.environ.setdefault("RECROOM_STARTING_TTL_SECONDS", "900")', 'os.environ.setdefault("RECROOM_STARTING_TTL_SECONDS", "1800")'),
+              ],
+          }
+
+          changed = []
+          for rel, reps in replacements.items():
+              path = root / rel
+              text = path.read_text(encoding='utf-8')
+              original = text
+              for old, new in reps:
+                  text = text.replace(old, new)
+              if text != original:
+                  path.write_text(text, encoding='utf-8')
+                  changed.append(rel)
+
+          # Make Wine capability accept the trusted archive attestation used by
+          # the canonical 2021 fingerprint. The old code incorrectly required
+          # a 2022 DepotDownloader manifest.
+          path = root / 'hf-space/recroom_wine_pool.py'
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              '        manifest = root / ".DepotDownloader" / f"{TARGET_DEPOT}_{TARGET_MANIFEST}.manifest"\n        return {',
+              '        manifest = root / ".DepotDownloader" / f"{TARGET_DEPOT}_{TARGET_MANIFEST}.manifest"\n        attestation = root / ".ripo-build-attestation.json"\n        return {'
+          )
+          text = text.replace(
+              '            "manifest": manifest.is_file(),\n            "exePath": str(exe) if exe else "",',
+              '            "manifest": manifest.is_file(),\n            "attestation": attestation.is_file(),\n            "exePath": str(exe) if exe else "",'
+          )
+          text = text.replace(
+              '        if self.strict_manifest:\n            client_ready = bool(client_ready and client["manifest"])',
+              '        if self.strict_manifest:\n            client_ready = bool(client_ready and (client["manifest"] or client["attestation"]))'
+          )
+          text = text.replace(
+              '            if self.strict_manifest and not client["manifest"]:\n                missing.append(f"DepotDownloader manifest {TARGET_MANIFEST}")',
+              '            if self.strict_manifest and not (client["manifest"] or client["attestation"]):\n                missing.append(f"DepotDownloader manifest {TARGET_MANIFEST} or trusted archive attestation")'
+          )
+          text = text.replace(
+              '            "checks": {**tools, "client": client_ready, "manifest": bool(client["manifest"])},',
+              '            "checks": {**tools, "client": client_ready, "manifest": bool(client["manifest"]), "attestation": bool(client["attestation"])},'
+          )
+          path.write_text(text, encoding='utf-8')
+
+          if changed or text != original:
+              print('patched:', ', '.join(sorted(set(changed + ['hf-space/recroom_wine_pool.py']))))
+          else:
+              print('already canonical')
+
+      - name: Commit production runtime alignment
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add windows-live-agent hf-space
+          if git diff --cached --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git commit -m 'fix(recroom): align host and Wine runtime to Aug 2021'
+          git push
