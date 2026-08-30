@@ -10,7 +10,7 @@ from fastapi import Body, Header, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 
 
-TARGET_BUILD_ID = "recroom-2022-05-19"
+TARGET_BUILD_ID = "recroom-2021-08-25"
 PAIRING_TTL_SECONDS = 10 * 60
 
 
