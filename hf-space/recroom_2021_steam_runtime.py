@@ -8,13 +8,13 @@ import threading
 import time
 import urllib.request
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 import recroom_wine_runtime_fix as runtime_fix
 from recroom_wine_pool import RecRoomWinePool, WineInstance
 
 
-_PATCH_REVISION = "aug25-2021-official-steam-runtime-v1"
+_PATCH_REVISION = "aug25-2021-official-steam-runtime-v2"
 _STEAM_SETUP_URL = "https://cdn.fastly.steamstatic.com/client/installer/SteamSetup.exe"
 _STEAM_APP_ID = "471710"
 _STEAM_LOGIN_WAIT_SECONDS = max(120, int(os.environ.get("RECROOM_STEAM_LOGIN_WAIT_SECONDS", "1200")))
@@ -95,7 +95,6 @@ def _ensure_official_steam(self: RecRoomWinePool, display: int) -> None:
             timeout=180,
             check=False,
         )
-        # NSIS returns before Steam finishes its first self-update on some builds.
         deadline = time.time() + 90
         while time.time() < deadline and not installed.is_file():
             time.sleep(1)
@@ -104,7 +103,7 @@ def _ensure_official_steam(self: RecRoomWinePool, display: int) -> None:
             raise RuntimeError(f"Official Steam client did not install into the Wine prefix. {compact}")
         if self.wineserver:
             subprocess.run(
-                [str(self.wineserver), "-k"],
+                [str(self.wineserver, "-k")],
                 env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -119,10 +118,63 @@ def _has_remembered_steam_user(prefix: Path) -> bool:
         text = path.read_text(errors="replace")
     except OSError:
         return False
-    if not re.search(r'"AccountName"\s+"[^"]+"', text, flags=re.IGNORECASE):
+    return bool(
+        re.search(r'"AccountName"\s+"[^"]+"', text, flags=re.IGNORECASE)
+        and re.search(r'"MostRecent"\s+"1"', text, flags=re.IGNORECASE)
+    )
+
+
+def _find_steam_windows(self: RecRoomWinePool, instance: WineInstance) -> list[str]:
+    xdotool = shutil.which("xdotool")
+    if not xdotool:
+        return []
+    env = self._wine_env(instance)
+    windows: list[str] = []
+    for mode, value in (("--name", "Steam"), ("--class", "Steam"), ("--class", "steam")):
+        try:
+            result = subprocess.run(
+                [xdotool, "search", "--onlyvisible", mode, value],
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=3,
+                check=False,
+            )
+        except Exception:
+            continue
+        for item in result.stdout.splitlines():
+            item = item.strip()
+            if item and item not in windows:
+                windows.append(item)
+    return windows
+
+
+def _focus_steam_window(self: RecRoomWinePool, instance: WineInstance) -> bool:
+    xdotool = shutil.which("xdotool")
+    if not xdotool:
         return False
-    # Steam writes this when the account has completed an interactive client login.
-    return bool(re.search(r'"MostRecent"\s+"1"', text, flags=re.IGNORECASE))
+    env = self._wine_env(instance)
+    deadline = time.time() + 45
+    while time.time() < deadline:
+        windows = _find_steam_windows(self, instance)
+        if windows:
+            window = windows[-1]
+            subprocess.run([xdotool, "windowactivate", "--sync", window], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4, check=False)
+            subprocess.run([xdotool, "windowraise", window], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4, check=False)
+            subprocess.run([xdotool, "windowsize", window, "100%", "100%"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4, check=False)
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def _minimize_steam_windows(self: RecRoomWinePool, instance: WineInstance) -> None:
+    xdotool = shutil.which("xdotool")
+    if not xdotool:
+        return
+    env = self._wine_env(instance)
+    for window in _find_steam_windows(self, instance):
+        subprocess.run([xdotool, "windowminimize", window], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4, check=False)
 
 
 def _start_steam_and_wait(self: RecRoomWinePool, instance: WineInstance) -> None:
@@ -153,24 +205,24 @@ def _start_steam_and_wait(self: RecRoomWinePool, instance: WineInstance) -> None
         raise RuntimeError("Steam sandbox callbacks were not registered.")
     on_progress, on_ready, _on_failed = callbacks
 
-    # Let the stream become interactive before authentication so the player can
-    # use Steam's normal password/QR/Steam Guard UI inside the remote sandbox.
-    time.sleep(6)
+    focused = _focus_steam_window(self, instance)
+    if not focused:
+        # Still expose the stream so a transient Wine/xdotool window-title issue
+        # cannot prevent authentication entirely.
+        time.sleep(2)
     on_ready(self.public_stream_url(instance))
-    on_progress("steam-login-required", 60)
+    on_progress("steam-login-required", 60 if focused else 58)
 
     deadline = time.time() + _STEAM_LOGIN_WAIT_SECONDS
     while time.time() < deadline:
         if instance.destroying:
             return
         if _has_remembered_steam_user(instance.prefix_dir):
-            # Give the client a moment to finish its post-login connection.
             on_progress("steam-authenticated", 64)
-            time.sleep(8)
+            _minimize_steam_windows(self, instance)
+            time.sleep(3)
             return
         if process.poll() is not None:
-            # Steam often hands off to another Steam process during updates; do
-            # not fail merely because this bootstrap process exited.
             process = subprocess.Popen(
                 [str(self.wine), str(steam), "-no-cef-sandbox"],
                 cwd=steam.parent,
@@ -180,6 +232,7 @@ def _start_steam_and_wait(self: RecRoomWinePool, instance: WineInstance) -> None
                 start_new_session=True,
             )
             setattr(instance, "steam_process", process)
+            _focus_steam_window(self, instance)
         time.sleep(2)
 
     raise RuntimeError(
@@ -199,15 +252,7 @@ def _provision_with_steam_callbacks(
     with _CALLBACK_LOCK:
         _CALLBACKS[host_id] = (on_progress, on_ready, on_failed)
     try:
-        return _ORIGINAL_PROVISION(
-            self,
-            host_id,
-            session_id,
-            session_token,
-            on_progress,
-            on_ready,
-            on_failed,
-        )
+        return _ORIGINAL_PROVISION(self, host_id, session_id, session_token, on_progress, on_ready, on_failed)
     except Exception:
         with _CALLBACK_LOCK:
             _CALLBACKS.pop(host_id, None)
