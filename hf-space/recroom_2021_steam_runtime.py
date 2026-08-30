@@ -103,7 +103,7 @@ def _ensure_official_steam(self: RecRoomWinePool, display: int) -> None:
             raise RuntimeError(f"Official Steam client did not install into the Wine prefix. {compact}")
         if self.wineserver:
             subprocess.run(
-                [str(self.wineserver, "-k")],
+                [str(self.wineserver), "-k"],
                 env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -162,7 +162,7 @@ def _focus_steam_window(self: RecRoomWinePool, instance: WineInstance) -> bool:
             window = windows[-1]
             subprocess.run([xdotool, "windowactivate", "--sync", window], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4, check=False)
             subprocess.run([xdotool, "windowraise", window], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4, check=False)
-            subprocess.run([xdotool, "windowsize", window, "100%", "100%"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4, check=False)
+            subprocess.run([xdotool, "windowsize", window, str(self.width), str(self.height)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4, check=False)
             return True
         time.sleep(0.5)
     return False
@@ -207,8 +207,6 @@ def _start_steam_and_wait(self: RecRoomWinePool, instance: WineInstance) -> None
 
     focused = _focus_steam_window(self, instance)
     if not focused:
-        # Still expose the stream so a transient Wine/xdotool window-title issue
-        # cannot prevent authentication entirely.
         time.sleep(2)
     on_ready(self.public_stream_url(instance))
     on_progress("steam-login-required", 60 if focused else 58)
