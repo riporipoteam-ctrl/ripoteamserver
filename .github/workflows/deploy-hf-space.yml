@@ -47,7 +47,14 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in $(seq 1 20); do
-            if curl --fail --silent --show-error --max-time 20 "https://echoxr-ripoteam-cloud-pc.hf.space/api/health"; then
+            if curl --fail --silent --show-error --max-time 20 "https://echoxr-ripoteam-cloud-pc.hf.space/api/health" -o /tmp/space-health.json \
+              && python - <<'PY'
+          import json
+          data = json.load(open('/tmp/space-health.json'))
+          assert data.get('ok') is True
+          print('Space health:', data.get('name', 'ok'))
+          PY
+            then
               exit 0
             fi
             sleep 15
