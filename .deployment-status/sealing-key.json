@@ -1,0 +1,6 @@
+{
+  "available": true,
+  "algorithm": "X25519-HKDF-SHA256-ChaCha20Poly1305",
+  "key_id": "8c9b4481631b0177",
+  "public_key": "-HmtCMJZ7gxwBCgFS1XRRMrE1YAiG4YEmupzfBnWbFg"
+}
