@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+env:
+  HF_SPACE_ID: Echoxr/ripoteamserver-cloud-pc
+  HF_SPACE_URL: https://echoxr-ripoteamserver-cloud-pc.hf.space
+
 concurrency:
   group: huggingface-space-deployment
   cancel-in-progress: true
@@ -29,11 +33,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${HF_TOKEN:-}" ]; then
-            echo "::error::Missing repository secret HF_TOKEN. Create a fine-grained Hugging Face write token for Echoxr/ripoteam-cloud-pc and save it as HF_TOKEN in GitHub repository secrets."
+            echo "::error::Missing repository secret HF_TOKEN. Create a fine-grained Hugging Face write token for Echoxr/ripoteamserver-cloud-pc and save it as HF_TOKEN in GitHub repository secrets."
             exit 1
           fi
 
-      - name: Wake existing Cloud PC Space
+      - name: Create or reuse new Cloud PC Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
@@ -43,21 +47,39 @@ jobs:
           import os
           from huggingface_hub import HfApi
 
-          repo_id = "Echoxr/ripoteam-cloud-pc"
+          repo_id = os.environ["HF_SPACE_ID"]
           api = HfApi(token=os.environ["HF_TOKEN"])
-          runtime = api.get_space_runtime(repo_id=repo_id)
-          print(
-              f"Before restart: stage={runtime.stage} hardware={runtime.hardware} "
-              f"requested={runtime.requested_hardware}"
+          api.create_repo(repo_id=repo_id, repo_type="space", space_sdk="gradio", exist_ok=True)
+          print(f"Space ready: {repo_id}")
+
+      - name: Configure new Space secrets
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          FIVEM_LICENSE_KEY: ${{ secrets.FIVEM_LICENSE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FIVEM_LICENSE_KEY:-}" ]; then
+            echo "::error::Missing GitHub secret FIVEM_LICENSE_KEY. Add the Cfx.re key to GitHub Actions secrets before starting the new Space."
+            exit 1
+          fi
+          python -m pip install -q 'huggingface_hub>=0.30'
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          api.add_space_secret(
+              repo_id=os.environ["HF_SPACE_ID"],
+              key="FIVEM_LICENSE_KEY",
+              value=os.environ["FIVEM_LICENSE_KEY"],
           )
-          api.restart_space(repo_id=repo_id)
-          print("Requested restart without changing Space hardware.")
+          print("Configured the new Space's FIVEM_LICENSE_KEY secret.")
 
       - name: Sync Space
         uses: huggingface/hub-sync@v0.1.0
         with:
           github_repo_id: ${{ github.repository }}
-          huggingface_repo_id: Echoxr/ripoteam-cloud-pc
+          huggingface_repo_id: ${{ env.HF_SPACE_ID }}
           hf_token: ${{ secrets.HF_TOKEN }}
           repo_type: space
           space_sdk: gradio
@@ -67,7 +89,7 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in $(seq 1 20); do
-            if curl --fail --silent --show-error --max-time 20 "https://echoxr-ripoteam-cloud-pc.hf.space/api/health" -o /tmp/space-health.json \
+            if curl --fail --silent --show-error --max-time 20 "${HF_SPACE_URL}/api/health" -o /tmp/space-health.json \
               && python - <<'PY'
           import json
           data = json.load(open('/tmp/space-health.json'))
@@ -85,7 +107,7 @@ jobs:
       - name: Start and verify Flux RP FXServer
         run: |
           set -euo pipefail
-          SPACE_URL="https://echoxr-ripoteam-cloud-pc.hf.space"
+          SPACE_URL="${HF_SPACE_URL}"
           curl --fail --silent --show-error --max-time 30 -X POST "$SPACE_URL/api/flux/start" | tee /tmp/flux-start.json
           python - <<'PY'
           import json
