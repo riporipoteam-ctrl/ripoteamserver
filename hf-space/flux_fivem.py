@@ -81,11 +81,16 @@ def init_mariadb(schema_file: Path | None = None) -> None:
             db_datadir = DATA_DIR / "mariadb" / "data"
             db_datadir.mkdir(parents=True, exist_ok=True)
 
+            current_user = os.environ.get("USER", "user")
+            mariadb_bin = shutil.which("mariadbd") or shutil.which("mysqld") or "/usr/sbin/mariadbd"
+            install_bin = shutil.which("mariadb-install-db") or "/usr/bin/mariadb-install-db"
+
             if not (db_datadir / "mysql").exists():
-                log(f"Running mariadb-install-db in {db_datadir}...")
+                log(f"Running {install_bin} in {db_datadir}...")
                 subprocess.run(
                     [
-                        "mariadb-install-db",
+                        install_bin,
+                        f"--user={current_user}",
                         f"--datadir={db_datadir}",
                         "--auth-root-authentication-method=normal",
                         "--skip-test-db",
@@ -94,10 +99,11 @@ def init_mariadb(schema_file: Path | None = None) -> None:
                     timeout=30,
                 )
 
-            log("Spawning user-space mariadbd daemon...")
+            log(f"Spawning user-space {mariadb_bin} daemon...")
             MARIADB_PROCESS = subprocess.Popen(
                 [
-                    "mariadbd",
+                    mariadb_bin,
+                    f"--user={current_user}",
                     f"--datadir={db_datadir}",
                     "--port=3306",
                     "--bind-address=127.0.0.1",
