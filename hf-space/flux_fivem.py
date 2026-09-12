@@ -207,7 +207,8 @@ def locate_or_clone_server_data() -> tuple[Path, Path]:
     if repo_data.exists() and (repo_data / "server.cfg").exists():
         log(f"Using server-data from existing clone: {repo_data}")
         try:
-            subprocess.run(["git", "pull"], cwd=str(repo_dir), capture_output=True, timeout=20)
+            subprocess.run(["git", "fetch", "--all"], cwd=str(repo_dir), capture_output=True, timeout=20)
+            subprocess.run(["git", "reset", "--hard", "origin/main"], cwd=str(repo_dir), capture_output=True, timeout=20)
         except Exception:
             pass
         return repo_data, repo_schema
@@ -238,6 +239,24 @@ def configure_server_files(server_data: Path) -> None:
 
         if "server_license.cfg" not in content:
             content += "\nexec server_license.cfg\n"
+            mod = True
+
+        if "add_ace resource.qb-core command.add_ace allow" not in content:
+            content = (
+                "# QBCore Resource Permissions\n"
+                "add_ace resource.qb-core command.add_ace allow\n"
+                "add_ace resource.qb-core command.add_principal allow\n"
+                "add_ace resource.qb-core command.remove_principal allow\n"
+                "add_ace resource.qb-core command.stop allow\n\n"
+            ) + content
+            mod = True
+
+        if "sv_enhancedHostSupport" not in content:
+            content += "\nset sv_enhancedHostSupport 1\n"
+            mod = True
+
+        if "con_disableConsole" not in content:
+            content += "\nset con_disableConsole 1\n"
             mod = True
 
         if "real_ripo6000" not in content:
@@ -333,8 +352,9 @@ def start_server_thread() -> None:
         log(f"Spawning FXServer process with config: {server_cfg}...")
 
         FIVEM_PROCESS = subprocess.Popen(
-            [str(fx_run), "+exec", "server.cfg"],
+            [str(fx_run), "+exec", "server.cfg", "+set", "con_disableConsole", "1"],
             cwd=str(server_data_dir),
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

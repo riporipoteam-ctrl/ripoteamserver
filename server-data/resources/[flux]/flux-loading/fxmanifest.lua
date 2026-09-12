@@ -11,6 +11,5 @@ loadscreen_cursor 'yes'
 files {
     'html/index.html',
     'html/css/style.css',
-    'html/js/script.js',
-    'html/img/**'
+    'html/js/script.js'
 }
