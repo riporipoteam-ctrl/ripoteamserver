@@ -1,0 +1,3 @@
+# Copy this file to server_license.cfg on the host and replace the value.
+# Keep server_license.cfg ignored by Git. Never commit or share the real key.
+sv_licenseKey "PASTE_YOUR_CFX_RE.GISTRATION_KEY_HERE"

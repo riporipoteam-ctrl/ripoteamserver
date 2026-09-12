@@ -6,6 +6,15 @@
 set -e
 
 echo "=== [Flux RP] Initializing 24/7 Cloud Server Setup ==="
+REPO_DIR=$(pwd)
+if [ ! -f "./server-data/server_license.cfg" ]; then
+  echo "ERROR: server-data/server_license.cfg is missing. Copy server_license.cfg.example and add your Cfx.re key locally before starting." >&2
+  exit 1
+fi
+if grep -q 'CHANGE_ME' ./server-data/server.cfg; then
+  echo "ERROR: Configure the MariaDB connection string in server-data/server.cfg before starting." >&2
+  exit 1
+fi
 
 # 1. Update and install dependencies
 sudo apt-get update && sudo apt-get install -y git curl wget xz-utils mariadb-server ufw
@@ -43,7 +52,7 @@ After=network.target mariadb.service
 [Service]
 Type=simple
 User=root
-WorkingDirectory=$(pwd)/server-data
+WorkingDirectory=${REPO_DIR}/server-data
 ExecStart=/opt/cfx-server/run.sh +exec server.cfg
 Restart=always
 RestartSec=5s
