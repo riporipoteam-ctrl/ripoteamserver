@@ -1,0 +1,6 @@
+@echo off
+title Restarting Flux RP...
+echo [Flux RP] Restarting server...
+taskkill /F /IM FXServer.exe >nul 2>&1
+timeout /t 3 /nobreak >nul
+start "" "%~dp0start-server.bat"

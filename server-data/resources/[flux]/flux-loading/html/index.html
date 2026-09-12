@@ -1,0 +1,89 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flux RP — Ripo Team</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="overlay"></div>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Header / Logo -->
+        <header class="header">
+            <div class="logo-box">
+                <div class="badge">RIPO TEAM OFFICIAL</div>
+                <h1 class="logo-title">FLUX <span class="accent">RP</span></h1>
+                <p class="tagline">Next-Generation GTA V FiveM Roleplay Experience</p>
+            </div>
+            <div class="server-status">
+                <div class="status-indicator"></div>
+                <span>SERVER ONLINE &bull; DIRECT CONNECT READY</span>
+            </div>
+        </header>
+
+        <!-- Content Grid -->
+        <main class="grid">
+            <!-- Server Rules -->
+            <section class="card rules-card">
+                <h2><span class="icon">&#9888;</span> SERVER CORE RULES</h2>
+                <ul>
+                    <li><span class="num">01</span> <strong>Value Your Life (NVL):</strong> Value your character's life in all tense roleplay situations.</li>
+                    <li><span class="num">02</span> <strong>No RDM / VDM:</strong> Random Death Match and Vehicle Death Match are strictly forbidden.</li>
+                    <li><span class="num">03</span> <strong>Stay in Character:</strong> Maintain immersion. Use <code>/ooc</code> for out-of-character communication.</li>
+                    <li><span class="num">04</span> <strong>No Combat Logging:</strong> Quitting the game during active scenarios results in permanent bans.</li>
+                    <li><span class="num">05</span> <strong>Follow Staff Directives:</strong> Admin decisions are final. Report issues via <code>/report</code>.</li>
+                </ul>
+            </section>
+
+            <!-- Keybind Guide -->
+            <section class="card keybind-card">
+                <h2><span class="icon">&#9000;</span> CONTROL SHORTCUTS</h2>
+                <div class="key-grid">
+                    <div class="key-item"><kbd>LEFT ALT</kbd> <span>Eye Interaction</span></div>
+                    <div class="key-item"><kbd>F1</kbd> <span>Smartphone</span></div>
+                    <div class="key-item"><kbd>F2</kbd> <span>Inventory</span></div>
+                    <div class="key-item"><kbd>F3</kbd> <span>Radial Action Menu</span></div>
+                    <div class="key-item"><kbd>M</kbd> <span>Player / Job Menu</span></div>
+                    <div class="key-item"><kbd>T</kbd> <span>Chat Box</span></div>
+                    <div class="key-item"><kbd>B</kbd> <span>Point Finger</span></div>
+                    <div class="key-item"><kbd>K</kbd> <span>Vehicle Seatbelt</span></div>
+                </div>
+            </section>
+
+            <!-- Community & Owner -->
+            <section class="card community-card">
+                <h2><span class="icon">&#9733;</span> COMMUNITY & STAFF</h2>
+                <div class="staff-badge">
+                    <span class="crown">&#9819;</span>
+                    <div>
+                        <strong>Server Owner</strong>
+                        <p>real_ripo6000</p>
+                    </div>
+                </div>
+                <div class="server-info-box">
+                    <p><strong>Framework:</strong> QBCore Enhanced (oxmysql + pma-voice)</p>
+                    <p><strong>Economy:</strong> Hardcore Balanced Economy</p>
+                    <p><strong>Emergency:</strong> Real-time Dispatch & Police MDT</p>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer / Progress Bar -->
+        <footer class="footer">
+            <div class="progress-info">
+                <span id="load-status">Connecting to Flux RP world...</span>
+                <span id="load-percent">0%</span>
+            </div>
+            <div class="progress-bar-bg">
+                <div class="progress-bar-fill" id="progress-bar"></div>
+            </div>
+        </footer>
+    </div>
+
+    <script src="js/script.js"></script>
+</body>
+</html>

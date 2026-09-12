@@ -1,41 +1,51 @@
-# Ripo Team Hugging Face Cloud PC
+﻿# FLUX RP — Official Ripo Team GTA V FiveM Server
 
-This project connects:
+Welcome to the single source of truth for **Flux RP**, the premier GTA V FiveM Roleplay experience developed and maintained by **Ripo Team**.
 
-- **GitHub Pages** — the polished Ripo Team desktop and control centre
-- **Hugging Face Gradio Space** — Linux x86-64 userspace and processes
-- **noVNC** — clickable Linux desktop in a browser
-- **Hermes Agent controls** — install, start, stop, logs and status
-- **Cloudflare Worker** — optional always-reachable wake/proxy endpoint
+---
 
-## What is included
+## ⚡ Quick Start (Run Locally on Windows)
 
-- Openbox desktop with app panel, file manager, terminals, text editor and Firefox
-- Xvfb, x11vnc and noVNC
-- FastAPI health/control endpoints
-- VNC password and admin-token protection
-- Keyless GitHub-to-Hugging-Face deployment through OIDC Trusted Publishers
-- GitHub Pages automatic deployment
-- Post-deployment Space health verification
-- Optional Cloudflare Worker deployment
-- Hermes installer and gateway controls
+1. **Launch Server**:
+   Double click `start-server.bat`.
+   This will automatically initialize the local MariaDB database engine, verify tables, and launch FXServer.
 
-## One-time private setup
+2. **Connect to Game**:
+   Open FiveM on your PC, press `F8`, and type:
+   ```
+   connect localhost:30120
+   ```
+   Or open your browser and click: `fivem://connect/localhost:30120`
 
-In the Hugging Face Space settings:
+3. **Stop Server**:
+   Run `stop-server.bat` to gracefully shutdown the server and database.
 
-1. Add a **GitHub Actions Trusted Publisher** for repository `riporipoteam-ctrl/ripoteamserver`, branch `main`, workflow `sync-huggingface.yml`.
-2. Add Space secret `VNC_PASSWORD` with a strong password.
-3. Add Space secret `ADMIN_TOKEN` with a separate long random value.
+---
 
-No permanent `HF_TOKEN` needs to be stored in GitHub. Never commit or paste passwords into public files.
+## 👑 Owner & Admin Setup
+- **Owner Account**: `real_ripo6000`
+- Configured with `qbcore.god` permissions with full access to `/admin`, `/noclip`, `/car`, `/setjob`, and player management.
 
-Then run the GitHub workflow **Create or update Hugging Face Space**.
+---
 
-## Availability
+## 🎮 Included RP Systems
+- **Character Life**: Multicharacter selection, complete clothing customization, barber shops, tattoo parlors, persistent hunger/thirst.
+- **Economy & Banking**: Dynamic personal and shared bank accounts, ATM cards, paychecks, cash economy.
+- **Inventory**: Slot-based visual inventory with weight limits, item durability, weapon attachments, gloveboxes, trunks, and stashes.
+- **Emergency Services**: Comprehensive Police MDT, handcuffs, evidence collection, armory, jail system, EMS dispatch, triage, hospital revive.
+- **Vehicles**: Dealerships, financing, realistic fueling, damage, persistence garages, mechanic repairs, and performance tuning.
+- **Crime & Heists**: Bank robberies, jewelry store heists, house burglaries, drug cultivation, packaging, and black market dealers.
+- **Custom UI**: Integrated modern HUD, radial menu, third-eye target interaction, and custom **Flux RP Loading Screen**.
 
-GitHub Pages stays available as a static frontend. When opened, it checks and wakes the Hugging Face Space, waits while the Space starts, and reconnects to the Linux desktop.
+---
 
-The project does not generate artificial scheduled traffic solely to evade Hugging Face's free-tier sleep policy. Official uninterrupted never-sleep operation requires eligible upgraded hardware.
+## 🌐 Home Hosting & Port Forwarding
+To allow external friends to join your server, review the [Networking Guide](docs/NETWORKING.md).
+Ports to forward in your router:
+- **30120 UDP & TCP** (Game Server)
+- **40120 TCP** (Optional txAdmin Web Management)
 
-See [`docs/DEPLOY.md`](docs/DEPLOY.md) for the full setup.
+---
+
+## 💾 Backups
+Run `backup-server.bat` at any time to export a timestamped SQL snapshot of your database and server configuration to the `backups/` directory.

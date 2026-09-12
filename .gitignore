@@ -1,11 +1,31 @@
-.env
-.env.*
-.dev.vars
-.dev.vars.*
-node_modules/
-__pycache__/
-*.pyc
+# FiveM Server Artifacts & Binaries
+server-artifacts/
+alpine/
+fxserver.exe
+
+# Local Server License Secrets
+server-data/server_license.cfg
+server-data/license.cfg
+
+# Database Binaries & Local Database Files
+tools/mariadb/
+database/data/
+
+# Server Caches, Logs, Backups
+server-data/cache/
+server-data/logs/
+backups/
+txData/
+*.log
+*.crashpad
+
+# OS & Editor Files
 .DS_Store
-windows-live-agent/recroom-agent-config.json
-windows-live-agent/recroom-agent-state.json
-windows-live-agent/*.local.json
+Thumbs.db
+*.tmp
+.vscode/
+.idea/
+
+# Environment Secrets
+.env
+.env.local

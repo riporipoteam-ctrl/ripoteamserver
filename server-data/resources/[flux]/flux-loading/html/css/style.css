@@ -1,0 +1,289 @@
+﻿* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    user-select: none;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #0a0b10 radial-gradient(circle at center, #151828 0%, #06070a 100%);
+    color: #e4e7eb;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    position: relative;
+}
+
+.overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.15),
+        rgba(0, 0, 0, 0.15) 1px,
+        transparent 1px,
+        transparent 2px
+    );
+    pointer-events: none;
+    z-index: 1;
+}
+
+.container {
+    position: relative;
+    z-index: 2;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 3rem 4rem;
+}
+
+/* Header */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.badge {
+    display: inline-block;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    background: linear-gradient(90deg, #00e5ff, #8a2be2);
+    color: #fff;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+}
+
+.logo-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 3.5rem;
+    font-weight: 700;
+    letter-spacing: 4px;
+    line-height: 1;
+    color: #ffffff;
+    text-shadow: 0 0 30px rgba(0, 229, 255, 0.4);
+}
+
+.logo-title .accent {
+    color: #00e5ff;
+    text-shadow: 0 0 25px rgba(0, 229, 255, 0.8);
+}
+
+.tagline {
+    font-size: 0.95rem;
+    color: #8c93a4;
+    margin-top: 0.25rem;
+    letter-spacing: 0.5px;
+}
+
+.server-status {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: rgba(15, 18, 30, 0.8);
+    border: 1px solid rgba(0, 229, 255, 0.2);
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: #00e5ff;
+}
+
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #00ff88;
+    box-shadow: 0 0 10px #00ff88;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+/* Grid */
+.grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr;
+    gap: 1.8rem;
+    margin: 1.5rem 0;
+}
+
+.card {
+    background: rgba(12, 15, 26, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 1.5rem;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    display: flex;
+    flex-direction: column;
+}
+
+.card h2 {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: #00e5ff;
+    margin-bottom: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Rules */
+.rules-card ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.rules-card li {
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: #b0b7c3;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+}
+
+.rules-card .num {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #8a2be2;
+    background: rgba(138, 43, 226, 0.15);
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+}
+
+.rules-card code {
+    background: rgba(255, 255, 255, 0.1);
+    color: #00e5ff;
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+}
+
+/* Keybinds */
+.key-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.key-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.8rem;
+    color: #c0c6d2;
+}
+
+kbd {
+    background: linear-gradient(180deg, #22283a, #151825);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-bottom: 2px solid rgba(0, 229, 255, 0.4);
+    color: #00e5ff;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    min-width: 45px;
+    text-align: center;
+}
+
+/* Community Card */
+.staff-badge {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: linear-gradient(90deg, rgba(138, 43, 226, 0.15), rgba(0, 229, 255, 0.05));
+    border: 1px solid rgba(138, 43, 226, 0.3);
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1.2rem;
+}
+
+.staff-badge .crown {
+    font-size: 1.8rem;
+    color: #ffd700;
+}
+
+.staff-badge strong {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.8rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #8a2be2;
+    display: block;
+}
+
+.staff-badge p {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.server-info-box p {
+    font-size: 0.8rem;
+    color: #9299a8;
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+}
+
+.server-info-box strong {
+    color: #00e5ff;
+}
+
+/* Footer & Progress Bar */
+.footer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.progress-info {
+    display: flex;
+    justify-content: space-between;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: #8c93a4;
+}
+
+#load-percent {
+    color: #00e5ff;
+    font-weight: 700;
+}
+
+.progress-bar-bg {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #00e5ff, #8a2be2);
+    border-radius: 4px;
+    box-shadow: 0 0 15px rgba(0, 229, 255, 0.6);
+    transition: width 0.25s ease-out;
+}
