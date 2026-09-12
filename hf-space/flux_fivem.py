@@ -6,7 +6,6 @@ Ensures 24/7 cloud operation with owner permissions for real_ripo6000.
 
 from __future__ import annotations
 
-import base64
 import collections
 import os
 import re
@@ -225,7 +224,9 @@ def locate_or_clone_server_data() -> tuple[Path, Path]:
 
 def configure_server_files(server_data: Path) -> None:
     license_file = server_data / "server_license.cfg"
-    raw_key = os.environ.get("FIVEM_LICENSE_KEY") or base64.b64decode("Y2Z4a19yazFYMnRqdXU0aUk1WlBESHo1cl80VFo2RzM=").decode("utf-8")
+    raw_key = os.environ.get("FIVEM_LICENSE_KEY", "").strip()
+    if not raw_key:
+        raise RuntimeError("FIVEM_LICENSE_KEY is not configured in the Hugging Face Space secrets.")
     license_content = (
         '# Auto-generated Cloud License Key\n'
         f'sv_licenseKey "{raw_key}"\n'

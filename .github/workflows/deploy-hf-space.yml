@@ -55,20 +55,38 @@ jobs:
           echo "::error::Hugging Face Space did not become healthy after deployment."
           exit 1
 
-      - name: Verify Rec Room runtime status
+      - name: Start and verify Flux RP FXServer
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --max-time 30 \
-            "https://echoxr-ripoteam-cloud-pc.hf.space/api/recroom-public/status" \
-            | tee /tmp/recroom-status.json
+          SPACE_URL="https://echoxr-ripoteam-cloud-pc.hf.space"
+          curl --fail --silent --show-error --max-time 30 -X POST "$SPACE_URL/api/flux/start" | tee /tmp/flux-start.json
           python - <<'PY'
           import json
-          data = json.load(open('/tmp/recroom-status.json'))
-          runtime = data.get('serverRuntime') or data.get('vmRuntime') or data.get('wineRuntime') or {}
-          print('configured=', data.get('configured'))
-          print('runtimeReadyForGame=', data.get('runtimeReadyForGame'))
-          print('targetBuild=', data.get('targetBuild'))
-          print('runtime=', runtime)
-          if not (data.get('runtimeReadyForGame') is True or data.get('vmReadyForGame') is True or runtime.get('readyForGame') is True):
-              raise SystemExit('Rec Room runtime is not game-ready on the live Space')
+          print('start=', json.load(open('/tmp/flux-start.json')))
           PY
+          for attempt in $(seq 1 30); do
+            curl --fail --silent --show-error --max-time 30 "$SPACE_URL/api/flux/status" -o /tmp/flux-status.json
+            if python - <<'PY'
+          import json, sys
+          data = json.load(open('/tmp/flux-status.json'))
+          print(json.dumps({
+              'status': data.get('status'),
+              'server_name': data.get('server_name'),
+              'mariadb_active': data.get('mariadb_active'),
+              'tunnel_address': data.get('tunnel_address'),
+              'direct_f8_command': data.get('direct_f8_command'),
+              'game_build': data.get('game_build'),
+          }))
+          if data.get('status') == 'online' and data.get('mariadb_active') is True:
+              sys.exit(0)
+          sys.exit(1)
+          PY
+            then
+              cp /tmp/flux-status.json /tmp/flux-status-final.json
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Flux RP FXServer did not become online with MariaDB active." >&2
+          cat /tmp/flux-status.json
+          exit 1
