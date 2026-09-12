@@ -77,9 +77,13 @@ def init_mariadb(schema_file: Path | None = None) -> None:
 
         time.sleep(2)
         if not is_mariadb_alive():
-            log("Service start unprivileged; initializing user-space MariaDB...")
-            db_datadir = DATA_DIR / "mariadb" / "data"
+            db_dir = DATA_DIR / "mariadb"
+            db_datadir = db_dir / "data"
+            db_tmp = db_dir / "tmp"
+            db_sock = db_dir / "mysql.sock"
+            db_pid = db_dir / "mysql.pid"
             db_datadir.mkdir(parents=True, exist_ok=True)
+            db_tmp.mkdir(parents=True, exist_ok=True)
 
             current_user = os.environ.get("USER", "user")
             mariadb_bin = shutil.which("mariadbd") or shutil.which("mysqld") or "/usr/sbin/mariadbd"
@@ -99,18 +103,23 @@ def init_mariadb(schema_file: Path | None = None) -> None:
                     timeout=30,
                 )
 
-            log(f"Spawning user-space {mariadb_bin} daemon...")
+            log(f"Spawning user-space {mariadb_bin} daemon on port 3306...")
             MARIADB_PROCESS = subprocess.Popen(
                 [
                     mariadb_bin,
                     f"--user={current_user}",
                     f"--datadir={db_datadir}",
+                    f"--socket={db_sock}",
+                    f"--pid-file={db_pid}",
+                    f"--tmpdir={db_tmp}",
                     "--port=3306",
                     "--bind-address=127.0.0.1",
+                    "--skip-grant-tables",
                     "--console",
                 ],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
             )
 
             for _ in range(20):
