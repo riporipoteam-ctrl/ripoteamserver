@@ -46,3 +46,6 @@ xvfb
 xz-utils
 zip
 zstd
+mariadb-server
+mariadb-client
+wget

@@ -15,6 +15,7 @@ from typing import Any
 
 from ai_stack import AIStack
 from flux_askai import install_flux_askai_routes
+from flux_fivem import install_flux_fivem_routes
 from tiktok_ai import TikTokAI, install_tiktok_routes
 from desktop_http import install_desktop_routes
 from desktop_setup import configure_full_desktop, detected_resources
@@ -309,6 +310,7 @@ app.add_middleware(
 install_desktop_routes(app, password=VNC_PASSWORD, display=DISPLAY)
 install_flux_askai_routes(app, AI_STACK)
 install_tiktok_routes(app, TIKTOK_AI, authorize)
+install_flux_fivem_routes(app)
 
 
 @app.get("/api/health")
@@ -486,7 +488,7 @@ def novnc_directory() -> Path:
 
 app.mount("/novnc", StaticFiles(directory=str(novnc_directory()), html=True), name="novnc")
 
-ROOT_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ripo Team Cloud PC</title><style>:root{font-family:Inter,system-ui,sans-serif;color:#f7f8ff;background:#060812}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 20% 20%,#27348b55,transparent 34rem),#060812;display:grid;place-items:center}.card{width:min(820px,calc(100% - 28px));padding:34px;border:1px solid #ffffff1c;border-radius:26px;background:#0d1222d9;box-shadow:0 30px 100px #0007}.eyebrow{color:#8e9bc8;font-weight:800;letter-spacing:.14em;font-size:.74rem}h1{font-size:clamp(2.2rem,7vw,5rem);line-height:.96;letter-spacing:-.055em;margin:10px 0 18px}p{color:#b4bddc;line-height:1.7}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}a{padding:13px 17px;border-radius:13px;text-decoration:none;font-weight:850}.primary{background:#f5f7ff;color:#071020}.secondary{border:1px solid #ffffff24;color:#f5f7ff}</style></head><body><main class="card"><div class="eyebrow">RIPO TEAM INFRASTRUCTURE</div><h1>Cloud PC is online.</h1><p>This Space runs a full Linux LXDE desktop with a file manager, taskbar, browser, terminal shortcut and Hermes controls.</p><div class="actions"><a class="primary" href="/desktop">Open HTTPS Linux desktop</a><a class="secondary" href="/gradio_api/info">API info</a><a class="secondary" href="/api/health">Health JSON</a></div></main></body></html>"""
+ROOT_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ripo Team Cloud PC</title><style>:root{font-family:Inter,system-ui,sans-serif;color:#f7f8ff;background:#060812}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 20% 20%,#27348b55,transparent 34rem),#060812;display:grid;place-items:center}.card{width:min(820px,calc(100% - 28px));padding:34px;border:1px solid #ffffff1c;border-radius:26px;background:#0d1222d9;box-shadow:0 30px 100px #0007}.eyebrow{color:#8e9bc8;font-weight:800;letter-spacing:.14em;font-size:.74rem}h1{font-size:clamp(2.2rem,7vw,5rem);line-height:.96;letter-spacing:-.055em;margin:10px 0 18px}p{color:#b4bddc;line-height:1.7}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}a{padding:13px 17px;border-radius:13px;text-decoration:none;font-weight:850}.primary{background:#f5f7ff;color:#071020}.secondary{border:1px solid #ffffff24;color:#f5f7ff}</style></head><body><main class="card"><div class="eyebrow">RIPO TEAM INFRASTRUCTURE</div><h1>Cloud PC is online.</h1><p>This Space runs a full Linux LXDE desktop with a file manager, taskbar, browser, terminal shortcut and Hermes controls.</p><div class="actions"><a class="primary" href="/desktop">Open HTTPS Linux desktop</a><a class="primary" href="/flux" style="background:linear-gradient(90deg,#00e5ff,#8a2be2);color:#fff;">Flux RP FiveM Server (24/7)</a><a class="secondary" href="/gradio_api/info">API info</a><a class="secondary" href="/api/health">Health JSON</a></div></main></body></html>"""
 
 
 @app.get("/", response_class=HTMLResponse)

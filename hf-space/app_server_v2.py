@@ -8,6 +8,7 @@ from app_server import DATA_DIR, DISPLAY, SERVER_TIKTOK_CONNECT, TIKTOK_AI, app,
 from prerecorded_live_engine import PreRecordedLiveEngine, install_prerecorded_live_routes
 from recroom_autoload import install_into_live_app
 from server_live_broadcaster import ServerLiveBroadcaster, install_server_live_routes
+from flux_fivem import install_flux_fivem_routes
 
 
 _DEFAULT_CORS_ORIGINS = (
@@ -38,6 +39,7 @@ SERVER_LIVE_BROADCASTER = ServerLiveBroadcaster(
     DISPLAY,
 )
 install_server_live_routes(app, SERVER_LIVE_BROADCASTER)
+install_flux_fivem_routes(app)
 
 PRERECORDED_LIVE_BROADCASTER = PreRecordedLiveEngine(
     TIKTOK_AI,
