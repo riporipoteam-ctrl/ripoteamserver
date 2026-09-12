@@ -377,3 +377,34 @@ altitude {
     font-weight: 600;
     text-shadow: 0 0 1px rgba(0, 0, 0, 0.6), 0 0 1px rgba(0, 0, 0, 0.6), 0 0 1px rgba(0, 0, 0, 0.6), 0 0 1px rgba(0, 0, 0, 0.6);
 }
+
+/* ==========================================================================
+   FLUX RP CUSTOM SIGNATURE THEME OVERRIDES (RIPO TEAM EXCLUSIVE)
+   ========================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700;800&display=swap');
+
+body {
+    font-family: 'Rajdhani', sans-serif !important;
+}
+
+/* Custom Glassmorphism HUD Panels */
+.q-splitter__panel.q-splitter__before,
+.q-tab-panels,
+.bg-panel,
+.bg-active-tab {
+    background: rgba(10, 14, 26, 0.92) !important;
+    backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(0, 229, 255, 0.25) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(0, 229, 255, 0.05) !important;
+}
+
+/* Accent Lines & Glowing Radiance */
+.text-primary, .q-tab--active {
+    color: #00e5ff !important;
+    text-shadow: 0 0 12px rgba(0, 229, 255, 0.6) !important;
+}
+
+/* Custom Speedometer & Gauges */
+.speedometer, .hud-panel {
+    filter: drop-shadow(0 0 8px rgba(0, 229, 255, 0.35)) !important;
+}

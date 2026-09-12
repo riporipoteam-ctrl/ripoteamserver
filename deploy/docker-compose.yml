@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: fluxrp-mariadb
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ""
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_DATABASE: "fluxrp"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ../database/qbcore_complete.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - fluxnet
+
+  fxserver:
+    image: sprits/fxserver:latest
+    container_name: fluxrp-server
+    restart: always
+    depends_on:
+      - mariadb
+    ports:
+      - "30120:30120/tcp"
+      - "30120:30120/udp"
+      - "40120:40120/tcp"
+    environment:
+      - SERVER_LICENSE_KEY=${FIVEM_LICENSE_KEY}
+    volumes:
+      - ../server-data:/txData/default/server-data
+    networks:
+      - fluxnet
+
+volumes:
+  mariadb_data:
+
+networks:
+  fluxnet:
+    driver: bridge

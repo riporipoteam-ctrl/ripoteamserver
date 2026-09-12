@@ -1,0 +1,218 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flux RP — Official Server Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #07090e;
+            --bg-card: rgba(13, 17, 30, 0.85);
+            --cyan: #00e5ff;
+            --purple: #8a2be2;
+            --text-main: #f0f4f8;
+            --text-muted: #8a94a6;
+            --border: rgba(0, 229, 255, 0.2);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-base) radial-gradient(circle at 50% 0%, #171c33 0%, #07090e 70%);
+            color: var(--text-main);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            margin-bottom: 3rem;
+        }
+        .logo { font-family: 'Rajdhani', sans-serif; font-size: 2.2rem; font-weight: 800; letter-spacing: 2px; }
+        .logo span { color: var(--cyan); }
+        .status-tag {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(0, 229, 255, 0.08);
+            border: 1px solid var(--border);
+            padding: 0.4rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--cyan);
+        }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #00ff88; box-shadow: 0 0 10px #00ff88; }
+        
+        .hero { text-align: center; padding: 3rem 1rem; }
+        .badge {
+            display: inline-block;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 700;
+            letter-spacing: 3px;
+            color: var(--cyan);
+            background: rgba(0, 229, 255, 0.1);
+            border: 1px solid var(--border);
+            padding: 0.3rem 1.2rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        .hero h1 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 4rem;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+        }
+        .hero h1 span {
+            background: linear-gradient(90deg, var(--cyan), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .hero p { max-width: 650px; margin: 0 auto 2.5rem; color: var(--text-muted); font-size: 1.15rem; }
+        
+        .cta-group { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 4rem; }
+        .btn {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            padding: 0.9rem 2rem;
+            border-radius: 6px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .btn-primary {
+            background: linear-gradient(90deg, var(--cyan), var(--purple));
+            color: #fff;
+            box-shadow: 0 0 25px rgba(0, 229, 255, 0.4);
+            border: none;
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 35px rgba(0, 229, 255, 0.7); }
+        .btn-secondary {
+            background: var(--bg-card);
+            color: var(--cyan);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { background: rgba(0, 229, 255, 0.15); transform: translateY(-2px); }
+        
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 4rem; }
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 2rem;
+            backdrop-filter: blur(10px);
+        }
+        .card h3 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--cyan);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .card ul { list-style: none; }
+        .card li { margin-bottom: 0.75rem; color: var(--text-muted); font-size: 0.95rem; }
+        .card strong { color: var(--text-main); }
+        
+        .admin-banner {
+            background: linear-gradient(90deg, rgba(138, 43, 226, 0.15), rgba(0, 229, 255, 0.05));
+            border: 1px solid rgba(138, 43, 226, 0.4);
+            border-radius: 10px;
+            padding: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+        }
+        .admin-text h3 { font-family: 'Rajdhani', sans-serif; font-size: 1.5rem; color: #fff; }
+        .admin-text p { color: var(--text-muted); font-size: 0.95rem; }
+
+        footer { text-align: center; padding: 2rem 0; color: var(--text-muted); font-size: 0.9rem; border-top: 1px solid rgba(255, 255, 255, 0.08); margin-top: 4rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">FLUX <span>RP</span></div>
+            <div class="status-tag">
+                <div class="dot"></div>
+                <span>SERVER ACTIVE &bull; PORT 30120</span>
+            </div>
+        </header>
+
+        <section class="hero">
+            <div class="badge">OFFICIAL RIPO TEAM ROLEPLAY</div>
+            <h1>THE NEXT GENERATION OF <span>GTA V RP</span></h1>
+            <p>Enter Los Santos with custom vehicles, realistic economy, postal code navigation, active police & EMS, illegal street racing, and over 500 features.</p>
+            
+            <div class="cta-group">
+                <a href="fivem://connect/localhost:30120" class="btn btn-primary" id="connect-btn">
+                    <span>&#9658;</span> DIRECT CONNECT (FIVEM)
+                </a>
+                <a href="http://localhost:40120" target="_blank" class="btn btn-secondary">
+                    <span>&#9881;</span> OPEN TXADMIN WEB PANEL
+                </a>
+            </div>
+        </section>
+
+        <div class="grid">
+            <div class="card">
+                <h3><span>&#128660;</span> CUSTOM FLEET & VEHICLES</h3>
+                <ul>
+                    <li><strong>Police & Pursuit:</strong> Custom LE Cruisers, Interceptors & Pursuit SUVs.</li>
+                    <li><strong>Emergency Rescue:</strong> Mobile ICU Ambulances & Heavy Pumper Engines.</li>
+                    <li><strong>Commercial:</strong> Semi-Truck Freight Haulers & Flatbed Tow Trucks.</li>
+                    <li><strong>Street Tuners:</strong> Drift Spec-R & Apex Exotic Hypercars.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h3><span>&#128506;</span> POSTAL MINIMAP & NAVIGATION</h3>
+                <ul>
+                    <li><strong>OCRP Postal Codes:</strong> Real-time postal indicator above your minimap.</li>
+                    <li><strong>GPS Routing:</strong> Type <code>/postal [code]</code> for automatic GPS waypoints.</li>
+                    <li><strong>Emergency Dispatch:</strong> Units respond directly to live postal calls.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h3><span>&#9819;</span> SERVER OWNER & STAFF</h3>
+                <ul>
+                    <li><strong>Server Owner:</strong> <code>real_ripo6000</code> (God Rank).</li>
+                    <li><strong>Admin Suite:</strong> Integrated vMenu / Menyoo Trainer + QBCore Admin.</li>
+                    <li><strong>Anti-Cheat:</strong> Server-side authority on inventory, banking, and jobs.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="admin-banner">
+            <div class="admin-text">
+                <h3>txAdmin Web Portal for Staff</h3>
+                <p>Manage server health, monitor live resources, kick/ban players, and view console logs from your web browser.</p>
+            </div>
+            <a href="http://localhost:40120" target="_blank" class="btn btn-secondary">
+                ACCESS TXADMIN (PORT 40120)
+            </a>
+        </div>
+
+        <footer>
+            &copy; 2026 Flux RP. Owned and Operated by Ripo Team. Single Source of Truth: ripoteamserver.
+        </footer>
+    </div>
+</body>
+</html>
