@@ -7,8 +7,6 @@ sdk: gradio
 app_file: app_server_v2.py
 python_version: 3.12
 fullWidth: true
-header: mini
-suggested_hardware: zero-a10g
 pinned: false
 ---
 
